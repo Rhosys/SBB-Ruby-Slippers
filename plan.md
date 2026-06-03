@@ -56,7 +56,7 @@ rather than dumping them on an empty screen.
 Inputs:
 - Last searched destination (unsaved)
 - **Saved routes** (one-off, time-specific trips)
-- **Recurring routes** (schedule-matched against current datetime + timezone)
+- **Recurring routes** (schedule-matched against current datetime via device timezone)
 - **Places** (named locations for ASAP routing; Home has special fallback role)
 - Current GPS location
 
@@ -64,12 +64,16 @@ Logic — **weighted scoring across all four sources** (see *Places, Saved Route
 Recurring Routes* for full scoring table). The top candidate loads straight into
 the hero. A stale or location-mismatched candidate scores itself out.
 
-**Home fallback:** if nothing scores above the minimum threshold *and* the user is
-**more than 500 m from their Home place**, assume the destination is Home.
-Within 500 m of Home → no auto-destination; show place chips + search.
+**Nearest-place context:** the scorer always knows which saved Place the user is
+currently closest to. This informs every signal — e.g. if the user is near Work
+at 17:30, Home scores higher as a destination even without a saved plan.
 
-Other saved **places** (Work, a friend's house, …) appear as quick-tap chips so
-one tap re-targets the hero without searching.
+**Home fallback:** if nothing scores above the minimum threshold *and* the user's
+nearest Place is not Home, assume the destination is Home.
+If the user is already nearest to Home → no auto-destination; show place chips +
+search.
+
+Other saved **places** appear as quick-tap chips so one tap re-targets the hero.
 
 ### 2. Multi-origin optimization — the engine
 
@@ -210,15 +214,18 @@ other two exist for users who want a pre-planned or scheduled workflow.
 ### Places
 Named locations — no time or direction attached.
 - Examples: Home, Work, Mum's, Gym
-- **Home** is special: it anchors the >500 m app-open fallback
+- One place can be designated **Home** — used as the app-open fallback destination
+  when no plan scores high enough and the user is not already near it
 - Tapping a tile routes from current GPS → that place, ASAP
 - Displayed as quick-tap chips on the home screen
+- The app **always computes the user's nearest saved Place** at runtime — this is a
+  live context signal used throughout the app (see *App-open scorer* and the hero
+  card). No fixed distance threshold; it is simply whichever place is closest.
 
 **Place CRUD:**
 - **Create:** save current GPS location as a new place, or pick any searched/pinned
   map destination
-- **Edit:** rename, change destination coordinates, mark as primary (designate which
-  tile is Home), reorder
+- **Edit:** rename, change destination coordinates, mark as Home, reorder
 - **Delete:** remove a place (no cascade — saved routes that referenced it keep their
   destination coordinates)
 
@@ -238,12 +245,13 @@ A one-off trip saved for a specific date + time.
 ### Recurring routes
 A saved route with a **recurrence rule** — modelled after calendar scheduling.
 - Examples: "Weekdays at 08:20 → Work", "Every second Wednesday at 19:00 → Zürich HB", 
-  custom cron-style with user timezone
+  custom cron-style
 - The app-open scorer evaluates each recurring route against the current datetime
-  (in the user's timezone): if a scheduled occurrence is imminent, it scores highly
+  using `ZoneId.systemDefault()`: if a scheduled occurrence is imminent, it scores highly
 - Recurrence rule storage: iCal RRULE syntax internally (covers daily, weekly,
-  custom patterns, timezone); exposed in the UI as friendly presets + an "advanced"
-  mode for power users
+  custom patterns); schedule evaluation uses `ZoneId.systemDefault()` at runtime —
+  no timezone stored in the database
+- Exposed in the UI as friendly presets + an "advanced" mode for power users
 - User can pause, edit, or delete a recurring route
 - On each occurrence: optionally fires a pre-departure reminder notification
 
@@ -258,7 +266,7 @@ All four signal sources are evaluated on every launch:
 | **Last search** (unsaved) | Recency + proximity to origin |
 | **Saved routes** | How close *now* is to the saved datetime + proximity |
 | **Recurring routes** | Does a scheduled occurrence fall within the next ~2 hours? + proximity |
-| **Places** | Proximity to Home (>500 m gate); other places as ASAP fallback chips |
+| **Places** | Nearest saved Place computed at runtime; Home as fallback destination when not already nearest to it |
 
 Highest-scoring candidate loads into the home-screen hero automatically. Ties
 broken by recency. If nothing scores above a minimum threshold: show tiles +
@@ -419,8 +427,7 @@ User-configurable preferences (persisted on-device via DataStore):
 | Walking pace | 6 km/h | Feeds multi-origin reachable-stop radius + transfer buffers |
 | Running pace | 10 km/h | Used for "run" effort-level alternatives |
 | **Switch-prompt minimum improvement** | **1 min** | Smallest final-arrival saving that triggers a "Switch?" prompt. 1 = prompt on any improvement. Confirmed missed connections always prompt regardless. |
-| **Home place** | (set on first launch or in Places) | Anchors the >500 m app-open fallback |
-| **Timezone** | Device timezone | Used for recurring-route schedule evaluation; defaults to system, overridable for users who live in one timezone but commute cross-border |
+| **Home place** | (set on first launch or in Places) | Anchors the app-open fallback; app always computes nearest saved Place at runtime |
 | **Calendar sync** | Off | Toggle; requires `READ_CALENDAR` permission on first enable |
 | **Calendar sync interval** | 4 hours | How often the WorkManager job re-reads the device calendar; options: 1 / 2 / 4 / 6 / 12 h |
 | **Calendars to include** | All | Multi-select list of calendars found on device; user can exclude specific ones |
