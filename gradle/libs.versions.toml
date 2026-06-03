@@ -42,7 +42,8 @@ hilt-ext-compiler           = { module = "androidx.hilt:hilt-compiler",         
 lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose",   version.ref = "lifecycle" }
 lifecycle-runtime-compose   = { module = "androidx.lifecycle:lifecycle-runtime-compose",     version.ref = "lifecycle" }
 
-kotlinx-coroutines-android  = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-android       = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android",      version.ref = "coroutines" }
+kotlinx-coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-play-services", version.ref = "coroutines" }
 
 datastore-preferences       = { module = "androidx.datastore:datastore-preferences",         version.ref = "datastore" }
 

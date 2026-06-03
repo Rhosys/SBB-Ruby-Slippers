@@ -28,23 +28,51 @@ the user's Gradle or npm caches.
 
 ```
 app/src/main/java/ch/rhosys/sbb/
-  SbbRubySlippersApp.kt         ← Application class (PostHog, crash handler)
-  MainActivity.kt               ← Compose entry point, bottom nav
-  data/remote/
-    TransportApi.kt             ← Retrofit interface → transport.opendata.ch
-    TransportRepositoryImpl.kt  ← wires API to domain interface
-    dto/TransportDtos.kt        ← kotlinx-serialization DTOs
+  SbbRubySlippersApp.kt                ← @HiltAndroidApp + PostHog + HiltWorkerFactory
+  MainActivity.kt                      ← Compose entry point, bottom nav scaffold
+  data/
+    local/
+      calendar/CalendarRepository.kt   ← reads CalendarContract for 7-day events
+      db/
+        AppDatabase.kt                 ← Room: places, saved_routes, recurring_routes, trip_history
+        dao/{Place,SavedRoute,RecurringRoute,TripHistory}Dao.kt
+        entity/                        ← Room entities + toDomain() / toEntity() mappers
+      preferences/UserPreferencesRepository.kt  ← DataStore keys + typed flows
+      repository/
+        RoomPlaceRepository.kt         ← implements domain/PlaceRepository
+        RoomRouteRepository.kt         ← implements domain/RouteRepository
+    remote/
+      ApiTransportRepository.kt        ← implements domain/TransportRepository; resolves GPS → name
+      TransportApi.kt                  ← Retrofit interface → transport.opendata.ch
+      dto/TransportDtos.kt             ← @Serializable DTOs (never passed to UI)
   di/
-    NetworkModule.kt            ← Hilt DI: OkHttp, Json, Retrofit, TransportApi
+    DatabaseModule.kt                  ← provides AppDatabase, DAOs, binds Place/RouteRepository
+    NetworkModule.kt                   ← provides OkHttp, Json, Retrofit, TransportApi, binds ApiTransportRepository
+    PreferencesModule.kt               ← provides DataStore<Preferences>
   domain/
-    TransportRepository.kt      ← interface used by ViewModels
+    PlaceRepository.kt                 ← interface: getPlaces/Home, upsert, setHome
+    RouteRepository.kt                 ← interface: saved/recurring CRUD + calendar upsert/prune
+    TransportRepository.kt             ← interface: getConnections(SearchEndpoint, SearchEndpoint)
+    model/
+      Connection.kt / Leg.kt / Stop.kt ← journey domain types (never API DTOs)
+      Place.kt                         ← has Haversine distanceMetersTo()
+      SavedRoute.kt / RecurringRoute.kt / SearchEndpoint.kt
   ui/
-    navigation/{Screen,AppNavHost}.kt
-    search/                     ← Connection search (from → to → list)
-    stationboard/               ← Station departure board
-    settings/
-    theme/Theme.kt
     error/StartupErrorScreen.kt
+    home/{HomeScreen,HomeViewModel}.kt ← app-open scorer + swipe-to-lock cards + tile grid
+    journey/
+      JourneyStateHolder.kt            ← @Singleton: locked-in connection + from/to
+      JourneyStripScreen.kt            ← legs list + switch-prompt AlertDialog
+      JourneyStripViewModel.kt         ← 30 s polling; switch-prompt when saved ≥ threshold
+    navigation/{Screen,AppNavHost}.kt
+    onboarding/{OnboardingScreen,OnboardingViewModel}.kt
+    search/{ConnectionSearchScreen,ConnectionSearchViewModel}.kt
+    settings/{SettingsScreen,SettingsViewModel}.kt
+    stationboard/{StationboardScreen,StationboardViewModel}.kt
+    theme/Theme.kt
+    widget/DepartureWidget.kt          ← Glance placeholder (no real data yet)
+  worker/CalendarSyncWorker.kt         ← @HiltWorker: syncs calendar events → saved routes
+app/src/main/res/xml/departure_widget_info.xml
 deployment/
   android-upload-signing.json  ← PLACEHOLDER — must be replaced before release
   deploy-play-store.ts         ← Play Store upload script
@@ -52,6 +80,15 @@ deployment/
 .github/workflows/build.yml    ← GitHub CI: compile / lint / test / debug-apk
 .gitlab-ci.yml                 ← GitLab CI: validate + signed-AAB release pipeline
 ```
+
+## Known gaps (v1 — ship after these are addressed)
+
+- **Widget**: `DepartureWidget` is a layout placeholder; needs to read from `JourneyStateHolder`
+- **TripHistory**: `TripHistoryDao` exists but no ViewModel calls `insert` yet
+- **Location permission**: `HomeViewModel` checks for permission; UI must call `ActivityResultLauncher` to actually request it
+- **Calendar permission**: `CalendarSyncWorker` must check `READ_CALENDAR` at runtime before querying `CalendarContract`
+- **Drag-to-route**: tile-grid click works; drag gesture between tiles is not yet implemented
+- **Recurring route scoring**: app-open scorer only scores `SavedRoute`; `RecurringRoute` RRULE matching is TODO
 
 ## Data source
 
