@@ -1,6 +1,9 @@
 package ch.rhosys.sbb.worker
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import androidx.hilt.work.HiltWorker
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -10,12 +13,10 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import ch.rhosys.sbb.data.local.calendar.CalendarRepository
-import ch.rhosys.sbb.data.local.preferences.UserPreferencesRepository
 import ch.rhosys.sbb.domain.RouteRepository
 import ch.rhosys.sbb.domain.TransportRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
-import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 
 @HiltWorker
@@ -28,6 +29,10 @@ class CalendarSyncWorker @AssistedInject constructor(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
+        if (ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.READ_CALENDAR)
+            != PackageManager.PERMISSION_GRANTED
+        ) return Result.success()
+
         val events = calendarRepository.getEventsWithLocations(lookaheadDays = 7)
         val activeIds = mutableSetOf<Long>()
 

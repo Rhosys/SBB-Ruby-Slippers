@@ -2,7 +2,9 @@ package ch.rhosys.sbb.data.local.repository
 
 import ch.rhosys.sbb.data.local.db.dao.RecurringRouteDao
 import ch.rhosys.sbb.data.local.db.dao.SavedRouteDao
+import ch.rhosys.sbb.data.local.db.dao.TripHistoryDao
 import ch.rhosys.sbb.data.local.db.entity.SavedRouteEntity
+import ch.rhosys.sbb.data.local.db.entity.TripHistoryEntity
 import ch.rhosys.sbb.data.local.db.entity.toEntity
 import ch.rhosys.sbb.domain.RouteRepository
 import ch.rhosys.sbb.domain.model.RecurringRoute
@@ -14,6 +16,7 @@ import javax.inject.Inject
 class RoomRouteRepository @Inject constructor(
     private val savedRouteDao: SavedRouteDao,
     private val recurringRouteDao: RecurringRouteDao,
+    private val tripHistoryDao: TripHistoryDao,
 ) : RouteRepository {
 
     override fun getSavedRoutes(): Flow<List<SavedRoute>> =
@@ -66,5 +69,24 @@ class RoomRouteRepository @Inject constructor(
     override suspend fun pruneStaleCalendarRoutes(activeEventIds: Set<Long>) {
         if (activeEventIds.isEmpty()) return
         savedRouteDao.deleteStaleCalendarRoutes(activeEventIds.toList())
+    }
+
+    override suspend fun recordSearch(
+        fromName: String,
+        toName: String,
+        toLat: Double,
+        toLng: Double,
+        wasLockedIn: Boolean,
+    ) {
+        tripHistoryDao.insert(
+            TripHistoryEntity(
+                fromName = fromName,
+                toName = toName,
+                toLat = toLat,
+                toLng = toLng,
+                wasLockedIn = wasLockedIn,
+            )
+        )
+        tripHistoryDao.pruneOldEntries()
     }
 }

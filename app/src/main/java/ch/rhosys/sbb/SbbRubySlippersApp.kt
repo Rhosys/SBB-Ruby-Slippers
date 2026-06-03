@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import ch.rhosys.sbb.ui.widget.JourneyWidgetSyncer
 import com.posthog.PostHog
 import com.posthog.android.PostHogAndroid
 import com.posthog.android.PostHogAndroidConfig
@@ -14,6 +15,7 @@ import javax.inject.Inject
 class SbbRubySlippersApp : Application(), Configuration.Provider {
 
     @Inject lateinit var workerFactory: HiltWorkerFactory
+    @Inject lateinit var journeyWidgetSyncer: JourneyWidgetSyncer
 
     var startupError: Throwable? = null
         private set
@@ -25,6 +27,7 @@ class SbbRubySlippersApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        journeyWidgetSyncer.start()
         installCrashHandler()
 
         try {

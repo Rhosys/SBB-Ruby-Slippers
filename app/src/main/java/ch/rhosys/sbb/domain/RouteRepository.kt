@@ -22,4 +22,5 @@ interface RouteRepository {
         label: String?,
     )
     suspend fun pruneStaleCalendarRoutes(activeEventIds: Set<Long>)
+    suspend fun recordSearch(fromName: String, toName: String, toLat: Double, toLng: Double, wasLockedIn: Boolean)
 }
