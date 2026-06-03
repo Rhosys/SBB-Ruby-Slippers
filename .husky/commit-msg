@@ -1,0 +1,10 @@
+#!/bin/sh
+
+commit_msg=$(head -n 1 "$1")
+
+if [ ${#commit_msg} -lt 20 ]; then
+  echo "ERROR: Commit message must be at least 20 characters."
+  echo ""
+  echo "Explain WHY the change was made, not just what changed."
+  exit 1
+fi

@@ -1,0 +1,5 @@
+{
+  "_note": "PLACEHOLDER — run 'generate-android-keystore --alias sbb > deployment/android-upload-signing.json' from the _tools repo to generate the real keystore before the release pipeline will work.",
+  "keystore": "",
+  "passwordCiphertext": ""
+}
