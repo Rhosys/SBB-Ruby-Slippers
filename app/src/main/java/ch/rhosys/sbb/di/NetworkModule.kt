@@ -1,8 +1,8 @@
 package ch.rhosys.sbb.di
 
 import ch.rhosys.sbb.BuildConfig
+import ch.rhosys.sbb.data.remote.ApiTransportRepository
 import ch.rhosys.sbb.data.remote.TransportApi
-import ch.rhosys.sbb.data.remote.TransportRepositoryImpl
 import ch.rhosys.sbb.domain.TransportRepository
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import dagger.Binds
@@ -29,19 +29,16 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(): OkHttpClient {
-        return OkHttpClient.Builder()
+    fun provideOkHttpClient(): OkHttpClient =
+        OkHttpClient.Builder()
             .apply {
                 if (BuildConfig.DEBUG) {
-                    addInterceptor(
-                        HttpLoggingInterceptor().apply {
-                            level = HttpLoggingInterceptor.Level.BODY
-                        }
-                    )
+                    addInterceptor(HttpLoggingInterceptor().apply {
+                        level = HttpLoggingInterceptor.Level.BASIC
+                    })
                 }
             }
             .build()
-    }
 
     @Provides
     @Singleton
@@ -60,8 +57,8 @@ object NetworkModule {
 
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class RepositoryModule {
+abstract class TransportRepositoryModule {
     @Binds
     @Singleton
-    abstract fun bindTransportRepository(impl: TransportRepositoryImpl): TransportRepository
+    abstract fun bindTransportRepository(impl: ApiTransportRepository): TransportRepository
 }

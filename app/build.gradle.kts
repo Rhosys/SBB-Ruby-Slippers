@@ -40,7 +40,6 @@ android {
         }
     }
 
-    // Run instrumented tests against release to catch R8 stripping issues
     testBuildType = "release"
 
     buildFeatures {
@@ -76,6 +75,23 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.datastore.preferences)
     implementation(libs.posthog.android)
+
+    // Room — local database (places, saved routes, history)
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
+
+    // WorkManager — calendar sync + journey monitoring
+    implementation(libs.work.runtime.ktx)
+    implementation(libs.hilt.work)
+    ksp(libs.hilt.ext.compiler)
+
+    // Location — GPS for multi-origin origin resolution
+    implementation(libs.play.services.location)
+
+    // Glance — home-screen widget
+    implementation(libs.glance.appwidget)
+    implementation(libs.glance.material3)
 
     // Networking — direct calls to transport.opendata.ch (public, no auth)
     implementation(libs.retrofit)
