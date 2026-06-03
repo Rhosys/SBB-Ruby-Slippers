@@ -54,27 +54,22 @@ was off), before showing anything the app **infers what the user is trying to do
 rather than dumping them on an empty screen.
 
 Inputs:
-- Last thing the user searched for / the last (and other) **saved travel plans**
-- Current time
+- Last searched destination (unsaved)
+- **Saved routes** (one-off, time-specific trips)
+- **Recurring routes** (schedule-matched against current datetime + timezone)
+- **Places** (named locations for ASAP routing; Home has special fallback role)
 - Current GPS location
 
-Logic — **weighted scoring across signals**. Every candidate destination (the last
-active plan, each saved tile/plan, and Home) is scored on:
-- **Recency** — how recently it was searched/used/locked-in
-- **Time-of-day fit** — does *now* fall in the plan's time window? (a plan may be
-  "ASAP" or "at a specific time / window")
-- **Proximity** — is the user near this plan's natural origin right now?
+Logic — **weighted scoring across all four sources** (see *Places, Saved Routes &
+Recurring Routes* for full scoring table). The top candidate loads straight into
+the hero. A stale or location-mismatched candidate scores itself out.
 
-The top-scoring candidate is loaded straight into the home-screen hero. A stale
-plan (its departure long past, or the user is now nowhere near its origin) scores
-itself out.
+**Home fallback:** if nothing scores above the minimum threshold *and* the user is
+**more than 500 m from their Home place**, assume the destination is Home.
+Within 500 m of Home → no auto-destination; show place chips + search.
 
-**Home fallback:** if nothing scores high enough, *and* the user is **more than
-500 m from their Home tile**, assume the destination is Home and load that.
-(Within 500 m of Home → no auto-destination; show tiles + search.)
-
-If the user has other **primary tiles** (Work, a friend's place, …), surface them
-as quick-click tiles alongside the inferred hero so one tap re-targets.
+Other saved **places** (Work, a friend's house, …) appear as quick-tap chips so
+one tap re-targets the hero without searching.
 
 ### 2. Multi-origin optimization — the engine
 
@@ -205,34 +200,71 @@ A distinct "plan a trip" mode for itineraries with flexible dwell times:
 
 ---
 
-## TILES & HISTORY
+## PLACES, SAVED ROUTES & RECURRING ROUTES
 
-A **tile** is the user's unit of "a place I travel to." Tiles and saved travel
-plans are the same thing — a tile is a destination plus an optional intent:
-either **ASAP** or **at a specific time / time window** (e.g. "Work, weekday
-mornings"; "Home, after 17:00"). Tapping a tile starts a plan to it. The user can
-save **multiple** tiles/plans.
+Three distinct concepts. Most users will tap a place chip most of the time; the
+other two exist for users who want a pre-planned or scheduled workflow.
 
-Tile kinds:
-- **Primary tiles** — explicitly named, durable places: **Home**, Work, a friend's
-  place, etc. Home is special: it anchors the >500 m app-open fallback.
-- **Implicit tiles** — the app detects recurring destinations from history and
-  promotes them automatically; no explicit star required.
+---
 
-**Tile management (CRUD):**
-- **Create** — save the current location as a tile, or create a new tile from any
-  searched/picked destination
-- **Edit** — rename, change the destination, change/clear the time window, mark as
-  primary (e.g. designate which tile is Home)
-- **Delete** — remove a tile
-- Quick-click tile chips appear on the home screen and feed the app-open scorer
+### Places
+Named locations — no time or direction attached.
+- Examples: Home, Work, Mum's, Gym
+- **Home** is special: it anchors the >500 m app-open fallback
+- Tapping a tile routes from current GPS → that place, ASAP
+- Displayed as quick-tap chips on the home screen
 
-**History:**
-- **Auto-save everything:** every searched destination AND every trip taken →
-  stored locally, infinite history, never uploaded
-- History feeds implicit-tile detection and the recency signal in the app-open scorer
+**Place CRUD:**
+- **Create:** save current GPS location as a new place, or pick any searched/pinned
+  map destination
+- **Edit:** rename, change destination coordinates, mark as primary (designate which
+  tile is Home), reorder
+- **Delete:** remove a place (no cascade — saved routes that referenced it keep their
+  destination coordinates)
 
-**Privacy:** all tiles and history stay on-device, never uploaded.
+---
+
+### Saved routes
+A one-off trip saved for a specific date + time.
+- Example: "Next Thursday at 15:00 → Bern Hauptbahnhof"
+- Stored locally; the app-open scorer surfaces it when that datetime is approaching
+- After the trip the user can keep it (becomes history), delete it, or promote it to
+  a recurring route
+- Can be created from: a search result, a place tile, or the active Journey Strip
+  ("save this trip")
+
+---
+
+### Recurring routes
+A saved route with a **recurrence rule** — modelled after calendar scheduling.
+- Examples: "Weekdays at 08:20 → Work", "Every second Wednesday at 19:00 → Zürich HB", 
+  custom cron-style with user timezone
+- The app-open scorer evaluates each recurring route against the current datetime
+  (in the user's timezone): if a scheduled occurrence is imminent, it scores highly
+- Recurrence rule storage: iCal RRULE syntax internally (covers daily, weekly,
+  custom patterns, timezone); exposed in the UI as friendly presets + an "advanced"
+  mode for power users
+- User can pause, edit, or delete a recurring route
+- On each occurrence: optionally fires a pre-departure reminder notification
+
+---
+
+### App-open scorer — full input set
+
+All four signal sources are evaluated on every launch:
+
+| Source | Signals used |
+|--------|-------------|
+| **Last search** (unsaved) | Recency + proximity to origin |
+| **Saved routes** | How close *now* is to the saved datetime + proximity |
+| **Recurring routes** | Does a scheduled occurrence fall within the next ~2 hours? + proximity |
+| **Places** | Proximity to Home (>500 m gate); other places as ASAP fallback chips |
+
+Highest-scoring candidate loads into the home-screen hero automatically. Ties
+broken by recency. If nothing scores above a minimum threshold: show tiles +
+search, no auto-destination.
+
+---
 
 ---
 
@@ -334,6 +366,8 @@ User-configurable preferences (persisted on-device via DataStore):
 | Walking pace | 6 km/h | Feeds multi-origin reachable-stop radius + transfer buffers |
 | Running pace | 10 km/h | Used for "run" effort-level alternatives |
 | **Switch-prompt minimum improvement** | **1 min** | Smallest final-arrival saving that triggers a "Switch?" prompt. 1 = prompt on any improvement. Confirmed missed connections always prompt regardless. |
+| **Home place** | (set on first launch or in Places) | Anchors the >500 m app-open fallback |
+| **Timezone** | Device timezone | Used for recurring-route schedule evaluation; defaults to system, overridable for users who live in one timezone but commute cross-border |
 
 ---
 
