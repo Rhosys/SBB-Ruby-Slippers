@@ -91,7 +91,7 @@ Routing:
 - No rate limits. No backend. Works offline after initial download.
 
 Given: GPS location + destination + now
-1. OJP LocationInfoRequest → find all stops within user's walk + run radius (time-based, not metres)
+1. Query local GTFS `stops.txt` SQLite → find all stops within user's walk + run radius (time-based, not metres)
 2. For each stop: walking/running time to reach it → earliest possible board time
 3. RAPTOR round 0: seed all reachable stops with their board times
 4. RAPTOR propagates full graph (A→B→C→D + all A' variants) in one pass
@@ -101,9 +101,9 @@ Given: GPS location + destination + now
 Walk/run pace: user-configured in settings. Defaults: 6 km/h walk, 10 km/h run.
 
 Known hard parts:
-- Transfer walking graph: GTFS `transfers.txt` covers known interchanges; major hub internals (Zürich HB etc.) may need manual supplement or OJP footpath queries
+- Transfer walking graph: GTFS `transfers.txt` covers known interchanges; major hub internals (Zürich HB etc.) may need manual supplement from OSM footpath data or swisstopo
 - GTFS-RT overlay: static data stays immutable; delays applied in a separate in-memory layer
-- First-launch pipeline: WorkManager expedited job, downloads in priority order (see below). OJP fallback covers the gap. Once Phase 1 imports, silently switches to on-device RAPTOR.
+- First-launch pipeline: WorkManager expedited job, downloads in priority order (see below). `transport.opendata.ch` fallback covers the gap. Once Phase 1 imports, silently switches to on-device RAPTOR.
 
 **GTFS partition strategy — download in priority order:**
 
@@ -116,7 +116,7 @@ Known hard parts:
 | International | Trips with stops outside Switzerland | On-demand | Small |
 
 Phase 1 (~15-25 MB) targets ~30s on LTE → user gets on-device routing for most local trips very quickly.
-If destination is outside home canton and Phase 2 isn't done yet → transparent OJP fallback for that query.
+If destination is outside home canton and Phase 2 isn't done yet → transparent `transport.opendata.ch` fallback for that query.
 
 **Hosting:** Pre-processed per-canton GTFS splits self-hosted on S3 + CDN. Build-time CI job re-splits on each opentransportdata.swiss annual timetable publish. Files versioned; app fetches a manifest first to check freshness.
 
@@ -281,11 +281,14 @@ search, no auto-destination.
 Accepted destination types: transit stops, street addresses, POIs, map coordinate (pin/tap).
 
 Resolution pipeline:
-- **Search box:** OJP LocationInfoRequest (free-text → stops + addresses + POIs in one response)
+- **Search box:** free-text query against local GTFS `stops.txt` SQLite for stop names;
+  swisstopo (geo.admin.ch) for addresses + POIs
   - If result is a stop → use directly as RAPTOR target
-  - If result is address/POI → lat/lng → nearest stops via local GTFS SQLite (no extra API)
-- **Map pin:** swisstopo (geo.admin.ch) reverse geocode for display label; nearest stops from local SQLite
+  - If result is address/POI → lat/lng → nearest stops via local GTFS SQLite
+- **Map pin:** swisstopo reverse geocode for display label; nearest stops from local SQLite
 - **Fallback geocoder:** OSM Nominatim (for anything swisstopo doesn't cover)
+- **Pre-GTFS fallback:** `transport.opendata.ch /v1/locations` used only before the GTFS
+  stop index is available (first launch, before Phase 1 download completes)
 
 Destination stores as: `{displayName, lat, lng, resolvedStopIds[]}` — always anchored to stops for routing.
 
@@ -293,14 +296,20 @@ Destination stores as: `{displayName, lat, lng, resolvedStopIds[]}` — always a
 
 ## DATA ARCHITECTURE
 
-### Sources (dual, fallback between them)
+### Sources
 
 | Source | Used for | Auth |
 |--------|---------|------|
-| `transport.opendata.ch` | Connections, stationboard, location search | None |
-| `opentransportdata.swiss` OJP / GTFS-RT | Real-time delays, cancellations, platform changes | Free token |
+| `transport.opendata.ch` | Fallback journey planning + location search before GTFS is ready | None |
+| `opentransportdata.swiss` GTFS static | Full Swiss timetable — downloaded once, powers RAPTOR | Free registration |
+| `opentransportdata.swiss` GTFS-RT | Live delays, cancellations, platform changes — overlaid on static | Same free token |
 
-If either source lacks delay data, fall back to the other. Never block UI on either.
+**OJP is not used.** RAPTOR replaces OJP for journey planning; `stops.txt` from the
+local GTFS SQLite replaces OJP for stop/location search. The only reason to touch
+`opentransportdata.swiss` at all is to download the GTFS feeds.
+
+`transport.opendata.ch` is the pre-GTFS fallback only — once Phase 1 of the GTFS
+download is complete it is no longer called for routing or search.
 
 ### Caching strategy
 
@@ -439,5 +448,5 @@ User-configurable preferences (persisted on-device via DataStore):
 1. **SBB Mobile deep-link scheme:** What URL/intent scheme does SBB Mobile expose for pre-filled connections and EasyRide? (Requires reverse-engineering or official docs.)
 2. **Multi-hop screen UX:** Detailed design of the day-planner flow.
 3. **Commuter animation spec:** Exact frames/states for the teleporting sprint. Commission or build in-house?
-4. **opentransportdata.swiss token management:** Token in app bundle? In CI secret? Rate limits?
-5. **Stop walking-graph data:** For transfer walking time (e.g. platform-to-platform inside a station), is this available from OJP, or do we derive it from map data?
+4. **opentransportdata.swiss token management:** Needed for GTFS static download (build-time CI) and GTFS-RT at runtime. Token in app bundle? In CI secret? What are the GTFS-RT rate limits?
+5. **Stop walking-graph data:** For transfer walking time (e.g. platform-to-platform inside a station), GTFS `transfers.txt` has minimum transfer times but not walking paths. Do we supplement from OSM, swisstopo, or hand-authored data for major hubs?
