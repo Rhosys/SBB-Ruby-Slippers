@@ -1,0 +1,40 @@
+package ch.rhosys.sbb.data.local.preferences
+
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class UserPreferencesRepository @Inject constructor(
+    private val dataStore: DataStore<Preferences>,
+) {
+    companion object {
+        val WALKING_PACE_KMH = floatPreferencesKey("walking_pace_kmh")
+        val RUNNING_PACE_KMH = floatPreferencesKey("running_pace_kmh")
+        val SWITCH_THRESHOLD_MINUTES = intPreferencesKey("switch_threshold_minutes")
+        val CALENDAR_SYNC_ENABLED = booleanPreferencesKey("calendar_sync_enabled")
+        val CALENDAR_SYNC_INTERVAL_HOURS = intPreferencesKey("calendar_sync_interval_hours")
+        val HAS_COMPLETED_ONBOARDING = booleanPreferencesKey("has_completed_onboarding")
+    }
+
+    val walkingPaceKmh: Flow<Float> = dataStore.data.map { it[WALKING_PACE_KMH] ?: 6f }
+    val runningPaceKmh: Flow<Float> = dataStore.data.map { it[RUNNING_PACE_KMH] ?: 10f }
+    val switchThresholdMinutes: Flow<Int> = dataStore.data.map { it[SWITCH_THRESHOLD_MINUTES] ?: 1 }
+    val calendarSyncEnabled: Flow<Boolean> = dataStore.data.map { it[CALENDAR_SYNC_ENABLED] ?: false }
+    val calendarSyncIntervalHours: Flow<Int> = dataStore.data.map { it[CALENDAR_SYNC_INTERVAL_HOURS] ?: 4 }
+    val hasCompletedOnboarding: Flow<Boolean> = dataStore.data.map { it[HAS_COMPLETED_ONBOARDING] ?: false }
+
+    suspend fun setWalkingPace(kmh: Float) = dataStore.edit { it[WALKING_PACE_KMH] = kmh }
+    suspend fun setRunningPace(kmh: Float) = dataStore.edit { it[RUNNING_PACE_KMH] = kmh }
+    suspend fun setSwitchThreshold(minutes: Int) = dataStore.edit { it[SWITCH_THRESHOLD_MINUTES] = minutes }
+    suspend fun setCalendarSyncEnabled(enabled: Boolean) = dataStore.edit { it[CALENDAR_SYNC_ENABLED] = enabled }
+    suspend fun setCalendarSyncIntervalHours(hours: Int) = dataStore.edit { it[CALENDAR_SYNC_INTERVAL_HOURS] = hours }
+    suspend fun setHasCompletedOnboarding(done: Boolean) = dataStore.edit { it[HAS_COMPLETED_ONBOARDING] = done }
+}

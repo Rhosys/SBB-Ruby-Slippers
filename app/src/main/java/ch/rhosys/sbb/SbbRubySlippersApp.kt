@@ -2,16 +2,26 @@ package ch.rhosys.sbb
 
 import android.app.Application
 import android.util.Log
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.Configuration
 import com.posthog.PostHog
 import com.posthog.android.PostHogAndroid
 import com.posthog.android.PostHogAndroidConfig
 import dagger.hilt.android.HiltAndroidApp
+import javax.inject.Inject
 
 @HiltAndroidApp
-class SbbRubySlippersApp : Application() {
+class SbbRubySlippersApp : Application(), Configuration.Provider {
+
+    @Inject lateinit var workerFactory: HiltWorkerFactory
 
     var startupError: Throwable? = null
         private set
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setWorkerFactory(workerFactory)
+            .build()
 
     override fun onCreate() {
         super.onCreate()
@@ -50,9 +60,7 @@ class SbbRubySlippersApp : Application() {
                     ),
                 )
                 PostHog.flush()
-            } catch (_: Throwable) {
-                // PostHog may not be initialized — don't double-crash
-            }
+            } catch (_: Throwable) {}
             defaultHandler?.uncaughtException(thread, throwable)
         }
     }

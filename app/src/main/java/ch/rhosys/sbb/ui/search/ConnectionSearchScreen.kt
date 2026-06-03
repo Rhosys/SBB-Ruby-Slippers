@@ -1,17 +1,21 @@
 package ch.rhosys.sbb.ui.search
 
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -19,16 +23,24 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import ch.rhosys.sbb.R
-import ch.rhosys.sbb.data.remote.dto.ConnectionDto
+import ch.rhosys.sbb.domain.model.Connection
+import kotlin.math.abs
 
 @Composable
-fun ConnectionSearchScreen(viewModel: ConnectionSearchViewModel = hiltViewModel()) {
+fun ConnectionSearchScreen(
+    onNavigateToJourney: () -> Unit,
+    viewModel: ConnectionSearchViewModel = hiltViewModel(),
+) {
     val state by viewModel.uiState.collectAsState()
 
     Column(
@@ -38,7 +50,7 @@ fun ConnectionSearchScreen(viewModel: ConnectionSearchViewModel = hiltViewModel(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         OutlinedTextField(
-            value = state.from,
+            value = state.fromText,
             onValueChange = viewModel::onFromChanged,
             label = { Text(stringResource(R.string.search_from_hint)) },
             modifier = Modifier.fillMaxWidth(),
@@ -46,7 +58,7 @@ fun ConnectionSearchScreen(viewModel: ConnectionSearchViewModel = hiltViewModel(
         )
 
         OutlinedTextField(
-            value = state.to,
+            value = state.toText,
             onValueChange = viewModel::onToChanged,
             label = { Text(stringResource(R.string.search_to_hint)) },
             modifier = Modifier.fillMaxWidth(),
@@ -81,7 +93,14 @@ fun ConnectionSearchScreen(viewModel: ConnectionSearchViewModel = hiltViewModel(
                 contentPadding = PaddingValues(vertical = 4.dp),
             ) {
                 items(state.connections) { connection ->
-                    ConnectionCard(connection)
+                    ConnectionCard(
+                        connection = connection,
+                        isHero = connection == state.connections.firstOrNull(),
+                        onLockIn = {
+                            viewModel.lockIn(connection)
+                            onNavigateToJourney()
+                        },
+                    )
                 }
             }
         }
@@ -89,33 +108,62 @@ fun ConnectionSearchScreen(viewModel: ConnectionSearchViewModel = hiltViewModel(
 }
 
 @Composable
-private fun ConnectionCard(connection: ConnectionDto) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+private fun ConnectionCard(
+    connection: Connection,
+    isHero: Boolean,
+    onLockIn: () -> Unit,
+) {
+    var offsetX by remember { mutableStateOf(0f) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        if (abs(offsetX) > 120f) onLockIn()
+                        offsetX = 0f
+                    },
+                    onDragCancel = { offsetX = 0f },
+                ) { _, dragAmount -> offsetX += dragAmount }
+            },
+        colors = if (isHero) CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+        ) else CardDefaults.cardColors(),
+    ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(
-                    text = connection.from?.departure ?: "—",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = connection.to?.arrival ?: "—",
-                    style = MaterialTheme.typography.titleMedium,
-                )
+                Text(connection.departure.displayTime(), style = MaterialTheme.typography.titleMedium)
+                Text(connection.arrival.displayTime(), style = MaterialTheme.typography.titleMedium)
             }
-            val duration = connection.duration ?: ""
-            val transfers = connection.transfers ?: 0
-            val products = connection.products.joinToString(", ")
+            val lines = connection.lineNames.joinToString(" → ")
+            val transfers = connection.transfers
             Text(
                 text = buildString {
-                    if (duration.isNotBlank()) append(duration)
+                    if (lines.isNotBlank()) append(lines)
                     if (transfers > 0) append(" · $transfers transfer${if (transfers > 1) "s" else ""}")
-                    if (products.isNotBlank()) append(" · $products")
                 },
                 style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (connection.departure.isDelayed) {
+                Text(
+                    "+${connection.departure.delayMinutes} min",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            if (isHero) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Swipe to lock in →",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
         }
     }
 }

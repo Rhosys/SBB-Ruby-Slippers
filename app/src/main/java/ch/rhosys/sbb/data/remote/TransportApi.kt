@@ -25,4 +25,10 @@ interface TransportApi {
     suspend fun getLocations(
         @Query("query") query: String,
     ): LocationsResponseDto
+
+    @GET("v1/locations")
+    suspend fun getLocationsByCoordinate(
+        @Query("x") longitude: Double,
+        @Query("y") latitude: Double,
+    ): LocationsResponseDto
 }
