@@ -35,13 +35,46 @@ Implementation: Lottie or Android Animated Vector Drawable (AVD).
 
 ### 1. Home screen — "Next departure" hero
 
-- Opens directly to a live card: best option for reaching the user's intended destination
-- No search form on first open — destination picked from recents or a tap-to-search field
+- Opens directly to a live card: best option for reaching the user's **inferred**
+  destination (see *App-open intent restoration* below — the home screen is the
+  output of that engine, not a blank search form)
+- No search form on first open — destination is restored/inferred, or picked from
+  tiles or a tap-to-search field
 - **Hero card:** departure time · line · platform · walk time to stop · arrival at destination
 - **Alternatives below:** same destination, different stops/routes/effort levels
-- **Favourites chips** below alternatives: quick-tap access to recurring destinations (auto-detected)
+- **Tile chips** below alternatives: quick-tap access to saved + auto-detected
+  destinations (see *Tiles & history*)
 - **Map toggle:** view all nearby reachable stops spatially
 - Options silently promote as they expire (1 min after actual departure + reported delay)
+
+### 1a. App-open intent restoration
+
+On every launch (including cold start from a fully closed app, or after the phone
+was off), before showing anything the app **infers what the user is trying to do**
+rather than dumping them on an empty screen.
+
+Inputs:
+- Last thing the user searched for / the last (and other) **saved travel plans**
+- Current time
+- Current GPS location
+
+Logic — **weighted scoring across signals**. Every candidate destination (the last
+active plan, each saved tile/plan, and Home) is scored on:
+- **Recency** — how recently it was searched/used/locked-in
+- **Time-of-day fit** — does *now* fall in the plan's time window? (a plan may be
+  "ASAP" or "at a specific time / window")
+- **Proximity** — is the user near this plan's natural origin right now?
+
+The top-scoring candidate is loaded straight into the home-screen hero. A stale
+plan (its departure long past, or the user is now nowhere near its origin) scores
+itself out.
+
+**Home fallback:** if nothing scores high enough, *and* the user is **more than
+500 m from their Home tile**, assume the destination is Home and load that.
+(Within 500 m of Home → no auto-destination; show tiles + search.)
+
+If the user has other **primary tiles** (Work, a friend's place, …), surface them
+as quick-click tiles alongside the inferred hero so one tap re-targets.
 
 ### 2. Multi-origin optimization — the engine
 
@@ -172,13 +205,34 @@ A distinct "plan a trip" mode for itineraries with flexible dwell times:
 
 ---
 
-## DESTINATION HISTORY & FAVOURITES
+## TILES & HISTORY
 
-- **Auto-save everything:** every searched destination AND every trip taken → stored locally, infinite history, never uploaded
-- **Implicit favourites:** app detects recurring destinations from history and promotes them to favourites — no explicit star required
-- User can also manually pin any destination
-- Favourite chips on home screen for one-tap access
-- Privacy: all history stays on-device
+A **tile** is the user's unit of "a place I travel to." Tiles and saved travel
+plans are the same thing — a tile is a destination plus an optional intent:
+either **ASAP** or **at a specific time / time window** (e.g. "Work, weekday
+mornings"; "Home, after 17:00"). Tapping a tile starts a plan to it. The user can
+save **multiple** tiles/plans.
+
+Tile kinds:
+- **Primary tiles** — explicitly named, durable places: **Home**, Work, a friend's
+  place, etc. Home is special: it anchors the >500 m app-open fallback.
+- **Implicit tiles** — the app detects recurring destinations from history and
+  promotes them automatically; no explicit star required.
+
+**Tile management (CRUD):**
+- **Create** — save the current location as a tile, or create a new tile from any
+  searched/picked destination
+- **Edit** — rename, change the destination, change/clear the time window, mark as
+  primary (e.g. designate which tile is Home)
+- **Delete** — remove a tile
+- Quick-click tile chips appear on the home screen and feed the app-open scorer
+
+**History:**
+- **Auto-save everything:** every searched destination AND every trip taken →
+  stored locally, infinite history, never uploaded
+- History feeds implicit-tile detection and the recency signal in the app-open scorer
+
+**Privacy:** all tiles and history stay on-device, never uploaded.
 
 ---
 
