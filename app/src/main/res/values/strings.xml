@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SBB Ruby Slippers</string>
+
+    <!-- Bottom navigation -->
+    <string name="tab_search">Search</string>
+    <string name="tab_stationboard">Departures</string>
+    <string name="tab_settings">Settings</string>
+
+    <!-- Connection search -->
+    <string name="search_from_hint">From</string>
+    <string name="search_to_hint">To</string>
+    <string name="search_action">Search connections</string>
+    <string name="search_empty">Enter a start and destination to find connections.</string>
+
+    <!-- Stationboard -->
+    <string name="stationboard_station_hint">Station</string>
+    <string name="stationboard_action">Show departures</string>
+    <string name="stationboard_empty">Enter a station to see upcoming departures.</string>
+
+    <string name="error_generic">Something went wrong. Please try again.</string>
+</resources>

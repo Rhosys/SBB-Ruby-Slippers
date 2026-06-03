@@ -1,0 +1,174 @@
+# CI runs compile, lint, and unit tests on every push and MR.
+# release (manual, main only): builds signed AAB, smoke tests on emulator, deploys to Play Store.
+#
+# workflow:rules prevents double-running when a branch has an open MR.
+#
+# Secrets/credentials in deployment/ — no CI variables needed except AWS_ACCOUNT_ID:
+#   android-upload-signing.json        keystore (base64 PKCS12) + KMS-encrypted password
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+
+stages:
+  - validate
+  - release
+
+default:
+  id_tokens:
+    GITLAB_OIDC_TOKEN:
+      aud: https://gitlab.com
+
+# ── Shared Gradle config ──────────────────────────────────────────────────────
+
+.gradle-job:
+  image: cimg/android:2026.03.1-node
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - when: on_success
+  variables:
+    GRADLE_USER_HOME: '$CI_PROJECT_DIR/.gradle'
+    GRADLE_OPTS: '-Dorg.gradle.daemon=false -Dorg.gradle.caching=true'
+  cache:
+    key: gradle-$CI_COMMIT_REF_SLUG
+    paths:
+      - .gradle/
+
+# ── Validate ──────────────────────────────────────────────────────────────────
+
+test:
+  extends: .gradle-job
+  stage: validate
+  script:
+    - ./gradlew testDebugUnitTest
+
+lint:
+  extends: .gradle-job
+  stage: validate
+  script:
+    - ./gradlew lintDebug
+
+# ── Release (manual) ──────────────────────────────────────────────────────────
+# Single job: build signed AAB → smoke test on emulator → deploy to Play Store → notify.
+
+release:
+  extends: .gradle-job
+  stage: release
+  variables:
+    AWS_WEB_IDENTITY_TOKEN_FILE: "${CI_PROJECT_DIR}/aws.jwt"
+    AWS_DEFAULT_REGION: "eu-west-1"
+    AWS_ROLE_ARN: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/GitLabRunnerRole"
+    GOOGLE_APPLICATION_CREDENTIALS: "/tmp/gcp-workload-identity.json"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+      when: manual
+  script:
+    - set -eo pipefail
+
+    # ── Compute version ───────────────────────────────────────────────────────
+    - |
+      BRANCH="${CI_COMMIT_BRANCH:-main}"
+      export BUILD_NUMBER="${CI_PIPELINE_IID:-0}"
+      if [[ "$BRANCH" =~ ^release/([0-9]+\.[0-9]+)$ ]]; then
+        export VERSION="${BASH_REMATCH[1]}.${BUILD_NUMBER}"
+      else
+        export VERSION="1.0.${BUILD_NUMBER}"
+      fi
+
+    # ── AWS credentials (KMS decrypt + SES notify) ────────────────────────────
+    - echo "${GITLAB_OIDC_TOKEN}" > "${AWS_WEB_IDENTITY_TOKEN_FILE}"
+    - curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+    - unzip -q /tmp/awscliv2.zip -d /tmp && /tmp/aws/install --install-dir "$HOME/.local/aws-cli" --bin-dir "$HOME/.local/bin"
+    - export PATH="$HOME/.local/bin:$PATH"
+
+    # ── Build signed release AAB ──────────────────────────────────────────────
+    - jq -r '.keystore' deployment/android-upload-signing.json | base64 --decode > app/android-upload-signing.keystore
+    - STORE_PASSWORD=$(jq -r '.passwordCiphertext' deployment/android-upload-signing.json | base64 --decode | aws kms decrypt --ciphertext-blob fileb:///dev/stdin --region eu-west-1 --output text --query Plaintext | base64 --decode)
+    - |
+      ./gradlew bundleRelease \
+        -PversionName="$VERSION" \
+        -PversionCode="$BUILD_NUMBER" \
+        -Pandroid.injected.signing.store.file="$CI_PROJECT_DIR/app/android-upload-signing.keystore" \
+        -Pandroid.injected.signing.store.password="$STORE_PASSWORD" \
+        -Pandroid.injected.signing.key.alias="sbb" \
+        -Pandroid.injected.signing.key.password="$STORE_PASSWORD"
+
+    # ── Smoke test on emulator ────────────────────────────────────────────────
+    # API 30: smaller default userdata partition (~2GB vs 7GB for API 34).
+    # GitLab shared runners have ~4GB free — API 34 won't fit.
+    - sdkmanager --install "system-images;android-30;google_apis;x86_64" "emulator"
+    - echo no | avdmanager create avd --name smoke --package "system-images;android-30;google_apis;x86_64" --device "pixel_6"
+    - emulator -avd smoke -no-window -no-audio -no-metrics -gpu swiftshader_indirect -no-boot-anim &
+    - EMULATOR_PID=$!
+    - |
+      for i in $(seq 1 90); do
+        if ! kill -0 $EMULATOR_PID 2>/dev/null; then
+          echo "ERROR: Emulator process died" && exit 1
+        fi
+        if adb shell getprop sys.boot_completed 2>/dev/null | grep -q 1; then
+          echo "Emulator booted" && break
+        fi
+        sleep 2
+      done
+      if ! adb shell getprop sys.boot_completed 2>/dev/null | grep -q 1; then
+        echo "ERROR: Emulator boot timed out after 180s" && exit 1
+      fi
+    - ./gradlew connectedAndroidTest
+
+    # ── Deploy to Play Store ──────────────────────────────────────────────────
+    - npm ci --cache .npm
+    - echo "${GITLAB_OIDC_TOKEN}" > /tmp/gcp-oidc.jwt
+    - echo '{"type":"external_account","audience":"//iam.googleapis.com/projects/454629444494/locations/global/workloadIdentityPools/gitlab-oidc/providers/gitlab-com","subject_token_type":"urn:ietf:params:oauth:token-type:id_token","token_url":"https://sts.googleapis.com/v1/token","credential_source":{"file":"/tmp/gcp-oidc.jwt"},"service_account_impersonation_url":"https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/gitlab-play-store@rhosys-apps.iam.gserviceaccount.com:generateAccessToken"}' > "$GOOGLE_APPLICATION_CREDENTIALS"
+    - npm run deploy:play-store
+
+    # ── Notify ────────────────────────────────────────────────────────────────
+    - npm run deploy:notify -- --version-code "$BUILD_NUMBER" --version-name "$VERSION"
+  artifacts:
+    when: always
+    expose_as: 'Android Release AAB'
+    paths:
+      - app/build/outputs/bundle/release/app-release.aab
+    expire_in: 30 days
+  cache:
+    - key: gradle-$CI_COMMIT_REF_SLUG
+      paths:
+        - .gradle/
+    - key:
+        files:
+          - package-lock.json
+      paths:
+        - .npm/
+  timeout: 15m
+
+# ── Sync from GitHub (scheduled only) ────────────────────────────────────────
+
+sync-from-github:
+  image: alpine/git:latest
+  stage: validate
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+  script:
+    - git remote add github https://github.com/Rhosys/SBB-Ruby-Slippers.git
+    - git fetch github main
+    - git checkout -B sync/github github/main
+    - git remote set-url --push origin "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+    - git push origin sync/github --force -o merge_request.create -o merge_request.target=main -o merge_request.title="Sync from GitHub"
+
+# ── Debug APK (manual, MRs only) ─────────────────────────────────────────────
+
+pr-debug-build:
+  extends: .gradle-job
+  stage: release
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
+  script:
+    - ./gradlew assembleDebug
+  artifacts:
+    when: always
+    expose_as: 'Android Debug APK'
+    paths:
+      - app/build/outputs/apk/debug/app-debug.apk
+    expire_in: 7 days
