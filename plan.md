@@ -326,10 +326,112 @@ All four signal sources are evaluated on every launch:
 | **Places** | Nearest saved Place computed at runtime; Home as fallback destination when not already nearest to it |
 
 Highest-scoring candidate loads into the home-screen hero automatically. Ties
-broken by recency. If nothing scores above a minimum threshold: show tiles +
-search, no auto-destination.
+broken by recency. If nothing scores above a minimum threshold: show the **dynamic
+search surface** (below), no auto-destination.
 
 ---
+
+### Dynamic search surface (drag-to-route)
+
+The fallback when the scorer has nothing to surface. Also reachable any time the
+user wants to start a fresh search. **v1/v2-agnostic** — the interaction is
+identical regardless of which routing engine is underneath.
+
+The tile grid mixes the user's saved **Places** with special control tiles:
+
+| Special tile | Role |
+|--------------|------|
+| **Current Location** | GPS origin/destination |
+| **From** | Opens a text search to find any stop/address/POI in the network; fills the *origin* end. Shows a connector icon (→) to read as "From ●—" |
+| **To** | Same text search, fills the *destination* end. Connector icon (—→●) to read as "—→ To" |
+
+The **From / To** tiles are the same text-search control in different roles; the
+connector icon is the visual cue for which end it fills.
+
+Interaction:
+- **Click** any tile → "**FROM Current Location → that tile**" (the common case)
+- **Drag** tile A → tile B → "**FROM A → B**"
+- A drag that connects **From → To** (both unspecified search tiles) → prompt the
+  user to define *both* endpoints
+- Any place tile can be either end depending on drag direction; Current Location and
+  the From/To search tiles compose freely with saved places
+
+Search-mode matrix (all combinations supported):
+
+| | From | To |
+|---|------|-----|
+| Current Location | ✓ | ✓ |
+| Saved Place (tile) | ✓ | ✓ |
+| Text search (From / To tile) | ✓ | ✓ |
+
+---
+
+## DOMAIN MODEL — engine-independent (enables the v2 swap)
+
+The single most important architectural rule for making the v1→v2 engine swap
+painless: **the UI must never see API DTOs.** It binds only to domain models that
+neither the API nor RAPTOR own.
+
+Today the code leaks DTOs straight to the UI — `TransportRepository.getConnections`
+returns `ConnectionsResponseDto`, and `ConnectionSearchScreen` binds to
+`ConnectionDto` fields like `duration: String?` (`"00:45"`) and string times. Those
+shapes exist only because that's what `transport.opendata.ch` returns. RAPTOR
+produces nothing like them.
+
+**Fix — introduce a domain layer the UI binds to:**
+
+```
+domain/
+  model/
+    Connection.kt   ← what every screen + ViewModel binds to
+    Leg.kt          ← one transit leg or walk segment
+    Stop.kt         ← a stop with real-time state (delay, platform, cancelled)
+  TransportRepository.kt   ← returns domain models, NOT DTOs
+```
+
+- Domain types use real types (`Instant`, `Duration`, enums) — not API strings
+- Repository interface returns domain models:
+  `suspend fun getConnections(origin: Origin, to: Destination): List<Connection>`
+- Two interchangeable implementations behind the one interface:
+
+```
+data/remote/ApiTransportRepository.kt   ← maps ConnectionDto → Connection   (v1)
+data/gtfs/GtfsTransportRepository.kt    ← maps RAPTOR output → Connection    (v2)
+```
+
+The UI, ViewModels, scorer, monitoring, and widget all bind to `Connection` and
+never change when the engine swaps. **This refactor happens in v1, up front** —
+it's good architecture regardless, and it's the precondition for v2 dropping in
+cleanly.
+
+---
+
+## V1 → V2 ENGINE TRANSITION
+
+When the GTFS infra is done, swapping the engine is one Hilt binding:
+
+```kotlin
+// v1
+@Binds abstract fun bindRepo(impl: ApiTransportRepository): TransportRepository
+// v2
+@Binds abstract fun bindRepo(impl: GtfsTransportRepository): TransportRepository
+```
+
+**What changes for the user (mostly invisible, strictly better):**
+- Connections become genuinely **multi-origin** — hero may switch stops because
+  RAPTOR weighed all nearby origins at once (the wedge finally works)
+- "Walk to stop" on the hero becomes meaningful — RAPTOR chose *which* stop and why
+- Richer real-time — GTFS-RT brings cancellations + platform changes + track-level
+  precision vs the single `delay` integer the v1 API returns
+- **Works offline** after the initial download; routing no longer hits the network
+- **No rate limit** — routing is local, so refresh/monitoring/scorer run freely
+
+**Runtime router selection.** It is not a hard cutover. On first launch, while GTFS
+downloads, the app uses `ApiTransportRepository`. A readiness flag flips per region
+as Phase 1/2 imports complete; from the next query onward the app routes via RAPTOR
+for covered regions and falls back to the API for anything not yet downloaded. If a
+user searched during the download window, results may improve afterward — surface a
+subtle "routing updated" indicator rather than changing silently.
 
 ---
 
