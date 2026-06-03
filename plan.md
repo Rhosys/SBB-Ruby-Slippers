@@ -1,6 +1,6 @@
 # SBB Ruby Slippers — Product & Functionality Plan
 
-> Status: **complete first pass** — all core questions resolved.
+> Status: **scoped** — v1/v2 split defined, core product + engine decisions resolved.
 > This is a living document; update it as implementation decisions are made.
 
 ---
@@ -12,6 +12,41 @@
 Every existing transit app asks "which stop are you at?" We ask "where are you *right now*, and where do you need to be?" — then find every viable combination of nearby stops, ranked by when you'd actually *arrive*, accounting for your personal walking and running pace.
 
 The name is the product: *click your heels, you're home.*
+
+> **Note:** true multi-origin optimization requires the on-device GTFS + RAPTOR
+> engine, which is a **v2** milestone (see *Release scope*). **v1 ships on the
+> existing `transport.opendata.ch` API** with conventional single-origin journey
+> planning — proving the surrounding product (tiles, plans, calendar, monitoring,
+> widget) while the engine is built in parallel. The wedge lands in v2.
+
+---
+
+## RELEASE SCOPE — v1 / v2
+
+**v1 — API-backed, ships first (weeks, not months)**
+Runs on the existing `transport.opendata.ch` Retrofit layer. Everything that does
+*not* require the on-device routing engine:
+- Single-origin journey planning, stationboard, location search (existing API)
+- Guided first-run onboarding (location permission + set Home)
+- Places / Saved routes / Recurring routes (CRUD + local storage)
+- App-open intent scorer (scoring API-routed candidates)
+- Trip lock-in + Journey Strip
+- Disruption notifications + Switch prompts — **best-effort on the delay data
+  `transport.opendata.ch` returns** (`StopDto.delay`); not full GTFS-RT
+- Calendar integration (CalendarContract → saved routes)
+- Home-screen widget (Glance)
+- Settings
+
+**v2 — the engine + the wedge**
+- On-device GTFS static download + SQLite + RAPTOR (the multi-origin core)
+- True multi-origin optimization across all nearby stops (the differentiator)
+- GTFS-RT live overlay (richer real-time than the v1 API delay fields)
+- Offline routing after first download
+- Multi-hop / day planner
+
+**Hard rule:** v1 must not block on any v2 infrastructure. The data layer is
+abstracted behind `TransportRepository` so the v2 engine swaps in underneath
+without touching the UI.
 
 ---
 
@@ -75,6 +110,24 @@ search.
 
 Other saved **places** appear as quick-tap chips so one tap re-targets the hero.
 
+> **First-run note:** a brand-new user has no places, plans, or history, so the
+> scorer has nothing to score. First launch runs guided onboarding instead (see
+> below); the scorer only takes over once the user has accumulated some signal.
+
+### 1b. First-run onboarding
+
+A short guided setup on first launch — the scorer can't infer intent with an empty
+profile, so we bootstrap one:
+1. **Welcome + the pitch** (one screen, skippable)
+2. **Foreground location permission** — with contextual rationale (nearby-stop
+   discovery). Background location is *not* requested here — it comes later at
+   trip lock-in (see *Location*).
+3. **Set Home** — prompt to save the user's Home place (search or use current GPS).
+   Skippable, but Home anchors the app-open fallback, so we nudge.
+4. **Drop into a search-first screen** — not the inferred hero (no data yet). As the
+   user searches, takes trips, and saves places, the app-open scorer progressively
+   takes over on subsequent launches.
+
 ### 2. Multi-origin optimization — the engine
 
 **Architecture: On-device GTFS + RAPTOR**
@@ -124,8 +177,12 @@ Canton detection: GPS lat/lng matched against a static canton boundary polygon f
 
 ### 3. Trip lock-in
 
-- Swipe left/right on hero card → locked in (quick path)
-- Or: tap card → trip detail → "Take this trip" button (deliberate path)
+Gesture split (tap is reserved for detail, so lock-in lives on swipe):
+- **Tap** hero card → expands to trip detail (separate screen / popup / hover-style
+  expansion) showing full leg breakdown, alternatives, "Take this trip"
+- **Swipe** hero card → locked in directly (the quick path)
+- **Undo:** lock-in shows a brief snackbar with **Undo** to catch accidental swipes
+  (mitigates the accidental-lock-in risk of a swipe gesture)
 - Lock-in triggers: background monitoring, location permission upgrade prompt (if needed)
 
 ### 4. Journey Strip — active trip screen
@@ -318,6 +375,28 @@ download is complete it is no longer called for routing or search.
 - Subtle staleness indicator (never silent failure, never blocking)
 - During tunnel/offline: Journey Strip keeps running on cached schedule data, Commuter shows "⚠ offline"
 
+### Rate-limit discipline (CRITICAL in v1)
+
+`transport.opendata.ch` allows only **~1 000 req/day and 3 route queries/min per IP**.
+In v1 *everything* routes through this API (no on-device engine yet), so naïve
+implementation would exhaust the daily budget before midday. Mitigations are not
+optional for v1:
+
+- **Coalesce the app-open scorer:** score from cached/stored data first; fire at most
+  one live route query on open, not one per candidate
+- **Cache aggressively with TTLs:** connection results and stationboards cached and
+  reused within a short TTL; identical queries served from cache
+- **Throttle monitoring:** the T-20/10/5/2/1 schedule already bounds background
+  queries; ensure they respect the 3/min ceiling (stagger, don't burst)
+- **Debounced autocomplete (300ms)** and single-active-query-per-destination
+- **Back off on 429:** exponential backoff + surface cached data, never hammer
+- **Per-trip query budget:** monitoring for a locked-in trip must fit within the
+  daily allowance alongside normal browsing
+
+> This is the strongest argument for prioritising the v2 GTFS/RAPTOR engine: it
+> removes the rate limit entirely (routing goes on-device). Until then, v1 lives
+> within these constraints by design.
+
 ### Background monitoring schedule (WorkManager)
 
 Once locked in: scheduled jobs at **T-20 → T-10 → T-5 → T-2 → T-1** minutes before departure.
@@ -332,9 +411,18 @@ GTFS-RT refresh schedule:
 
 ## LOCATION
 
-- **Foreground** (install): nearby stop discovery, multi-origin radius
+- **Foreground** (onboarding): nearby stop discovery, multi-origin radius
 - **Background** (requested at lock-in with contextual explanation): "approaching your stop" alert even with screen locked
 - Progressive trust — no upfront "always allow" demand
+
+**Android 13/14 background-location caveat:** `ACCESS_BACKGROUND_LOCATION` can no
+longer be granted via an in-app dialog — the OS forces a redirect to system Settings
+("Allow all the time" is not offered inline). The lock-in flow must therefore:
+- Explain *why* before sending the user out (contextual pre-prompt)
+- Deep-link to the app's location settings page
+- Degrade gracefully if the user declines: the trip still works, only the
+  screen-locked "approaching your stop" alert is unavailable. Never block lock-in on
+  background permission.
 
 ---
 
@@ -359,6 +447,11 @@ knows what's coming up without the user doing anything.
   `/v1/locations?query=` endpoint (same geocoder used by the search screen)
 - Each resolved event becomes a **saved route**: GPS → resolved stop(s), timed to
   arrive at the event location by the event's start time
+- **Unresolvable locations are silently skipped.** Calendar `Location` fields are
+  notoriously noisy ("Conference room B", "Zoom", "see invite"). If the geocoder
+  returns no confident stop/address match, no plan is created and the user is not
+  notified — better to create nothing than a spurious broken plan. (A future "Needs
+  review" surface could revisit skipped events; out of scope for now.)
 
 ### De-duplication & lifecycle
 
