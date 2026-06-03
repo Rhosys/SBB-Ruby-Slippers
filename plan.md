@@ -321,6 +321,59 @@ GTFS-RT refresh schedule:
 
 ---
 
+## CALENDAR INTEGRATION
+
+Automatically creates travel plans from calendar events so the app-open scorer
+knows what's coming up without the user doing anything.
+
+### Source
+
+**Android device calendar via `CalendarContract`** (not Google Calendar OAuth).
+- One `READ_CALENDAR` permission — covers every calendar synced to the device
+  (Google Calendar, Exchange, iCloud via third-party apps, any other CalendarProvider)
+- No OAuth flow, no Google Cloud project, no third-party credential storage
+- Permission requested contextually when the user first enables calendar sync
+
+### What gets pulled
+
+- Every event in the next **7 days** that has a non-empty `Location` field
+- All-day events are included (travel time planned for their start-of-day)
+- Location field is free text → resolved via the transport.opendata.ch
+  `/v1/locations?query=` endpoint (same geocoder used by the search screen)
+- Each resolved event becomes a **saved route**: GPS → resolved stop(s), timed to
+  arrive at the event location by the event's start time
+
+### De-duplication & lifecycle
+
+- Each calendar-sourced plan is tagged with the originating `CalendarContract` event
+  UID so re-syncs don't create duplicates
+- If the source event is moved or rescheduled: plan updates automatically on the
+  next sync
+- If the source event is deleted: plan is flagged and the user is prompted to remove
+  it (not silently deleted, in case the user wants to keep the route)
+- User can manually delete or edit any calendar-sourced plan; a manual edit breaks
+  the link to the calendar event (no further auto-updates for that plan)
+
+### Background worker (WorkManager)
+
+- `PeriodicWorkRequest` — fires every **N hours** (user-configurable, default 4 h)
+- On each run: query CalendarContract for events in the next 7 days with a location,
+  resolve locations, upsert plans, prune stale ones
+- Feeds directly into the app-open scorer on the next launch (scorer reads from the
+  local plans store, which the worker has already populated)
+- No network call needed for the CalendarContract read; location resolution does hit
+  the API (one call per *new or changed* event location, not every sync)
+- Worker respects the standard WorkManager constraints: runs only when network is
+  available for the geocoding step
+
+### Settings additions (see Settings section)
+
+- Calendar sync toggle (on/off)
+- Sync interval (configurable; e.g. 1 / 2 / 4 / 6 / 12 hours; default 4 h)
+- Which calendars to include (default: all; user can exclude specific calendars)
+
+---
+
 ## INTEGRATIONS
 
 - **SBB Mobile deep-link:** trip detail → "Buy ticket" → opens SBB Mobile with route pre-filled
@@ -368,6 +421,9 @@ User-configurable preferences (persisted on-device via DataStore):
 | **Switch-prompt minimum improvement** | **1 min** | Smallest final-arrival saving that triggers a "Switch?" prompt. 1 = prompt on any improvement. Confirmed missed connections always prompt regardless. |
 | **Home place** | (set on first launch or in Places) | Anchors the >500 m app-open fallback |
 | **Timezone** | Device timezone | Used for recurring-route schedule evaluation; defaults to system, overridable for users who live in one timezone but commute cross-border |
+| **Calendar sync** | Off | Toggle; requires `READ_CALENDAR` permission on first enable |
+| **Calendar sync interval** | 4 hours | How often the WorkManager job re-reads the device calendar; options: 1 / 2 / 4 / 6 / 12 h |
+| **Calendars to include** | All | Multi-select list of calendars found on device; user can exclude specific ones |
 
 ---
 
