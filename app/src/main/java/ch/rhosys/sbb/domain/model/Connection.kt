@@ -17,6 +17,7 @@ data class Connection(
     val lineNames: List<String>
         get() = legs.filterIsInstance<Leg.Transit>().map { it.lineName }
 
+    // Displayed as the middle value on the connection card (node 0 → node N).
     val transitDuration: Duration?
         get() {
             val dep = departure.scheduledTime ?: return null
@@ -24,7 +25,8 @@ data class Connection(
             return Duration.between(dep, arr)
         }
 
-    // What the user sees on the card and what we optimise on — identical.
-    val doorToDoorDuration: Duration?
+    // Used only for Pareto optimisation — never displayed.
+    // Display uses walkToFirstStop, transitDuration, and walkFromLastStop separately.
+    val optimisationDuration: Duration?
         get() = transitDuration?.let { walkToFirstStop + it + walkFromLastStop }
 }

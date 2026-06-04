@@ -3,6 +3,7 @@ package ch.rhosys.sbb.routing
 import ch.rhosys.sbb.data.local.routing.algorithm.RoutingEngine
 import ch.rhosys.sbb.data.local.routing.algorithm.RoutingQuery
 import ch.rhosys.sbb.data.local.routing.algorithm.RoutingResult
+import ch.rhosys.sbb.data.local.routing.algorithm.RoutingTime
 import ch.rhosys.sbb.data.local.routing.gtfs.GtfsNetwork
 import ch.rhosys.sbb.data.local.routing.gtfs.GtfsNetworkBuilder
 import kotlinx.coroutines.flow.toList
@@ -88,7 +89,7 @@ class RoutingEngineTest {
         val query = RoutingQuery(
             originStopIds = listOf(0),
             destinationStopIds = listOf(2),
-            departureAfterSeconds = 7 * 3600, // 07:00
+            routingTime = RoutingTime.DepartAfter(LocalTime.ofSecondOfDay(7 * 3600.toLong())), // 07:00
             date = LocalDate.now(),
             walkToFirstStop = Duration.ZERO,
             walkFromLastStop = Duration.ZERO,
@@ -107,7 +108,7 @@ class RoutingEngineTest {
         val query = RoutingQuery(
             originStopIds = listOf(0),
             destinationStopIds = listOf(3),
-            departureAfterSeconds = 7 * 3600,
+            routingTime = RoutingTime.DepartAfter(LocalTime.ofSecondOfDay(7 * 3600.toLong())),
             date = LocalDate.now(),
             walkToFirstStop = Duration.ZERO,
             walkFromLastStop = Duration.ZERO,
@@ -126,7 +127,7 @@ class RoutingEngineTest {
         val query = RoutingQuery(
             originStopIds = listOf(0),
             destinationStopIds = listOf(2),
-            departureAfterSeconds = 7 * 3600,
+            routingTime = RoutingTime.DepartAfter(LocalTime.ofSecondOfDay(7 * 3600.toLong())),
             date = LocalDate.now(),
             walkToFirstStop = Duration.ZERO,
             walkFromLastStop = Duration.ZERO,
@@ -149,7 +150,7 @@ class RoutingEngineTest {
         val query = RoutingQuery(
             originStopIds = listOf(0),
             destinationStopIds = listOf(2),
-            departureAfterSeconds = 7 * 3600,
+            routingTime = RoutingTime.DepartAfter(LocalTime.ofSecondOfDay(7 * 3600.toLong())),
             date = LocalDate.now(),
             walkToFirstStop = walkToFirst,
             walkFromLastStop = walkFromLast,
@@ -164,11 +165,48 @@ class RoutingEngineTest {
     }
 
     @Test
+    fun `arrive-by finds latest viable departure`() = runTest {
+        // Arrive at C by 08:30 — Trip 1 (dep A 08:00, arr C 08:25) satisfies this
+        val query = RoutingQuery(
+            originStopIds = listOf(0),
+            destinationStopIds = listOf(2),
+            routingTime = RoutingTime.ArriveBy(LocalTime.of(8, 30)),
+            date = LocalDate.now(),
+            walkToFirstStop = Duration.ZERO,
+            walkFromLastStop = Duration.ZERO,
+        )
+
+        val results = engine.route(query).toList()
+
+        assertTrue("Expected at least one result for arrive-by", results.isNotEmpty())
+        val connection = results.last().connections.first()
+        assertTrue("Arrival must be before or at 08:30", connection.arrivalSeconds <= 8 * 3600 + 1800)
+        // Should pick Trip 1 (dep 08:00) not Trip 2 (dep 09:00 — too late)
+        assertEquals(8 * 3600, connection.departureSeconds)
+    }
+
+    @Test
+    fun `arrive-by emits no result when no trip reaches destination in time`() = runTest {
+        // Arrive at C by 08:00 — no trip gets there that early
+        val query = RoutingQuery(
+            originStopIds = listOf(0),
+            destinationStopIds = listOf(2),
+            routingTime = RoutingTime.ArriveBy(LocalTime.of(8, 0)),
+            date = LocalDate.now(),
+            walkToFirstStop = Duration.ZERO,
+            walkFromLastStop = Duration.ZERO,
+        )
+
+        val results = engine.route(query).toList()
+        assertTrue("Expected no results when arrive-by deadline is before first trip", results.isEmpty())
+    }
+
+    @Test
     fun `no connection emitted before departure time`() = runTest {
         val query = RoutingQuery(
             originStopIds = listOf(0),
             destinationStopIds = listOf(2),
-            departureAfterSeconds = 9 * 3600 + 3600, // 10:00 — after all trips
+            routingTime = RoutingTime.DepartAfter(LocalTime.ofSecondOfDay(9 * 3600 + 3600.toLong())), // 10:00 — after all trips
             date = LocalDate.now(),
             walkToFirstStop = Duration.ZERO,
             walkFromLastStop = Duration.ZERO,

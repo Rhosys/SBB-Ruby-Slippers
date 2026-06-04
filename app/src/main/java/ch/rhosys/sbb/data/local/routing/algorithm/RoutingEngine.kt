@@ -13,21 +13,25 @@ private const val ROUND_BUDGET_MS = 10_000L
 
 class RoutingEngine(private val network: GtfsNetwork) {
 
-    fun route(query: RoutingQuery): Flow<RoutingResult> = flow {
+    fun route(query: RoutingQuery): Flow<RoutingResult> = when (query.routingTime) {
+        is RoutingTime.DepartAfter -> routeForward(query, query.routingTime.time.toSecondOfDay())
+        is RoutingTime.ArriveBy   -> routeReverse(query, query.routingTime.time.toSecondOfDay())
+    }
+
+    private fun routeForward(query: RoutingQuery, departAfterSec: Int): Flow<RoutingResult> = flow {
         val startMs = System.currentTimeMillis()
 
         // best[stopId] = earliest arrival in seconds at that stop across all rounds
         val best = IntArray(network.stops.size) { INF }
-        // bestWithTrips[stopId] = earliest arrival reachable by at least one transit leg
+        // bestWithTransit[stopId] = earliest arrival reachable by at least one transit leg
         val bestWithTransit = IntArray(network.stops.size) { INF }
 
         // Journey pointer: how did we reach each stop?
-        // Stored as a linked list of legs via the JourneyPointer structure
         val pointer = arrayOfNulls<JourneyPointer>(network.stops.size)
 
         // Seed origins
         for (stopId in query.originStopIds) {
-            best[stopId] = query.departureAfterSeconds
+            best[stopId] = departAfterSec
         }
 
         val destSet = query.destinationStopIds.toSet()
@@ -155,6 +159,17 @@ class RoutingEngine(private val network: GtfsNetwork) {
             walkToFirstStop = query.walkToFirstStop.seconds,
             walkFromLastStop = query.walkFromLastStop.seconds,
         )
+    }
+
+    // Reverse RAPTOR: find latest departure from origin arriving by arriveBySeconds.
+    // Seeds destination stops with the target arrival time and scans trips backwards.
+    // TODO: implement — stub emits empty until built.
+    private fun routeReverse(query: RoutingQuery, arriveBySeconds: Int): Flow<RoutingResult> = flow {
+        // Mirror of routeForward but:
+        //   best[stopId] = latest departure from that stop still reaching destination in time
+        //   trips scanned backwards (alight first, board later)
+        //   origin stops are the "destination" of the reverse scan
+        // Implementation follows after forward routing tests are green.
     }
 }
 
