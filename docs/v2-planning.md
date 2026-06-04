@@ -73,9 +73,39 @@ owns both the locked-in connection and the RAPTOR state snapshot.
 - "Find more connections": same budget again, or relax it (e.g. unbounded until
   the next 10s-round breaker)?
 
-### 🔲 Q3 — GTFS-RT handling
-Simple delay overlay (shift arrival/departure by reported delta), or full spec
-(trip updates + vehicle positions + service alerts)?
+### ✅ Q3 — GTFS-RT handling
+Simple delay overlay, or full spec?
+
+**Decided: TripUpdates (full spec) + Alerts (categorized). No VehiclePositions.**
+
+**TripUpdates (full, not delta-shift only):**
+Handling `SKIPPED` stops costs little extra and prevents a class of broken
+re-routings. `ADDED` and `REPLACED` trips are rarer but trip-breaking if ignored.
+TripUpdates are the primary trigger for re-computation from checkpoint.
+
+**Active-journey state re-computation triggers** (broader than RT alone):
+- **TripUpdate**: delay or cancellation notification for a trip in the active journey.
+- **Current time**: as departure approaches, re-evaluate even without RT change
+  (sanity check proximity to departure).
+- **User location**: if the user is not where the journey assumes (wrong stop,
+  wrong platform), trigger re-route consideration independent of RT.
+
+**Alerts — three-tier categorization:**
+
+| Tier | Criterion | Where shown |
+|---|---|---|
+| Journey-affecting | `informed_entity` matches a route, trip, or stop in active journey | Indicator on connection card + journey strip |
+| Line-level | Affects a line in the journey, not the specific trip | Trip details only |
+| Network/general | Strikes, infrastructure, unrelated lines | Trip details only, user-filterable |
+
+Tier 1 is always shown (cannot be opted out). Tiers 2–3 are user-configurable.
+The alert filter config is part of the user settings that back up to the user's
+account (see QA1).
+
+**VehiclePositions:** skipped for V2. Only useful for a live map view, not in scope.
+
+**Prerequisite:** opentransportdata.swiss token (Todo #5 in `todo.md`) — the free
+`transport.opendata.ch` API does not serve GTFS-RT.
 
 ### 🔲 Q4 — Migration of the v1 REST path
 Keep `ApiTransportRepository` as a named fallback while RAPTOR is built, or remove
@@ -129,6 +159,32 @@ upgrade, or standalone from the start?
 ### 🔲 Q11 — Wear OS screens in scope
 Just the current journey strip with delay badges, or also a next-departure glance
 and a quick lock-in confirmation?
+
+---
+
+## User account and backup
+
+### 🔲 QA1 — Cloud backup scope and mechanism
+User config (fare profile, alert filters, widget config) + saved places + saved
+routes + recurring routes + trip history all need to survive phone replacement and
+app reinstall, and ideally sync across devices.
+
+**What needs backing up:**
+- Saved places, saved routes, recurring routes
+- User preferences: fare profile, alert filter config, widget config
+- Trip history (compressed: token + price + anomalies)
+
+**Options:**
+- **Android Auto Backup** (Google-managed): zero-auth, zero-backend. Encrypted
+  backup to user's Google account automatically. Free, trivial. No cross-device
+  real-time sync; user can't access data without reinstalling the app.
+- **Google Sign-In → Rhosys backend** (Cognito + DynamoDB/S3): full control,
+  cross-device sync, cross-platform. Requires owning auth and a backend.
+- **Google Drive API**: data lives in user's own Drive as an app file. No Rhosys
+  backend, but Drive API is complex and less reliable than Auto Backup.
+
+*Pending decision: scope for V2 — Auto Backup only (fast, no backend) or full
+account with cross-device sync?*
 
 ---
 
