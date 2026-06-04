@@ -5,6 +5,8 @@ class GtfsParser {
     data class ParsedGtfs(
         val network: GtfsNetwork,
         val calendar: GtfsCalendarResolver,
+        val calendarPatternRows: List<Map<String, String>>,
+        val calendarExceptionRows: List<Map<String, String>>,
     )
 
     // Parses a GTFS feed from a map of filename → CSV text content.
@@ -18,11 +20,18 @@ class GtfsParser {
         val tripStopTimes = buildTripStopTimes(parseCsv(files["stop_times.txt"] ?: ""))
         val routes = buildRoutes(tripMeta, tripStopTimes, routeNames, stopIdMap)
         val transfers = buildTransfers(parseCsv(files["transfers.txt"] ?: ""), stopIdMap)
+        val calendarPatternRows = parseCsv(files["calendar.txt"] ?: "")
+        val calendarExceptionRows = parseCsv(files["calendar_dates.txt"] ?: "")
         val calendar = GtfsCalendarResolver(
-            patterns = parseCsv(files["calendar.txt"] ?: ""),
-            exceptions = parseCsv(files["calendar_dates.txt"] ?: ""),
+            patterns = calendarPatternRows,
+            exceptions = calendarExceptionRows,
         )
-        return ParsedGtfs(GtfsNetwork(stops, routes, transfers), calendar)
+        return ParsedGtfs(
+            network = GtfsNetwork(stops, routes, transfers),
+            calendar = calendar,
+            calendarPatternRows = calendarPatternRows,
+            calendarExceptionRows = calendarExceptionRows,
+        )
     }
 
     private fun buildStops(
