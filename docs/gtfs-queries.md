@@ -768,5 +768,9 @@ fares being present in GTFS until that is verified.
 
 ---
 
-*Storage format and technology decisions to be made after this catalogue is
-reviewed and agreed.*
+Storage and technology decisions derived from this catalogue are recorded in
+[`gtfs-storage-architecture.md`](./gtfs-storage-architecture.md). In short:
+RAPTOR is not a graph search, so no graph DB; the hot path (R1–R4) is a
+memory-mapped CSR binary built server-side and served from a CDN; the cold path
+(M/J/S queries) is an ordinary indexed store; real-time stays a client-side
+in-memory overlay.
