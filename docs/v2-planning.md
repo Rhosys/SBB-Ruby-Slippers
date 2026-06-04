@@ -1,6 +1,6 @@
 # V2 Planning — open questions
 
-V2 scope: on-device RAPTOR routing engine, multi-origin search, fares, a
+V2 scope: on-device routing engine, multi-origin search, fares, a
 real-time home-screen widget, and Wear OS. We work through these one at a time.
 Each question records its status and, once decided, where the decision lives.
 
@@ -8,23 +8,23 @@ Status legend: ✅ decided · 🔄 in progress · 🔲 open
 
 ---
 
-## RAPTOR engine
+## Routing engine
 
 ### ✅ Q1 — GTFS storage strategy
 Room full schema / raw SQLite / pre-processed binary adjacency arrays?
 
 **Decided.** Hot path (R1–R4) = pre-built **CSR `int[]` arrays, `mmap`'d** from a
 binary file; not a database. Cold path (search/display) = an ordinary indexed
-store (SQLite/Room + FTS). RAPTOR is round-based DP, **not** a graph search, so no
+store (SQLite/Room + FTS). The routing engine is **not** a graph search, so no
 graph DB (this supersedes the earlier ObjectBox lean). Build location (on-device
 vs server+CDN) is gated on a latency benchmark — see decision record.
 → [`gtfs-storage-architecture.md`](./gtfs-storage-architecture.md),
 evidence in [`gtfs-queries.md`](./gtfs-queries.md).
 
-### ✅ Q2 — RAPTOR rounds
+### ✅ Q2 — Routing rounds
 Unbounded, or cap at a fixed max?
 
-**Decided: execution-budget-bounded, progressive, resumable RAPTOR.** Not a flat
+**Decided: execution-budget-bounded, progressive, resumable on-device routing.** Not a flat
 cap — completeness and optimization are separated.
 
 - **Phase 1 — completeness (never cut short):** run rounds until the destination
@@ -41,27 +41,27 @@ cap — completeness and optimization are separated.
   action resumes from the next round rather than restarting.
 - **"Find more connections" budget:** same budget again (≤20 s / ≤7 more rounds).
 
-**Dual-source:** REST API and RAPTOR always run in parallel on every query.
+**Dual-source:** on-device routing and the REST API always run in parallel on every query.
 Results are not compared for correctness — they will legitimately differ (different
 walking speeds, transfer minimums, optimization weights). Both result sets are
-surfaced: RAPTOR's Pareto front and the SBB-recommended trip (REST API result) as
+surfaced: the on-device Pareto front and the SBB-recommended trip (REST API result) as
 a labeled option. Different is the feature, not a bug.
 
 **Active-journey state lifecycle:**
 
 | State | What's stored | Until when |
 |---|---|---|
-| Candidate (shown in results, not locked) | Full RAPTOR label set | Departure time passes |
-| Locked in | Full RAPTOR label set + active RT tracking | Journey completes |
+| Candidate (shown in results, not locked) | Full routing state | Departure time passes |
+| Locked in | Full routing state + active RT tracking | Journey completes |
 | Completed | Trip token + price + anomalies only | Forever (trip history) |
 
 State is persisted to disk (survives process death). Re-computation triggers only
 when a delay or cancellation notification arrives for a trip in the active journey
 — not from scratch, from the checkpoint prior to the affected segment. `JourneyStateHolder`
-owns both the locked-in connection and the RAPTOR state snapshot.
+owns both the locked-in connection and the routing state snapshot.
 
 **Implications:**
-- RAPTOR is an incremental, resumable **coroutine emitting a `Flow` of results**,
+- The routing engine is an incremental, resumable **coroutine emitting a `Flow` of results**,
   not a blocking call. UI binds to the flow; first result fast, list refines.
 - State checkpointed (per-round labels, best arrivals, running result set) so
   "Find more" continues at round N+1.
@@ -110,19 +110,19 @@ account (see QA1).
 ### ✅ Q4 — Migration of the v1 REST path
 **Decided: two explicit, independent sources with separate retry and failure modes.**
 
-`RaptorTransportRepository` and `ApiTransportRepository` are two distinct named
+`LocalTransportRepository` and `ApiTransportRepository` are two distinct named
 bindings in DI — not merged behind a single `TransportRepository` binding. Each
 has its own retry policy, its own failure handling, and its own result type.
 The `ConnectionSearchViewModel` holds both and coordinates them in parallel.
 
 Failure modes are independent:
-- RAPTOR can fail: CSR not yet built, budget exhausted without reaching
+- On-device routing can fail: CSR not yet built, budget exhausted without reaching
   destination, missing calendar data.
 - REST API can fail: network error, rate limit (3 queries/min), server error.
 
-The UI can show a RAPTOR result even when the REST call fails, and vice versa.
+The UI can show an on-device result even when the REST call fails, and vice versa.
 "SBB recommended" is surfaced only when the REST call succeeds; it does not block
-or degrade the RAPTOR result display.
+or degrade the on-device result display.
 
 ---
 
@@ -182,7 +182,7 @@ link that opens the app directly to the same journey.
 
 Pending decisions:
 - Deep link format: encode enough to reconstruct the query (from, to, departure
-  datetime, and optionally the specific trip token) — not a full RAPTOR state
+  datetime, and optionally the specific trip token) — not a full routing state
   dump.
 - Recipient without the app: link resolves to a web fallback (SBB website or
   Google Maps directions) so the share is useful even if the recipient doesn't
@@ -229,4 +229,4 @@ Pending decisions:
 ## Release order
 
 ### 🔲 Q12 — What ships first
-Engine (RAPTOR) / widget / Wear OS / fares — or is this all one V2 release?
+Routing engine / widget / Wear OS / fares — or is this all one V2 release?
