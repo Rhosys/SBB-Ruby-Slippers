@@ -1,6 +1,8 @@
 package ch.rhosys.sbb.ui.widget
 
 import android.content.Context
+import androidx.datastore.preferences.core.edit
+import androidx.glance.appwidget.updateAll
 import ch.rhosys.sbb.ui.journey.JourneyStateHolder
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -26,9 +28,9 @@ class JourneyWidgetSyncer @Inject constructor(
                         prefs[WIDGET_LINE] = journey.connection.lineNames.firstOrNull() ?: ""
                         prefs[WIDGET_TIME] = journey.connection.departure.displayTime()
                     } else {
-                        prefs.remove(WIDGET_FROM)
-                        prefs.remove(WIDGET_LINE)
-                        prefs.remove(WIDGET_TIME)
+                        prefs -= WIDGET_FROM
+                        prefs -= WIDGET_LINE
+                        prefs -= WIDGET_TIME
                     }
                 }
                 DepartureWidget().updateAll(context)

@@ -30,7 +30,8 @@ class GtfsCalendarResolver(
     // exception_type 1=add, 2=remove
     private data class Exception(val date: LocalDate, val type: Int)
 
-    private val patternIndex: Map<String, List<Pattern>> = buildMap {
+    private val patternIndex: Map<String, List<Pattern>> = run {
+        val map = mutableMapOf<String, MutableList<Pattern>>()
         for (row in patterns) {
             val id = row["service_id"] ?: continue
             val pattern = Pattern(
@@ -41,19 +42,22 @@ class GtfsCalendarResolver(
                     .map { (dow, _) -> dow }
                     .toSet(),
             )
-            getOrPut(id) { mutableListOf() }.add(pattern)
+            map.getOrPut(id) { mutableListOf() }.add(pattern)
         }
+        map
     }
 
-    private val exceptionIndex: Map<String, List<Exception>> = buildMap {
+    private val exceptionIndex: Map<String, List<Exception>> = run {
+        val map = mutableMapOf<String, MutableList<Exception>>()
         for (row in exceptions) {
             val id = row["service_id"] ?: continue
             val exc = Exception(
                 date = LocalDate.parse(row["date"] ?: continue, GTFS_DATE),
                 type = row["exception_type"]?.toIntOrNull() ?: continue,
             )
-            getOrPut(id) { mutableListOf() }.add(exc)
+            map.getOrPut(id) { mutableListOf() }.add(exc)
         }
+        map
     }
 
     fun isActive(serviceId: String, date: LocalDate): Boolean {

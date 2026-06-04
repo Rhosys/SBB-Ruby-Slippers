@@ -12,6 +12,7 @@ import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.provideContent
 import androidx.glance.layout.Column
+import androidx.compose.ui.unit.dp
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.padding
 import androidx.glance.text.FontWeight
@@ -40,7 +41,7 @@ class DepartureWidget : GlanceAppWidget() {
                 Column(
                     modifier = GlanceModifier
                         .fillMaxSize()
-                        .padding(androidx.glance.unit.Dp(12f)),
+                        .padding(12.dp),
                 ) {
                     if (from != null && time != null) {
                         Text(
