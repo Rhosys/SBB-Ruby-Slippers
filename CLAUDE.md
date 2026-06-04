@@ -24,25 +24,20 @@ the user's Gradle or npm caches.
 
 ---
 
-## Local development — emulator
-
-This app shares the workspace `WorkspaceAVD` (android-35, pixel_7) with the other
-Android apps — one AVD, one system image across all of them. Do not give this app
-its own AVD name.
+## Local development — run on the emulator
 
 ```bash
-npm run setup             # Java 17, Android SDK, KVM, ktlint
-npm run emulator:create   # create WorkspaceAVD (no-op if it exists)
-npm run emulator:start    # boot it (foreground)
-npm run emulator:delete   # remove it
+npm run start            # debug variant: boots emulator, builds, installs, launches, streams crash logs
+npm run start:release    # release variant: same loop on the R8/ProGuard build — catches stripping crashes
 ```
 
-KVM is required (Linux). Troubleshooting lives in `scripts/setup.sh`.
+`scripts/dev.sh` is the single orchestrator: runs `setup.sh` if the SDK is missing,
+creates the shared `WorkspaceAVD` (android-35, pixel_7) if absent, boots it, then
+gradle install + launch. All workspace Android apps share one `WorkspaceAVD` and
+one system image — do not give this app its own AVD name.
 
-NOTE: there is no `npm run start` orchestrator here yet (unlike kinetic-jewelry's
-`scripts/dev.sh`, which does boot+build+install+launch+logs in one command). Build
-and install are still manual via gradle. Add a `dev.sh` if a one-command loop is
-wanted.
+Emulator-only helpers: `npm run setup`, `npm run emulator:create|start|delete`.
+KVM is required (Linux). Troubleshooting lives in `scripts/setup.sh`.
 
 ---
 
