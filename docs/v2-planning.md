@@ -193,9 +193,19 @@ the Wearable Data Layer API — it makes no decisions of its own.
 
 The phone decides when each notification fires; the watch just renders it.
 
-### 🔲 Q11 — Wear OS screens in scope
-Just the current journey strip with delay badges, or also a next-departure glance
-and a quick lock-in confirmation?
+### ✅ Q11 — Wear OS screens in scope
+**Decided: tile + app screen. Connection search stays on the phone.**
+
+**Tile** (swipeable from watch face, always available):
+- Journey active: next stop, time remaining, delay badge.
+- No active journey: next departure from current saved location (if geofenced).
+- Otherwise: blank.
+
+**App screen** (minimal):
+- Journey active: compressed journey strip — current leg, upcoming legs, delay.
+- No active journey: next departure glance from nearest saved location.
+
+Full connection search on the watch is V3.
 
 ---
 
