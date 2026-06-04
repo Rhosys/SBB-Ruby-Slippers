@@ -175,9 +175,23 @@ No user setup required.
 
 ## Wear OS
 
-### 🔲 Q10 — Phone-relay vs standalone
-Phone-relay (watch displays, phone computes) for V2 with standalone as a later
-upgrade, or standalone from the start?
+### ✅ Q10 — Phone-relay vs standalone
+**Decided: phone-relay for V2. Standalone is a V3 consideration.**
+
+The watch is a notification and display surface driven entirely by the phone's
+state machine. All routing state, RT polling, and decision logic lives on the
+phone. The watch receives pre-computed results and triggered notifications via
+the Wearable Data Layer API — it makes no decisions of its own.
+
+**Notifications the phone pushes to the watch** (and phone notification tray):
+- Delay affecting the active journey
+- Track / platform change
+- Sector / carriage recommendation (which section to board)
+- Journey-affecting alerts
+- Departure countdown ("train leaves in 5 min — platform 3")
+- Transfer warning ("4 min to change at Olten — platform 2")
+
+The phone decides when each notification fires; the watch just renders it.
 
 ### 🔲 Q11 — Wear OS screens in scope
 Just the current journey strip with delay badges, or also a next-departure glance
