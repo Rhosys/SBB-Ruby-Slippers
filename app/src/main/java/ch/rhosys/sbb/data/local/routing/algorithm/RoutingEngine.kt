@@ -1,5 +1,6 @@
 package ch.rhosys.sbb.data.local.routing.algorithm
 
+import ch.rhosys.sbb.data.local.routing.gtfs.GtfsCalendarResolver
 import ch.rhosys.sbb.data.local.routing.gtfs.GtfsNetwork
 import ch.rhosys.sbb.data.local.routing.gtfs.GtfsRoute
 import ch.rhosys.sbb.data.local.routing.gtfs.GtfsTrip
@@ -11,7 +12,10 @@ private const val MAX_ROUNDS = 7
 private const val BUDGET_MS = 20_000L
 private const val ROUND_BUDGET_MS = 10_000L
 
-class RoutingEngine(private val network: GtfsNetwork) {
+class RoutingEngine(
+    private val network: GtfsNetwork,
+    private val calendar: GtfsCalendarResolver? = null,
+) {
 
     fun route(query: RoutingQuery): Flow<RoutingResult> = when (query.routingTime) {
         is RoutingTime.DepartAfter -> routeForward(query, query.routingTime.time.toSecondOfDay())
@@ -20,6 +24,7 @@ class RoutingEngine(private val network: GtfsNetwork) {
 
     private fun routeForward(query: RoutingQuery, departAfterSec: Int): Flow<RoutingResult> = flow {
         val startMs = System.currentTimeMillis()
+        val activeServiceIds = calendar?.activeServiceIds(query.date)
 
         // best[stopId] = earliest arrival in seconds at that stop across all rounds
         val best = IntArray(network.stops.size) { INF }
@@ -51,7 +56,7 @@ class RoutingEngine(private val network: GtfsNetwork) {
                 val routes = network.stopToRoutes[stopId] ?: continue
                 for ((routeIdx, pos) in routes) {
                     val route = network.routes[routeIdx]
-                    val trip = earliestTrip(route, pos, best[stopId]) ?: continue
+                    val trip = earliestTrip(route, pos, best[stopId], activeServiceIds) ?: continue
                     // Ride this trip forward
                     for (p in pos + 1 until route.stopIds.size) {
                         val nextStop = route.stopIds[p]
@@ -127,8 +132,9 @@ class RoutingEngine(private val network: GtfsNetwork) {
         }
     }
 
-    private fun earliestTrip(route: GtfsRoute, pos: Int, notBefore: Int): GtfsTrip? =
+    private fun earliestTrip(route: GtfsRoute, pos: Int, notBefore: Int, activeServiceIds: Set<String>?): GtfsTrip? =
         route.trips
+            .filter { activeServiceIds == null || it.serviceId.isEmpty() || it.serviceId in activeServiceIds }
             .filter { tripDeparture(it, pos) >= notBefore }
             .minByOrNull { tripDeparture(it, pos) }
 
@@ -166,6 +172,7 @@ class RoutingEngine(private val network: GtfsNetwork) {
     // best[stopId] = latest time you can depart from stopId and still reach a destination.
     private fun routeReverse(query: RoutingQuery, arriveBySeconds: Int): Flow<RoutingResult> = flow {
         val startMs = System.currentTimeMillis()
+        val activeServiceIds = calendar?.activeServiceIds(query.date)
 
         // NEG_INF sentinel: "not reachable in reverse" (latest departure not yet known)
         val NEG_INF = Int.MIN_VALUE / 2
@@ -193,7 +200,7 @@ class RoutingEngine(private val network: GtfsNetwork) {
                 for ((routeIdx, pos) in routes) {
                     val route = network.routes[routeIdx]
                     // Find latest trip that arrives at stopId no later than best[stopId]
-                    val trip = latestTripArrivingBy(route, pos, best[stopId]) ?: continue
+                    val trip = latestTripArrivingBy(route, pos, best[stopId], activeServiceIds) ?: continue
                     // Scan backwards to earlier stops in the route
                     for (p in pos - 1 downTo 0) {
                         val prevStop = route.stopIds[p]
@@ -268,8 +275,9 @@ class RoutingEngine(private val network: GtfsNetwork) {
         }
     }
 
-    private fun latestTripArrivingBy(route: GtfsRoute, pos: Int, noLaterThan: Int): GtfsTrip? =
+    private fun latestTripArrivingBy(route: GtfsRoute, pos: Int, noLaterThan: Int, activeServiceIds: Set<String>?): GtfsTrip? =
         route.trips
+            .filter { activeServiceIds == null || it.serviceId.isEmpty() || it.serviceId in activeServiceIds }
             .filter { tripArrival(it, pos) <= noLaterThan }
             .maxByOrNull { tripArrival(it, pos) }
 

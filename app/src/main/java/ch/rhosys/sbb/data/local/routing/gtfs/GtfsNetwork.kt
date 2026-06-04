@@ -19,6 +19,7 @@ data class GtfsRoute(
 // Layout: [dep0, arr1, dep1, arr2, dep2, ..., arrN]
 data class GtfsTrip(
     val id: Int,
+    val serviceId: String = "",
     val times: List<Int>,
 )
 
