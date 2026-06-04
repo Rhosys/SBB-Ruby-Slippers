@@ -162,6 +162,25 @@ and a quick lock-in confirmation?
 
 ---
 
+## Journey sharing
+
+### 🔲 QS2 — Deep-link journey share
+A "Share journey" button on the connection detail / active journey strip opens the
+Android share sheet targeting contacts (or any app). The shared payload is a deep
+link that opens the app directly to the same journey.
+
+Pending decisions:
+- Deep link format: encode enough to reconstruct the query (from, to, departure
+  datetime, and optionally the specific trip token) — not a full RAPTOR state
+  dump.
+- Recipient without the app: link resolves to a web fallback (SBB website or
+  Google Maps directions) so the share is useful even if the recipient doesn't
+  have the app installed. Requires an `Intent.ACTION_VIEW` handler and an
+  `AppLinks` / `intent-filter` with `autoVerify`.
+- Whether shared journeys show as a distinct entry type in trip history.
+
+---
+
 ## User account and backup
 
 ### ✅ QA1 — Cloud backup scope and mechanism
