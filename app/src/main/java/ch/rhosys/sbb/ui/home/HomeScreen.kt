@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -23,7 +24,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
@@ -53,6 +53,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -63,7 +66,6 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.Place
-import ch.rhosys.sbb.domain.model.SearchEndpoint
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -78,7 +80,7 @@ fun HomeScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    // Request location permission on first launch; refresh scorer if granted
+    // Request location permission on first launch; refresh scorer if granted.
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -91,9 +93,7 @@ fun HomeScreen(
         ).filter { p ->
             ContextCompat.checkSelfPermission(context, p) != PackageManager.PERMISSION_GRANTED
         }
-        if (missing.isNotEmpty()) {
-            locationPermissionLauncher.launch(missing.toTypedArray())
-        }
+        if (missing.isNotEmpty()) locationPermissionLauncher.launch(missing.toTypedArray())
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -118,18 +118,14 @@ fun HomeScreen(
                         }
                     }
                 },
-                onTileClick = { place -> onNavigateToSearch("", place.name) },
-                onFromTileClick = { onNavigateToSearch("", "") },
-                onToTileClick = { onNavigateToSearch("", "") },
+                onTileClick = { place -> viewModel.routeFromCurrentLocationTo(place) },
                 onDragRoute = { from, to -> onNavigateToSearch(from, to) },
                 onRefresh = viewModel::refresh,
             )
 
             is HomeUiState.TileGrid -> TileGridContent(
                 places = s.places,
-                onTileClick = { place -> onNavigateToSearch("", place.name) },
-                onFromTileClick = { onNavigateToSearch("", "") },
-                onToTileClick = { onNavigateToSearch("", "") },
+                onTileClick = { place -> viewModel.routeFromCurrentLocationTo(place) },
                 onDragRoute = { from, to -> onNavigateToSearch(from, to) },
             )
         }
@@ -146,8 +142,6 @@ private fun HeroContent(
     state: HomeUiState.Hero,
     onLockIn: (Connection) -> Unit,
     onTileClick: (Place) -> Unit,
-    onFromTileClick: () -> Unit,
-    onToTileClick: () -> Unit,
     onDragRoute: (from: String, to: String) -> Unit,
     onRefresh: () -> Unit,
 ) {
@@ -182,16 +176,17 @@ private fun HeroContent(
 
         item {
             Spacer(Modifier.height(8.dp))
-            Text("Places", style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "Places",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         item {
             PlaceTileGrid(
                 places = state.places,
                 onTileClick = onTileClick,
-                onFromTileClick = onFromTileClick,
-                onToTileClick = onToTileClick,
                 onDragRoute = onDragRoute,
             )
         }
@@ -266,8 +261,6 @@ private fun SwipeToLockCard(
 private fun TileGridContent(
     places: List<Place>,
     onTileClick: (Place) -> Unit,
-    onFromTileClick: () -> Unit,
-    onToTileClick: () -> Unit,
     onDragRoute: (from: String, to: String) -> Unit,
 ) {
     Column(
@@ -280,109 +273,132 @@ private fun TileGridContent(
         PlaceTileGrid(
             places = places,
             onTileClick = onTileClick,
-            onFromTileClick = onFromTileClick,
-            onToTileClick = onToTileClick,
             onDragRoute = onDragRoute,
         )
     }
 }
 
+// Tile grid with two gestures:
+//   Tap  → onTileClick(place)  — routes from current GPS location to this place
+//   Drag → draws a directed line between tiles; on release triggers onDragRoute(from, to)
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PlaceTileGrid(
     places: List<Place>,
     onTileClick: (Place) -> Unit,
-    onFromTileClick: () -> Unit,
-    onToTileClick: () -> Unit,
     onDragRoute: (from: String, to: String) -> Unit,
 ) {
-    // Tile index: 0..places.lastIndex = saved places, places.size = From, places.size+1 = To
     val tileWindowBounds = remember(places) { mutableStateMapOf<Int, Rect>() }
-    val tileNames = remember(places) {
-        buildMap {
-            places.forEachIndexed { i, p -> put(i, p.name) }
-            put(places.size, "")      // From tile → empty = use GPS
-            put(places.size + 1, "") // To tile → empty = open search
-        }
-    }
-    var flowRowWindowOrigin by remember { mutableStateOf(Offset.Zero) }
+    var boxWindowOrigin by remember { mutableStateOf(Offset.Zero) }
     var dragSourceIdx by remember { mutableStateOf(-1) }
+    var dragTargetIdx by remember { mutableStateOf(-1) }
     var dragCurrentWindowPos by remember { mutableStateOf(Offset.Zero) }
 
-    FlowRow(
+    val lineColor = MaterialTheme.colorScheme.primary
+    val targetColor = MaterialTheme.colorScheme.secondary
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .onGloballyPositioned { coords ->
                 val b = coords.boundsInWindow()
-                flowRowWindowOrigin = Offset(b.left, b.top)
+                boxWindowOrigin = Offset(b.left, b.top)
             }
             .pointerInput(places) {
                 detectDragGestures(
                     onDragStart = { localOffset ->
-                        val wp = localOffset + flowRowWindowOrigin
+                        val wp = localOffset + boxWindowOrigin
                         dragCurrentWindowPos = wp
                         dragSourceIdx = tileWindowBounds.entries
-                            .firstOrNull { (_, rect) -> rect.contains(wp) }
-                            ?.key ?: -1
+                            .firstOrNull { (_, rect) -> rect.contains(wp) }?.key ?: -1
+                        dragTargetIdx = -1
                     },
                     onDragEnd = {
-                        val targetIdx = tileWindowBounds.entries
-                            .firstOrNull { (k, rect) ->
-                                k != dragSourceIdx && rect.contains(dragCurrentWindowPos)
-                            }
-                            ?.key ?: -1
-                        if (dragSourceIdx >= 0 && targetIdx >= 0) {
-                            val from = tileNames[dragSourceIdx] ?: ""
-                            val to   = tileNames[targetIdx]   ?: ""
-                            onDragRoute(from, to)
+                        if (dragSourceIdx >= 0 && dragTargetIdx >= 0) {
+                            onDragRoute(
+                                places.getOrNull(dragSourceIdx)?.name ?: "",
+                                places.getOrNull(dragTargetIdx)?.name ?: "",
+                            )
                         }
                         dragSourceIdx = -1
+                        dragTargetIdx = -1
                     },
-                    onDragCancel = { dragSourceIdx = -1 },
+                    onDragCancel = {
+                        dragSourceIdx = -1
+                        dragTargetIdx = -1
+                    },
                 ) { change, _ ->
-                    dragCurrentWindowPos = change.position + flowRowWindowOrigin
+                    dragCurrentWindowPos = change.position + boxWindowOrigin
+                    dragTargetIdx = tileWindowBounds.entries
+                        .firstOrNull { (k, rect) ->
+                            k != dragSourceIdx && rect.contains(dragCurrentWindowPos)
+                        }?.key ?: -1
                 }
             },
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        places.forEachIndexed { idx, place ->
-            PlaceTile(
-                label = place.name,
-                icon = if (place.isHome) Icons.Default.Place else Icons.Default.LocationOn,
-                onClick = { onTileClick(place) },
-                isHighlighted = dragSourceIdx == idx,
-                modifier = Modifier.onGloballyPositioned { coords ->
-                    tileWindowBounds[idx] = coords.boundsInWindow()
-                },
-            )
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            places.forEachIndexed { idx, place ->
+                PlaceTile(
+                    label = place.name,
+                    icon = if (place.isHome) Icons.Default.Place else Icons.Default.LocationOn,
+                    onClick = { onTileClick(place) },
+                    isSource = dragSourceIdx == idx,
+                    isTarget = dragTargetIdx == idx,
+                    modifier = Modifier.onGloballyPositioned { coords ->
+                        tileWindowBounds[idx] = coords.boundsInWindow()
+                    },
+                )
+            }
         }
 
-        val fromIdx = places.size
-        val toIdx = places.size + 1
+        // Drag-line overlay: drawn on a Canvas sitting on top of the FlowRow.
+        if (dragSourceIdx >= 0) {
+            val sourceBounds = tileWindowBounds[dragSourceIdx]
+            if (sourceBounds != null) {
+                Canvas(modifier = Modifier.matchParentSize()) {
+                    val sourceCenter = Offset(
+                        sourceBounds.center.x - boxWindowOrigin.x,
+                        sourceBounds.center.y - boxWindowOrigin.y,
+                    )
+                    val snapTarget = if (dragTargetIdx >= 0) {
+                        tileWindowBounds[dragTargetIdx]?.let { tb ->
+                            Offset(tb.center.x - boxWindowOrigin.x, tb.center.y - boxWindowOrigin.y)
+                        }
+                    } else null
+                    val tipPos = snapTarget ?: Offset(
+                        dragCurrentWindowPos.x - boxWindowOrigin.x,
+                        dragCurrentWindowPos.y - boxWindowOrigin.y,
+                    )
 
-        PlaceTile(
-            label = "From",
-            icon = Icons.Default.ArrowForward,
-            onClick = onFromTileClick,
-            isSpecial = true,
-            connectorSuffix = " ●—",
-            isHighlighted = dragSourceIdx == fromIdx,
-            modifier = Modifier.onGloballyPositioned { coords ->
-                tileWindowBounds[fromIdx] = coords.boundsInWindow()
-            },
-        )
-        PlaceTile(
-            label = "To",
-            icon = Icons.Default.ArrowForward,
-            onClick = onToTileClick,
-            isSpecial = true,
-            connectorSuffix = " —→",
-            isHighlighted = dragSourceIdx == toIdx,
-            modifier = Modifier.onGloballyPositioned { coords ->
-                tileWindowBounds[toIdx] = coords.boundsInWindow()
-            },
-        )
+                    // Dashed directed line
+                    drawLine(
+                        color = lineColor,
+                        start = sourceCenter,
+                        end = tipPos,
+                        strokeWidth = 4.dp.toPx(),
+                        cap = StrokeCap.Round,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(18f, 9f)),
+                    )
+
+                    // Origin dot
+                    drawCircle(color = lineColor, radius = 6.dp.toPx(), center = sourceCenter)
+
+                    // Target ring when hovering over a destination tile
+                    if (snapTarget != null) {
+                        drawCircle(
+                            color = targetColor,
+                            radius = 8.dp.toPx(),
+                            center = snapTarget,
+                            style = Stroke(width = 3.dp.toPx()),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -391,25 +407,28 @@ private fun PlaceTile(
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit,
-    isSpecial: Boolean = false,
-    connectorSuffix: String = "",
-    isHighlighted: Boolean = false,
+    isSource: Boolean = false,
+    isTarget: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     FilledTonalButton(
         onClick = onClick,
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
         modifier = modifier,
-        colors = if (isHighlighted) ButtonDefaults.filledTonalButtonColors(
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-        ) else ButtonDefaults.filledTonalButtonColors(),
+        colors = when {
+            isSource -> ButtonDefaults.filledTonalButtonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            )
+            isTarget -> ButtonDefaults.filledTonalButtonColors(
+                containerColor = MaterialTheme.colorScheme.secondary,
+                contentColor = MaterialTheme.colorScheme.onSecondary,
+            )
+            else -> ButtonDefaults.filledTonalButtonColors()
+        },
     ) {
         Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
         Spacer(Modifier.size(4.dp))
-        Text(
-            text = "$label$connectorSuffix",
-            style = MaterialTheme.typography.labelLarge,
-        )
+        Text(label, style = MaterialTheme.typography.labelLarge)
     }
 }

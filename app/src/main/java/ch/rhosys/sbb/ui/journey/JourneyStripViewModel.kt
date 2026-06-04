@@ -3,21 +3,24 @@ package ch.rhosys.sbb.ui.journey
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ch.rhosys.sbb.data.local.preferences.UserPreferencesRepository
+import ch.rhosys.sbb.data.local.routing.rt.GtfsRtStore
+import ch.rhosys.sbb.data.local.routing.rt.RtAlert
 import ch.rhosys.sbb.domain.TransportRepository
 import ch.rhosys.sbb.domain.model.Connection
+import ch.rhosys.sbb.domain.model.Leg
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import java.time.Instant
 import javax.inject.Inject
 
 data class JourneyStripUiState(
     val activeConnection: Connection?,
     val switchPrompt: SwitchPrompt? = null,
     val isMonitoring: Boolean = true,
+    val rtAlerts: List<RtAlert> = emptyList(),
 )
 
 data class SwitchPrompt(
@@ -31,6 +34,7 @@ class JourneyStripViewModel @Inject constructor(
     private val journeyStateHolder: JourneyStateHolder,
     private val transportRepository: TransportRepository,
     private val prefs: UserPreferencesRepository,
+    private val rtStore: GtfsRtStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -40,6 +44,7 @@ class JourneyStripViewModel @Inject constructor(
 
     init {
         startMonitoring()
+        observeRtAlerts()
     }
 
     private fun startMonitoring() {
@@ -47,6 +52,28 @@ class JourneyStripViewModel @Inject constructor(
             while (_uiState.value.isMonitoring) {
                 delay(30_000)
                 poll()
+            }
+        }
+    }
+
+    // Filter RT alerts to only those that affect stops on the active connection.
+    private fun observeRtAlerts() {
+        viewModelScope.launch {
+            rtStore.alerts.collect { allAlerts ->
+                val connection = journeyStateHolder.activeJourney.value?.connection
+                _uiState.value = _uiState.value.copy(
+                    rtAlerts = if (connection == null || allAlerts.isEmpty()) {
+                        emptyList()
+                    } else {
+                        val stopIds = connection.legs
+                            .filterIsInstance<Leg.Transit>()
+                            .flatMap { listOfNotNull(it.departure.stationId, it.arrival.stationId) }
+                        allAlerts.filter { alert ->
+                            stopIds.any { id -> alert.informedStopIds.contains(id) } ||
+                                    alert.informedRouteIds.isEmpty() && alert.informedStopIds.isEmpty()
+                        }
+                    }
+                )
             }
         }
     }

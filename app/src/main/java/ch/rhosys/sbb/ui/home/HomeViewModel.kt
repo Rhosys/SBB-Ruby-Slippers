@@ -63,6 +63,35 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch { infer() }
     }
 
+    // Tap-to-route: immediately query from the user's current GPS position to the given place.
+    fun routeFromCurrentLocationTo(place: Place) {
+        viewModelScope.launch {
+            _uiState.value = HomeUiState.Loading
+            val places = placeRepository.getPlaces().first()
+            val location = getLocationOrNull()
+            val from = if (location != null)
+                SearchEndpoint.CurrentLocation(location.first, location.second)
+            else
+                SearchEndpoint.NamedPlace(place.name)
+
+            val connections = runCatching {
+                transportRepository.getConnections(from, place.toSearchEndpoint())
+            }.getOrNull() ?: emptyList()
+
+            _uiState.value = if (connections.isNotEmpty()) {
+                HomeUiState.Hero(
+                    destination = place.name,
+                    connections = connections,
+                    from = from,
+                    to = place.toSearchEndpoint(),
+                    places = places,
+                )
+            } else {
+                HomeUiState.TileGrid(places)
+            }
+        }
+    }
+
     fun lockIn(connection: Connection, from: SearchEndpoint, to: SearchEndpoint) {
         journeyStateHolder.lockIn(connection, from, to)
         viewModelScope.launch {
