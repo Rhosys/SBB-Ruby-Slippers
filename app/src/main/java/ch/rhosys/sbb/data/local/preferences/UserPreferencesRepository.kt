@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -22,6 +23,7 @@ class UserPreferencesRepository @Inject constructor(
         val CALENDAR_SYNC_ENABLED = booleanPreferencesKey("calendar_sync_enabled")
         val CALENDAR_SYNC_INTERVAL_HOURS = intPreferencesKey("calendar_sync_interval_hours")
         val HAS_COMPLETED_ONBOARDING = booleanPreferencesKey("has_completed_onboarding")
+        val FAVOURITE_STATIONS = stringSetPreferencesKey("favourite_stations")
     }
 
     val walkingPaceKmh: Flow<Float> = dataStore.data.map { it[WALKING_PACE_KMH] ?: 6f }
@@ -30,6 +32,7 @@ class UserPreferencesRepository @Inject constructor(
     val calendarSyncEnabled: Flow<Boolean> = dataStore.data.map { it[CALENDAR_SYNC_ENABLED] ?: false }
     val calendarSyncIntervalHours: Flow<Int> = dataStore.data.map { it[CALENDAR_SYNC_INTERVAL_HOURS] ?: 4 }
     val hasCompletedOnboarding: Flow<Boolean> = dataStore.data.map { it[HAS_COMPLETED_ONBOARDING] ?: false }
+    val favouriteStations: Flow<Set<String>> = dataStore.data.map { it[FAVOURITE_STATIONS] ?: emptySet() }
 
     suspend fun setWalkingPace(kmh: Float) = dataStore.edit { it[WALKING_PACE_KMH] = kmh }
     suspend fun setRunningPace(kmh: Float) = dataStore.edit { it[RUNNING_PACE_KMH] = kmh }
@@ -37,4 +40,10 @@ class UserPreferencesRepository @Inject constructor(
     suspend fun setCalendarSyncEnabled(enabled: Boolean) = dataStore.edit { it[CALENDAR_SYNC_ENABLED] = enabled }
     suspend fun setCalendarSyncIntervalHours(hours: Int) = dataStore.edit { it[CALENDAR_SYNC_INTERVAL_HOURS] = hours }
     suspend fun setHasCompletedOnboarding(done: Boolean) = dataStore.edit { it[HAS_COMPLETED_ONBOARDING] = done }
+    suspend fun addFavouriteStation(name: String) = dataStore.edit { prefs ->
+        prefs[FAVOURITE_STATIONS] = (prefs[FAVOURITE_STATIONS] ?: emptySet()) + name
+    }
+    suspend fun removeFavouriteStation(name: String) = dataStore.edit { prefs ->
+        prefs[FAVOURITE_STATIONS] = (prefs[FAVOURITE_STATIONS] ?: emptySet()) - name
+    }
 }

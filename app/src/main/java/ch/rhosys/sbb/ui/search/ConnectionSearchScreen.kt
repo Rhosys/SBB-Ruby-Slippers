@@ -17,6 +17,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -49,20 +51,20 @@ fun ConnectionSearchScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        OutlinedTextField(
+        AutocompleteField(
             value = state.fromText,
             onValueChange = viewModel::onFromChanged,
-            label = { Text(stringResource(R.string.search_from_hint)) },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
+            label = stringResource(R.string.search_from_hint),
+            suggestions = state.fromSuggestions,
+            onSuggestionSelected = viewModel::selectFromSuggestion,
         )
 
-        OutlinedTextField(
+        AutocompleteField(
             value = state.toText,
             onValueChange = viewModel::onToChanged,
-            label = { Text(stringResource(R.string.search_to_hint)) },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
+            label = stringResource(R.string.search_to_hint),
+            suggestions = state.toSuggestions,
+            onSuggestionSelected = viewModel::selectToSuggestion,
         )
 
         Button(
@@ -101,6 +103,36 @@ fun ConnectionSearchScreen(
                             onNavigateToJourney()
                         },
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AutocompleteField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    suggestions: List<String>,
+    onSuggestionSelected: (String) -> Unit,
+) {
+    Column {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = { Text(label) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        if (suggestions.isNotEmpty()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                suggestions.forEachIndexed { index, suggestion ->
+                    DropdownMenuItem(
+                        text = { Text(suggestion, style = MaterialTheme.typography.bodyMedium) },
+                        onClick = { onSuggestionSelected(suggestion) },
+                    )
+                    if (index < suggestions.lastIndex) HorizontalDivider()
                 }
             }
         }
