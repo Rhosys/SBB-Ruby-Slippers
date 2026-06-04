@@ -128,16 +128,22 @@ or degrade the on-device result display.
 
 ## Fares
 
-### 🔲 Q6 — Ambition level
-Level A (zone-based estimate, CHF range) / Level B (national direct-tariff
-point-to-point, no saver tickets) / Level C (accurate bookable incl.
-Half-Fare / GA / Sparbillette)?
-*(Blocked on the fares-coverage spike: inspect Swiss `fare_rules.txt` /
-`fare_attributes.txt` before committing — see architecture doc §7.)*
+### ✅ Q6 — Ambition level
+**Decided: Level C — as accurate as possible. Aim for personalised pricing
+(Half-Fare, GA, Sparbillette, U25 Night, etc.); adjust based on what the data
+actually contains once the feed is inspected.**
 
-### 🔲 Q7 — Fare profile in Settings
-Should the app know whether the user holds a Half-Fare card or GA and adjust
-prices accordingly? (FA2 → `UserPreferencesRepository.fareProfile`.)
+Implementation is gated on the fares-coverage spike (inspect Swiss
+`fare_rules.txt` / `fare_attributes.txt`) — see architecture doc §7. If GTFS
+fare data is insufficient, a separate pricing API or zone-based fallback will
+be evaluated at that point.
+
+### ✅ Q7 — Fare profile in Settings
+**Decided: yes, included as part of Level C.**
+
+`UserPreferencesRepository` gets a `fareProfile` field (Half-Fare, GA, none,
+etc.). All fare displays adjust to the user's profile. A GA holder sees
+"covered by GA"; a Half-Fare holder sees the halved price.
 
 ---
 
