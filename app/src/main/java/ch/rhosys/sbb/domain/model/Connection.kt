@@ -17,9 +17,14 @@ data class Connection(
     val lineNames: List<String>
         get() = legs.filterIsInstance<Leg.Transit>().map { it.lineName }
 
-    val transitDuration: Duration
-        get() = Duration.between(departure.scheduledTime, arrival.scheduledTime)
+    val transitDuration: Duration?
+        get() {
+            val dep = departure.scheduledTime ?: return null
+            val arr = arrival.scheduledTime ?: return null
+            return Duration.between(dep, arr)
+        }
 
-    val doorToDoorDuration: Duration
-        get() = walkToFirstStop + transitDuration + walkFromLastStop
+    // What the user sees on the card and what we optimise on — identical.
+    val doorToDoorDuration: Duration?
+        get() = transitDuration?.let { walkToFirstStop + it + walkFromLastStop }
 }
