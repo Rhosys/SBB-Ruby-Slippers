@@ -21,8 +21,7 @@ vs server+CDN) is gated on a latency benchmark — see decision record.
 → [`gtfs-storage-architecture.md`](./gtfs-storage-architecture.md),
 evidence in [`gtfs-queries.md`](./gtfs-queries.md).
 
-### ✅ Q2 — Routing rounds
-Unbounded, or cap at a fixed max?
+### ✅ Q2 — Routing roundsUnbounded, or cap at a fixed max?
 
 **Decided: execution-budget-bounded, progressive, resumable on-device routing.** Not a flat
 cap — completeness and optimization are separated.
@@ -239,6 +238,18 @@ account. No cross-device real-time sync, but sufficient for V2.
 
 V3: manual export of trip history in a portable format (JSON/CSV). No backend
 required; user saves the file wherever they want.
+
+---
+
+## Connection search screen defaults
+
+### ✅ QCS1 — Date/time selector defaults
+- **Toggle default:** "Arrive before" (`RoutingTime.ArriveBy`) always, on every open.
+  Never remembers the last setting — a stale date from a previous session is a
+  reliability hazard.
+- **Time default:** current time.
+- **Date default:** today.
+- UI label: "Arrive before" / "Depart after" (maps to `ArriveBy` / `DepartAfter`).
 
 ---
 
