@@ -49,6 +49,9 @@ class ApiTransportRepository @Inject constructor(
         arrival = to?.toDomainArrival() ?: Stop(stationName = ""),
         legs = sections.map { it.toDomain() },
         transfers = transfers ?: 0,
+        // REST API doesn't return walk times; the ViewModel supplies these from M1.
+        walkToFirstStop = java.time.Duration.ZERO,
+        walkFromLastStop = java.time.Duration.ZERO,
     )
 
     private fun StopDto.toDomainDeparture(): Stop = Stop(
