@@ -161,15 +161,139 @@ class RoutingEngine(private val network: GtfsNetwork) {
         )
     }
 
-    // Reverse RAPTOR: find latest departure from origin arriving by arriveBySeconds.
-    // Seeds destination stops with the target arrival time and scans trips backwards.
-    // TODO: implement — stub emits empty until built.
+    // Reverse scan: find latest departure from origin arriving by arriveBySeconds.
+    // Seeds destination stops and scans trips backwards — alight first, board later.
+    // best[stopId] = latest time you can depart from stopId and still reach a destination.
     private fun routeReverse(query: RoutingQuery, arriveBySeconds: Int): Flow<RoutingResult> = flow {
-        // Mirror of routeForward but:
-        //   best[stopId] = latest departure from that stop still reaching destination in time
-        //   trips scanned backwards (alight first, board later)
-        //   origin stops are the "destination" of the reverse scan
-        // Implementation follows after forward routing tests are green.
+        val startMs = System.currentTimeMillis()
+
+        // NEG_INF sentinel: "not reachable in reverse" (latest departure not yet known)
+        val NEG_INF = Int.MIN_VALUE / 2
+        val best = IntArray(network.stops.size) { NEG_INF }
+        val bestWithTransit = IntArray(network.stops.size) { NEG_INF }
+        val pointer = arrayOfNulls<JourneyPointer>(network.stops.size)
+
+        // Seed destinations — they can be "departed" no later than arriveBySeconds
+        for (stopId in query.destinationStopIds) {
+            best[stopId] = arriveBySeconds
+        }
+
+        val originSet = query.originStopIds.toSet()
+        val accumulator = mutableListOf<FoundConnection>()
+
+        for (round in 1..MAX_ROUNDS) {
+            val roundStart = System.currentTimeMillis()
+            val improved = BooleanArray(network.stops.size) { false }
+
+            // Phase 1: for each stop with a known "latest reachable" time,
+            // scan routes through it in reverse to find earlier boarding stops.
+            for (stopId in network.stops.indices) {
+                if (best[stopId] == NEG_INF) continue
+                val routes = network.stopToRoutes[stopId] ?: continue
+                for ((routeIdx, pos) in routes) {
+                    val route = network.routes[routeIdx]
+                    // Find latest trip that arrives at stopId no later than best[stopId]
+                    val trip = latestTripArrivingBy(route, pos, best[stopId]) ?: continue
+                    // Scan backwards to earlier stops in the route
+                    for (p in pos - 1 downTo 0) {
+                        val prevStop = route.stopIds[p]
+                        val depSec = tripDeparture(trip, p)
+                        if (depSec > bestWithTransit[prevStop]) {
+                            bestWithTransit[prevStop] = depSec
+                            best[prevStop] = depSec
+                            improved[prevStop] = true
+                            pointer[prevStop] = JourneyPointer(
+                                leg = FoundLeg.Transit(
+                                    routeName = route.name,
+                                    boardStopId = prevStop,
+                                    alightStopId = stopId,
+                                    boardSeconds = depSec,
+                                    alightSeconds = tripArrival(trip, pos),
+                                ),
+                                prev = pointer[stopId],
+                                prevStopId = stopId,
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Phase 2: reverse walking transfers
+            for (stopId in network.stops.indices) {
+                if (!improved[stopId]) continue
+                val transfers = network.stopToTransfers[stopId] ?: continue
+                for ((neighbourId, walkSecs) in transfers) {
+                    val depViaWalk = best[stopId] - walkSecs
+                    if (depViaWalk > best[neighbourId]) {
+                        best[neighbourId] = depViaWalk
+                        pointer[neighbourId] = JourneyPointer(
+                            leg = FoundLeg.Walk(neighbourId, stopId, walkSecs),
+                            prev = pointer[stopId],
+                            prevStopId = stopId,
+                        )
+                    }
+                }
+            }
+
+            // Collect newly reachable origins
+            var foundNew = false
+            for (originId in originSet) {
+                if (bestWithTransit[originId] != NEG_INF) {
+                    val conn = buildReverseConnection(originId, pointer, query)
+                    if (conn != null && accumulator.none { it.departureSeconds == conn.departureSeconds }) {
+                        accumulator.add(conn)
+                        foundNew = true
+                    }
+                }
+            }
+
+            if (foundNew) {
+                val sorted = accumulator.sortedByDescending { it.departureSeconds }
+                emit(RoutingResult(connections = sorted, isComplete = false))
+            }
+
+            val reachable = originSet.any { bestWithTransit[it] != NEG_INF }
+            if (reachable) {
+                val elapsed = System.currentTimeMillis() - startMs
+                val roundMs = System.currentTimeMillis() - roundStart
+                if (elapsed >= BUDGET_MS || roundMs >= ROUND_BUDGET_MS || round >= MAX_ROUNDS) break
+            }
+        }
+
+        if (accumulator.isNotEmpty()) {
+            emit(RoutingResult(
+                connections = accumulator.sortedByDescending { it.departureSeconds },
+                isComplete = true,
+            ))
+        }
+    }
+
+    private fun latestTripArrivingBy(route: GtfsRoute, pos: Int, noLaterThan: Int): GtfsTrip? =
+        route.trips
+            .filter { tripArrival(it, pos) <= noLaterThan }
+            .maxByOrNull { tripArrival(it, pos) }
+
+    private fun buildReverseConnection(
+        originId: Int,
+        pointer: Array<JourneyPointer?>,
+        query: RoutingQuery,
+    ): FoundConnection? {
+        val legs = mutableListOf<FoundLeg>()
+        var p = pointer[originId] ?: return null
+        while (true) {
+            legs.add(p.leg)
+            val next = p.prev ?: break
+            p = next
+        }
+        val transitLegs = legs.filterIsInstance<FoundLeg.Transit>()
+        if (transitLegs.isEmpty()) return null
+        return FoundConnection(
+            legs = legs,
+            departureSeconds = transitLegs.first().boardSeconds,
+            arrivalSeconds = transitLegs.last().alightSeconds,
+            walkToFirstStop = query.walkToFirstStop.seconds,
+            walkFromLastStop = query.walkFromLastStop.seconds,
+        )
     }
 }
 
