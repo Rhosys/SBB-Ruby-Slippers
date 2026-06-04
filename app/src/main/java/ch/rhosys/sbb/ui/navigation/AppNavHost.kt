@@ -12,6 +12,7 @@ import ch.rhosys.sbb.ui.journey.JourneyStripScreen
 import ch.rhosys.sbb.ui.onboarding.OnboardingScreen
 import ch.rhosys.sbb.ui.search.ConnectionSearchScreen
 import ch.rhosys.sbb.ui.settings.SettingsScreen
+import ch.rhosys.sbb.ui.stationboard.DepartureDetailsScreen
 import ch.rhosys.sbb.ui.stationboard.StationboardScreen
 
 @Composable
@@ -60,7 +61,19 @@ fun AppNavHost(
             )
         }
 
-        composable(Screen.Stationboard.route) { StationboardScreen() }
+        composable(Screen.Stationboard.route) {
+            StationboardScreen(
+                onNavigateToDetails = {
+                    navController.navigate(Screen.DepartureDetails.route)
+                },
+            )
+        }
+
+        composable(Screen.DepartureDetails.route) {
+            DepartureDetailsScreen(
+                onNavigateBack = { navController.popBackStack() },
+            )
+        }
 
         composable(Screen.Journey.route) {
             JourneyStripScreen(

@@ -9,6 +9,8 @@ import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.SearchEndpoint
 import ch.rhosys.sbb.ui.journey.JourneyStateHolder
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -17,6 +19,8 @@ import javax.inject.Inject
 data class ConnectionSearchUiState(
     val fromText: String = "",
     val toText: String = "",
+    val fromSuggestions: List<String> = emptyList(),
+    val toSuggestions: List<String> = emptyList(),
     val connections: List<Connection> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
@@ -38,8 +42,50 @@ class ConnectionSearchViewModel @Inject constructor(
     )
     val uiState: StateFlow<ConnectionSearchUiState> = _uiState
 
-    fun onFromChanged(value: String) { _uiState.value = _uiState.value.copy(fromText = value) }
-    fun onToChanged(value: String)   { _uiState.value = _uiState.value.copy(toText = value) }
+    private var fromSuggestJob: Job? = null
+    private var toSuggestJob: Job? = null
+
+    fun onFromChanged(value: String) {
+        _uiState.value = _uiState.value.copy(fromText = value, fromSuggestions = emptyList())
+        fromSuggestJob?.cancel()
+        if (value.length >= 2) {
+            fromSuggestJob = viewModelScope.launch {
+                delay(300)
+                runCatching { repository.getLocations(value) }
+                    .onSuccess { resp ->
+                        _uiState.value = _uiState.value.copy(
+                            fromSuggestions = resp.stations.take(5).mapNotNull { it.name }
+                        )
+                    }
+            }
+        }
+    }
+
+    fun onToChanged(value: String) {
+        _uiState.value = _uiState.value.copy(toText = value, toSuggestions = emptyList())
+        toSuggestJob?.cancel()
+        if (value.length >= 2) {
+            toSuggestJob = viewModelScope.launch {
+                delay(300)
+                runCatching { repository.getLocations(value) }
+                    .onSuccess { resp ->
+                        _uiState.value = _uiState.value.copy(
+                            toSuggestions = resp.stations.take(5).mapNotNull { it.name }
+                        )
+                    }
+            }
+        }
+    }
+
+    fun selectFromSuggestion(name: String) {
+        fromSuggestJob?.cancel()
+        _uiState.value = _uiState.value.copy(fromText = name, fromSuggestions = emptyList())
+    }
+
+    fun selectToSuggestion(name: String) {
+        toSuggestJob?.cancel()
+        _uiState.value = _uiState.value.copy(toText = name, toSuggestions = emptyList())
+    }
 
     fun search() {
         val from = _uiState.value.fromText.trim()
@@ -53,7 +99,12 @@ class ConnectionSearchViewModel @Inject constructor(
         val toEndpoint = SearchEndpoint.NamedPlace(to)
 
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _uiState.value = _uiState.value.copy(
+                isLoading = true,
+                error = null,
+                fromSuggestions = emptyList(),
+                toSuggestions = emptyList(),
+            )
             runCatching { repository.getConnections(fromEndpoint, toEndpoint) }
                 .onSuccess { connections ->
                     _uiState.value = _uiState.value.copy(connections = connections, isLoading = false)
