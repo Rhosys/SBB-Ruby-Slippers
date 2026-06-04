@@ -56,6 +56,7 @@ class RoutingEngine(
                 val routes = network.stopToRoutes[stopId] ?: continue
                 for ((routeIdx, pos) in routes) {
                     val route = network.routes[routeIdx]
+                    if (pos >= route.stopIds.size - 1) continue  // last stop has no onward departure
                     val trip = earliestTrip(route, pos, best[stopId], activeServiceIds) ?: continue
                     // Ride this trip forward
                     for (p in pos + 1 until route.stopIds.size) {
@@ -199,6 +200,7 @@ class RoutingEngine(
                 val routes = network.stopToRoutes[stopId] ?: continue
                 for ((routeIdx, pos) in routes) {
                     val route = network.routes[routeIdx]
+                    if (pos == 0) continue  // first stop has no prior arrival
                     // Find latest trip that arrives at stopId no later than best[stopId]
                     val trip = latestTripArrivingBy(route, pos, best[stopId], activeServiceIds) ?: continue
                     // Scan backwards to earlier stops in the route

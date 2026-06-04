@@ -157,10 +157,10 @@ class GtfsParser {
         GtfsTransfer(fromId, toId, walkSec)
     }
 
-    // CSV parsing — handles quoted fields and BOM
+    // CSV parsing — handles quoted fields and UTF-8 BOM
     fun parseCsv(content: String): List<Map<String, String>> {
         if (content.isBlank()) return emptyList()
-        val lines = content.trimStart('﻿').lines().filter { it.isNotBlank() }
+        val lines = content.trimStart('\uFEFF').lines().filter { it.isNotBlank() }
         if (lines.isEmpty()) return emptyList()
         val headers = splitCsvLine(lines[0])
         return lines.drop(1).map { line ->
