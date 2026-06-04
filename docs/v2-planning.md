@@ -242,6 +242,35 @@ required; user saves the file wherever they want.
 
 ---
 
+## Reachability screen
+
+### 🔲 QR1 — "Where can I get by this time?"
+A screen where the user enters a departure place and a target arrival time, and the
+app shows every stop reachable before that time — i.e. an isochrone over the
+transit network.
+
+This is a natural output of the routing engine: after running rounds with no
+specific destination, `best[stopId]` holds the earliest possible arrival at every
+stop in the network. The reachability set is all stops where that arrival ≤ the
+target time.
+
+**Display:** stops grouped by travel-time bucket (e.g. within 15 min / 15–30 min /
+30–45 min / 45–60 min), showing stop name, earliest arrival, and number of
+transfers required. Optionally filterable by transport mode.
+
+**Inputs:** origin (same search as connection search — saved place, current
+location, or text search) + target time (time picker, defaults to "now + 60 min").
+
+**UX question (to be asked during implementation):** list only, or also a map view
+showing the reachable area visually? Map view requires a map library decision.
+
+Pending decisions:
+- List vs map (or both)?
+- Max travel time ceiling (60 min default? user-adjustable?).
+- Whether to include walk-only reachable stops (no transit) in the result.
+
+---
+
 ## Platform sector recommendations
 
 ### 🔲 QS1 — Sector and stairwell guidance
