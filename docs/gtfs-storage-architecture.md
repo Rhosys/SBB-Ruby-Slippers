@@ -104,6 +104,33 @@ load. This is precisely why a `mmap`-able CSR binary beats SQLite/ObjectBox for
 the hot path: a database would force either re-querying (slow) or
 deserialize-into-objects-at-startup (the cost we are avoiding).
 
+### RAPTOR never needs the whole file resident — and the pages are reclaimable
+
+Two properties make `mmap` not just convenient but the *right* memory model on a
+memory-constrained Android device:
+
+1. **Only the working set is resident, not the file.** RAPTOR has no full-array
+   scan. A query touches `stopRoutes[stop]` for the stops it reaches and the
+   `routeStops`/`stopTimes` blocks for the routes it actually examines — a subset
+   bounded by the region between origin and destination, not the whole 8M-row
+   table. Obscure routes nobody queries may never fault in. Locality is good: a
+   route's `stopTimes` block is contiguous and riding a trip is a contiguous
+   forward scan, so faults cluster; the only scatter is jumps *between* routes via
+   `stopRoutes`. Peak resident memory is the working set, not 150 MB.
+
+2. **The mapped pages are clean, file-backed pages.** Under memory pressure the OS
+   can drop them and re-fault from disk later — no swap, no data loss. Contrast a
+   150 MB heap allocation: that is private-dirty memory that counts fully against
+   the app and makes it a prime target for Android's low-memory killer / OOM. With
+   `mmap`, the OS treats the timetable as **reclaimable cache for the whole app
+   lifetime**, which a heap structure can never be. This is a robustness property,
+   not just a performance one.
+
+**The one cost to measure:** the *first* touch of a cold region faults its pages
+in from flash, so a just-launched app's first query over a region pays a small
+latency tax; warm (already-cached) pages are instant. The latency benchmark in §4
+must therefore measure **both cold and warm** query latency, not just warm.
+
 ---
 
 ## 4. Where the CSR is built: on-device vs CDN — a performance question only
@@ -257,9 +284,11 @@ architectural decision should depend on fares being present until then.
 
 ### Open spikes / measurements before build
 
-- [ ] **Benchmark plain RAPTOR query latency on a representative device.** This is
-      the decision gate for §4: acceptable → build on-device, no CDN; too slow →
-      preprocessing-heavy algorithm → server build + CDN.
+- [ ] **Benchmark plain RAPTOR query latency on a representative device, cold and
+      warm.** Cold = first touch of a region, pages faulting from flash; warm =
+      pages already cached. This is the decision gate for §4: acceptable → build
+      on-device, no CDN; too slow → preprocessing-heavy algorithm → server build +
+      CDN.
 - [ ] Benchmark CSR build time on a representative device (sizing the weekly
       background import job).
 - [ ] Measure CSR size on disk and compressed-over-wire (validates CDN transfer
