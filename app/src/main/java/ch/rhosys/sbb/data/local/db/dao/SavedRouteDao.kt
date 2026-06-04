@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface SavedRouteDao {
-    @Query("SELECT * FROM saved_routes ORDER BY scheduledAtMillis ASC NULLS LAST, createdAtMillis DESC")
+    @Query("SELECT * FROM saved_routes ORDER BY CASE WHEN scheduledAtMillis IS NULL THEN 1 ELSE 0 END, scheduledAtMillis ASC, createdAtMillis DESC")
     fun getAllSavedRoutes(): Flow<List<SavedRouteEntity>>
 
     @Query("SELECT * FROM saved_routes WHERE scheduledAtMillis BETWEEN :fromMillis AND :toMillis")
