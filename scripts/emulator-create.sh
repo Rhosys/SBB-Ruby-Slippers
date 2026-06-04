@@ -9,7 +9,7 @@
 # =============================================================================
 set -euo pipefail
 
-AVD_NAME="SbbAVD"
+AVD_NAME="WorkspaceAVD"
 SYSTEM_IMAGE="system-images;android-35;google_apis;x86_64"
 DEVICE_PROFILE="pixel_7"
 
