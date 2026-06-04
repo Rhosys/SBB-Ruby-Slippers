@@ -20,8 +20,8 @@ class GtfsNetworkBuilder {
         routes.add(RouteInProgress(id, name, stops))
     }
 
-    fun addTrip(routeId: Int, tripId: Int, times: List<Int>) = apply {
-        routes.first { it.id == routeId }.trips.add(GtfsTrip(tripId, times))
+    fun addTrip(routeId: Int, tripId: Int, times: List<Int>, serviceId: String = "") = apply {
+        routes.first { it.id == routeId }.trips.add(GtfsTrip(tripId, serviceId, times))
     }
 
     fun addTransfer(fromStop: Int, toStop: Int, walkSeconds: Int) = apply {
