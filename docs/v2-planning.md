@@ -36,11 +36,29 @@ cap — completeness and optimization are separated.
   - total elapsed ≥ **20 s** (hard upper bound), or
   - the **last round took ≥ 10 s** (diminishing-returns circuit breaker), or
   - **7 rounds** computed.
+- **Budget exhausted before destination reached:** call the REST API directly.
 - **Resumable:** on budget stop, retain state; a **"Find more connections"**
   action resumes from the next round rather than restarting.
+- **"Find more connections" budget:** same budget again (≤20 s / ≤7 more rounds).
 
-The long budget is acceptable because phase 2 is pure background enrichment — the
-user has a usable trip from phase 1 within milliseconds and never waits on it.
+**Dual-source:** REST API and RAPTOR always run in parallel on every query.
+Results are not compared for correctness — they will legitimately differ (different
+walking speeds, transfer minimums, optimization weights). Both result sets are
+surfaced: RAPTOR's Pareto front and the SBB-recommended trip (REST API result) as
+a labeled option. Different is the feature, not a bug.
+
+**Active-journey state lifecycle:**
+
+| State | What's stored | Until when |
+|---|---|---|
+| Candidate (shown in results, not locked) | Full RAPTOR label set | Departure time passes |
+| Locked in | Full RAPTOR label set + active RT tracking | Journey completes |
+| Completed | Trip token + price + anomalies only | Forever (trip history) |
+
+State is persisted to disk (survives process death). Re-computation triggers only
+when a delay or cancellation notification arrives for a trip in the active journey
+— not from scratch, from the checkpoint prior to the affected segment. `JourneyStateHolder`
+owns both the locked-in connection and the RAPTOR state snapshot.
 
 **Implications:**
 - RAPTOR is an incremental, resumable **coroutine emitting a `Flow` of results**,
@@ -48,15 +66,12 @@ user has a usable trip from phase 1 within milliseconds and never waits on it.
 - State checkpointed (per-round labels, best arrivals, running result set) so
   "Find more" continues at round N+1.
 - Result list = **Pareto front of (arrival time × number of transfers)**; each
-  extra round contributes ≤1 new candidate, dominated ones dropped. Transfers are
-  kept as a second criterion (not pruned purely on arrival time).
+  extra round contributes ≤1 new candidate, dominated ones dropped.
 - Pairs with target pruning on the arrival-time criterion.
 
-**Open sub-decisions (pending user confirm):**
-- Budget exhausted before destination reached (≈impossible for real Swiss O/D):
-  "no connection found" + v1 REST fallback, *or* let phase 1 exceed 7 rounds /
-  20 s so completeness strictly wins?
-- "Find more connections": resume with the same budget again, or relax it?
+**Open sub-decision:**
+- "Find more connections": same budget again, or relax it (e.g. unbounded until
+  the next 10s-round breaker)?
 
 ### 🔲 Q3 — GTFS-RT handling
 Simple delay overlay (shift arrival/departure by reported delta), or full spec
@@ -114,6 +129,26 @@ upgrade, or standalone from the start?
 ### 🔲 Q11 — Wear OS screens in scope
 Just the current journey strip with delay badges, or also a next-departure glance
 and a quick lock-in confirmation?
+
+---
+
+## Platform sector recommendations
+
+### 🔲 QS1 — Sector and stairwell guidance
+Show the user which sector/carriage to board, based on platform layout and known
+stairwell/exit positions at the destination.
+
+Platform layout data is **not in GTFS**. SBB publishes it separately via
+opentransportdata.swiss in NeTEx/HRDF format (`Perron` data — platform berth
+positions keyed by stop_id and track). This is a separate import, a separate data
+store, and a separate query type from everything in the GTFS catalogue.
+
+Pending decisions:
+- Confirm that opentransportdata.swiss Perron data is available and covers the
+  stops we need.
+- Define the data model (platform → sector list → berth positions → stairwell
+  annotations).
+- Define where this surfaces in the UI (journey leg detail, boarding prompt).
 
 ---
 
