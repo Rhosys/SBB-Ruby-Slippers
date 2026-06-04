@@ -164,27 +164,15 @@ and a quick lock-in confirmation?
 
 ## User account and backup
 
-### 🔲 QA1 — Cloud backup scope and mechanism
-User config (fare profile, alert filters, widget config) + saved places + saved
-routes + recurring routes + trip history all need to survive phone replacement and
-app reinstall, and ideally sync across devices.
+### ✅ QA1 — Cloud backup scope and mechanism
+**Decided: Android Auto Backup for V2. Trip export (manual) in V3.**
 
-**What needs backing up:**
-- Saved places, saved routes, recurring routes
-- User preferences: fare profile, alert filter config, widget config
-- Trip history (compressed: token + price + anomalies)
+Enable Android Auto Backup — 2 lines of manifest config, zero backend, zero auth.
+Covers phone replacement and app reinstall automatically via the user's Google
+account. No cross-device real-time sync, but sufficient for V2.
 
-**Options:**
-- **Android Auto Backup** (Google-managed): zero-auth, zero-backend. Encrypted
-  backup to user's Google account automatically. Free, trivial. No cross-device
-  real-time sync; user can't access data without reinstalling the app.
-- **Google Sign-In → Rhosys backend** (Cognito + DynamoDB/S3): full control,
-  cross-device sync, cross-platform. Requires owning auth and a backend.
-- **Google Drive API**: data lives in user's own Drive as an app file. No Rhosys
-  backend, but Drive API is complex and less reliable than Auto Backup.
-
-*Pending decision: scope for V2 — Auto Backup only (fast, no backend) or full
-account with cross-device sync?*
+V3: manual export of trip history in a portable format (JSON/CSV). No backend
+required; user saves the file wherever they want.
 
 ---
 
