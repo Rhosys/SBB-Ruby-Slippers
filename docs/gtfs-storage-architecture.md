@@ -106,56 +106,84 @@ deserialize-into-objects-at-startup (the cost we are avoiding).
 
 ---
 
-## 4. Build the CSR centrally; serve it from a CDN
+## 4. Where the CSR is built: on-device vs CDN — a performance question only
 
-The parse-and-build in §3 is *deterministic* — every client would compute the
-exact same bytes from the same feed. Doing it on every device, every feed cycle,
-is wasted work. Build it once, server-side, and publish the ready-to-`mmap`
-binary to a CDN.
+The build is deterministic — every client computes identical bytes from the same
+feed — so it is tempting to build it once server-side and serve the binary from a
+CDN. But the decision must be made on **routing performance**, nothing else
+(app size, code location, and battery are explicitly out of scope here).
+
+### For plain RAPTOR, the CDN gives no performance benefit
+
+Both routes — build-on-device and download-from-CDN — end at the *identical*
+`mmap`'d CSR binary. RAPTOR runs the same over it. And the build cost is never on
+a performance-critical path either way:
+
+- It is a background job (~weekly, on charge/Wi-Fi), not the routing hot path.
+- App start is a `mmap` of the existing binary regardless of where it came from.
+
+So a CDN does not make routing faster, app-start faster, or steady-state anything
+faster. It would only save device CPU on the weekly build and shrink the client —
+which are not performance. **By a performance-only criterion, building on-device
+wins and the CDN is a backend we would own for zero runtime gain — a loss.**
 
 ```
-SERVER PIPELINE (scheduled, ~weekly, matches GTFS publish cadence):
-    download GTFS zip from opentransportdata.swiss
-    parse + expand frequencies + merge calendar + build CSR arrays
-    write little-endian binary, compress (zstd/gzip)
-    upload to S3 → CloudFront, update manifest
-
-CLIENT (background check, ~daily):
-    GET cdn/sbb/csr/{formatVersion}/latest.json
-        → { feedVersion, url, sha256, sizeBytes, validUntil }
-    if feedVersion newer than on-device:
-        download .bin, verify sha256, decompress to disk, atomic-swap into "live"
+ON-DEVICE BUILD (the default for plain RAPTOR):
+    WorkManager job, ~weekly, on charge/Wi-Fi:
+        download GTFS zip from opentransportdata.swiss
+        parse + expand frequencies + merge calendar + build CSR arrays
+        write little-endian binary to disk, atomic-swap into "live"
+    App start: mmap("live.csr")   // identical to the CDN case
 ```
 
-### What this buys us
+### The one case where the CDN becomes a performance win
 
-- **The client ships no GTFS parser.** All CSV parsing, frequency expansion
-  (F1), calendar merge (R4/C2), and time normalisation (C1) happen *once* in the
-  server pipeline. The client is reduced to: download → verify → `mmap` → RAPTOR.
-  Smaller APK, far less client code, fewer device-specific edge cases.
-- **One binary format across wire, disk, and memory.** Build little-endian (all
-  Android is LE). Compress for transfer only; `mmap` the decompressed file.
-- **Versioning is a CDN path.** Two independent axes:
-  - `formatVersion` — the binary layout, compiled into the app, bumped only when
-    an app release changes the struct. Namespacing the CDN path by it means old
-    app versions keep receiving binaries in *their* format — no skew.
-  - `feedVersion` — the GTFS feed date, changes ~weekly.
-- **Integrity** via `sha256` in the manifest (served over HTTPS from our CDN);
-  manifest signing is a possible later hardening.
+The CDN is justified *only if we ship an artifact the device cannot produce
+itself*: a **preprocessing-heavy algorithm** whose offline build is hours of
+cluster compute and cannot run on a phone —
 
-### Honest tradeoffs
+- **Transfer Patterns** (precompute optimal transfer sequences between all stop
+  pairs),
+- **Trip-Based routing** with precomputed transfer sets,
+- contraction / hub-labelling-style speedups.
 
-- **This reintroduces a backend.** V1 was explicitly "no backend of ours; client
-  hits `transport.opendata.ch` directly." This is a *static-content build
-  pipeline* (scheduled job → S3 → CloudFront), not a request-serving API — much
-  lighter — and it fits the existing Rhosys AWS stack (the deploy pipeline already
-  uses AWS KMS/SES). But it is a new thing we own and operate.
-- **The v1 REST path becomes the graceful fallback**, not dead code. Fresh
-  install offline, CDN unreachable, or no CSR present yet → fall back to
-  `ApiTransportRepository` against `transport.opendata.ch` for basic queries.
-  Degraded (no multi-origin, no offline routing) but functional.
-- **Disk budget**: ~100–150 MB resident, transiently ~2× during atomic swap.
-  Acceptable on most devices; add a low-storage guard.
+These can make queries 10–100× faster than plain RAPTOR. Their preprocessing is
+genuinely infeasible on-device, so server-side build + CDN delivery is the *only*
+way to get the artifact onto the phone — and then the CDN is a real performance
+win, not a convenience.
+
+### Decision gate
+
+This collapses the CDN question into the algorithm question, decided by one
+measurement:
+
+1. **Benchmark plain RAPTOR on a representative device** for a country-wide query.
+2. If latency is acceptable (plausibly tens of ms) → **build on-device, no CDN.**
+3. If we need faster → adopt a preprocessing-heavy algorithm → **server build +
+   CDN is mandatory** and pays for itself in query latency.
+
+Note: multi-origin (M4) does *not* push us toward preprocessing — RAPTOR seeds
+multiple origin stops in round 0 at negligible extra cost.
+
+### Versioning & integrity (applies to either build location)
+
+Whether the binary is built on-device or downloaded, the same discipline holds:
+
+- Two version axes: `formatVersion` (binary layout, app-pinned) and `feedVersion`
+  (GTFS feed date, ~weekly). In the CDN case these become path segments so old
+  app versions keep receiving binaries in *their* format — no skew.
+- `sha256` integrity check on any downloaded binary (CDN case).
+- Atomic swap of the "live" binary so in-flight queries never see a half-written
+  dataset (I2).
+- Disk budget ~100–150 MB resident, transiently ~2× during swap — add a
+  low-storage guard.
+
+### Fallback (independent of the above)
+
+The v1 `transport.opendata.ch` REST path is retained as graceful degradation:
+fresh install offline, or no CSR built/downloaded yet → fall back to
+`ApiTransportRepository` for basic queries. Degraded (no multi-origin, no offline
+routing) but functional.
 
 ---
 
@@ -174,10 +202,10 @@ stops and ~2K routes — small enough that the technology barely matters:
   id.
 
 This is a natural fit for **SQLite (via Room)** — already in the app — with an FTS
-table for M3. It can ship inside the CSR bundle from the CDN (same build, same
-atomic swap) or be carried as a sidecar file. No graph DB, no ObjectBox required
-here; the earlier ObjectBox lean was solving a hot-path problem that the CSR
-binary already solves better.
+table for M3. It is built alongside the CSR by the same import step (on-device or,
+if §4 lands on a CDN, server-side) and swapped atomically with it. No graph DB, no
+ObjectBox required here; the earlier ObjectBox lean was solving a hot-path problem
+that the CSR binary already solves better.
 
 ---
 
@@ -213,10 +241,12 @@ architectural decision should depend on fares being present until then.
 1. **Algorithm**: RAPTOR (round-based, not graph search) → no graph database.
 2. **Hot path**: pre-built CSR `int[]` arrays, `mmap`'d from a binary file. No DB
    on the routing path. App start is a `mmap`, not a parse.
-3. **Build location**: server-side pipeline builds the CSR once; clients download
-   it from a CDN. The client ships **no GTFS parser**.
-4. **Versioning**: CDN path namespaced by `formatVersion` (app-pinned) ×
-   `feedVersion` (weekly); `sha256` integrity; atomic on-device swap.
+3. **Build location**: *undecided, gated on a benchmark.* Plain RAPTOR → build
+   on-device (no CDN; a CDN would be a backend we own for zero routing-perf gain).
+   Only a preprocessing-heavy algorithm the phone cannot build itself justifies a
+   server-side build + CDN — and then on performance grounds, not convenience.
+4. **Versioning**: `formatVersion` (app-pinned) × `feedVersion` (weekly); atomic
+   on-device swap; `sha256` integrity if downloaded.
 5. **Cold path**: ordinary SQLite/Room + FTS over ~30K stops for search and
    display lookups.
 6. **Real-time**: client-side in-memory overlay from the GTFS-RT feed, rebuilt
@@ -227,8 +257,11 @@ architectural decision should depend on fares being present until then.
 
 ### Open spikes / measurements before build
 
-- [ ] Benchmark CSR build time on a representative device (validates the
-      "build server-side" payoff and the import job design).
+- [ ] **Benchmark plain RAPTOR query latency on a representative device.** This is
+      the decision gate for §4: acceptable → build on-device, no CDN; too slow →
+      preprocessing-heavy algorithm → server build + CDN.
+- [ ] Benchmark CSR build time on a representative device (sizing the weekly
+      background import job).
 - [ ] Measure CSR size on disk and compressed-over-wire (validates CDN transfer
       and disk-budget assumptions).
 - [ ] Inspect Swiss `fare_rules.txt` / `fare_attributes.txt` coverage (FA1/FA2).

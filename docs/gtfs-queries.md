@@ -771,6 +771,7 @@ fares being present in GTFS until that is verified.
 Storage and technology decisions derived from this catalogue are recorded in
 [`gtfs-storage-architecture.md`](./gtfs-storage-architecture.md). In short:
 RAPTOR is not a graph search, so no graph DB; the hot path (R1–R4) is a
-memory-mapped CSR binary built server-side and served from a CDN; the cold path
-(M/J/S queries) is an ordinary indexed store; real-time stays a client-side
-in-memory overlay.
+memory-mapped CSR binary (built on-device for plain RAPTOR; server-side + CDN
+only if a preprocessing-heavy algorithm the phone can't build is adopted — gated
+on a latency benchmark); the cold path (M/J/S queries) is an ordinary indexed
+store; real-time stays a client-side in-memory overlay.
