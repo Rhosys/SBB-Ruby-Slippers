@@ -189,8 +189,8 @@ measurement:
 3. If we need faster → adopt a preprocessing-heavy algorithm → **server build +
    CDN is mandatory** and pays for itself in query latency.
 
-Note: multi-origin (M4) does *not* push us toward preprocessing — RAPTOR seeds
-multiple origin stops in round 0 at negligible extra cost.
+Routing always has a single departure point — "From Anywhere" is a text search
+resolving to one origin before routing starts.
 
 ### Versioning & integrity (applies to either build location)
 
@@ -209,8 +209,7 @@ Whether the binary is built on-device or downloaded, the same discipline holds:
 
 The v1 `transport.opendata.ch` REST path is retained as graceful degradation:
 fresh install offline, or no CSR built/downloaded yet → fall back to
-`ApiTransportRepository` for basic queries. Degraded (no multi-origin, no offline
-routing) but functional.
+`ApiTransportRepository` for basic queries. Degraded (no offline routing) but functional.
 
 ---
 

@@ -221,8 +221,8 @@ that radius with the estimated walk time to each.
 
 **When it fires:**
 Once per origin or destination place, before RAPTOR starts. If the user has
-saved three places and the app is doing a multi-origin query, M1 fires three
-times. The results seed RAPTOR's initial labels (for origins) or define the
+the user's home is a saved place. M1 fires once per query origin or destination.
+The results seed the routing engine's initial labels (for origins) or define the
 target stop set (for destinations).
 
 **Why it cannot be skipped:**
@@ -303,27 +303,6 @@ needed for responsive autocomplete. The importance signal must be pre-computed
 at import time.
 
 ---
-
-### M4 — "Seed RAPTOR from all my saved places at once."
-
-**Full question:**
-For each saved place in the app, run M1 and merge all the resulting
-(stop_id, walk_time) pairs into a single initial label set for RAPTOR.
-
-**When it fires:**
-When the app-open scorer determines the user's intent is ambiguous — "I'm
-probably going somewhere but not sure which origin applies." RAPTOR starts
-with labels for all stops near all saved places simultaneously.
-
-**Why it cannot be skipped:**
-Multi-origin routing is one of V2's core features. Without it, the app must
-pick one origin and commit, potentially missing a faster route from a
-different nearby starting point.
-
-**What it tells us about the data:**
-This is not a new data query — it is M1 run multiple times. It does tell us
-that M1 must be cheap enough to call 3–5 times in quick succession before
-routing starts, reinforcing the need for a fast spatial lookup.
 
 ---
 

@@ -1,6 +1,6 @@
 # V2 Planning — open questions
 
-V2 scope: on-device routing engine, multi-origin search, fares, a
+V2 scope: on-device routing engine, fares, a
 real-time home-screen widget, and Wear OS. We work through these one at a time.
 Each question records its status and, once decided, where the decision lives.
 
@@ -123,14 +123,6 @@ Failure modes are independent:
 The UI can show an on-device result even when the REST call fails, and vice versa.
 "SBB recommended" is surfaced only when the REST call succeeds; it does not block
 or degrade the on-device result display.
-
----
-
-## Multi-origin
-
-### 🔲 Q5 — Results presentation for "From Anywhere"
-Per-origin connection lists ("from Home 12:03, from Office 12:11"), or just the
-globally earliest arrival regardless of origin?
 
 ---
 
