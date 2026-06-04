@@ -107,11 +107,22 @@ account (see QA1).
 **Prerequisite:** opentransportdata.swiss token (Todo #5 in `todo.md`) — the free
 `transport.opendata.ch` API does not serve GTFS-RT.
 
-### 🔲 Q4 — Migration of the v1 REST path
-Keep `ApiTransportRepository` as a named fallback while RAPTOR is built, or remove
-it the moment RAPTOR passes the same tests?
-*(Note: §4 of the architecture doc already leans toward keeping it as the
-offline / no-CSR / CDN-unreachable fallback — confirm here.)*
+### ✅ Q4 — Migration of the v1 REST path
+**Decided: two explicit, independent sources with separate retry and failure modes.**
+
+`RaptorTransportRepository` and `ApiTransportRepository` are two distinct named
+bindings in DI — not merged behind a single `TransportRepository` binding. Each
+has its own retry policy, its own failure handling, and its own result type.
+The `ConnectionSearchViewModel` holds both and coordinates them in parallel.
+
+Failure modes are independent:
+- RAPTOR can fail: CSR not yet built, budget exhausted without reaching
+  destination, missing calendar data.
+- REST API can fail: network error, rate limit (3 queries/min), server error.
+
+The UI can show a RAPTOR result even when the REST call fails, and vice versa.
+"SBB recommended" is surfaced only when the REST call succeeds; it does not block
+or degrade the RAPTOR result display.
 
 ---
 
