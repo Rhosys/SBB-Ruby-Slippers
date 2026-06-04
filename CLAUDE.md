@@ -81,14 +81,26 @@ deployment/
 .gitlab-ci.yml                 ← GitLab CI: validate + signed-AAB release pipeline
 ```
 
-## Known gaps (v1 — ship after these are addressed)
+## Tile interaction model
 
-- **Widget**: `DepartureWidget` is a layout placeholder; needs to read from `JourneyStateHolder`
-- **TripHistory**: `TripHistoryDao` exists but no ViewModel calls `insert` yet
-- **Location permission**: `HomeViewModel` checks for permission; UI must call `ActivityResultLauncher` to actually request it
-- **Calendar permission**: `CalendarSyncWorker` must check `READ_CALENDAR` at runtime before querying `CalendarContract`
-- **Drag-to-route**: tile-grid click works; drag gesture between tiles is not yet implemented
-- **Recurring route scoring**: app-open scorer only scores `SavedRoute`; `RecurringRoute` RRULE matching is TODO
+- **Tap** a place tile → routes from the user's current GPS location to that place
+  (HomeViewModel.routeFromCurrentLocationTo).
+- **Drag** from one tile to another → draws a dashed directed line on screen while
+  dragging; on release navigates to ConnectionSearchScreen with from/to pre-filled.
+  Source tile highlights in primary, target tile highlights in secondary, Canvas
+  overlay draws the line in real-time.
+
+## Known gaps (v2)
+
+- **RT token**: GtfsRtRefreshWorker URL requires a free token from opentransportdata.swiss;
+  wire the token through UserPreferencesRepository once token-onboarding is built.
+- **RT per-leg delays**: GtfsRtStore wired into JourneyStripViewModel for banner alerts;
+  per-leg delay overlay (red "+Xmin" on individual stops) requires stationId on Stop
+  objects from local GTFS routing (already set) and from the remote API (TODO).
+- **Widget geofence**: DepartureWidget reads from JourneyStateHolder; geofence-driven
+  auto-clear is a v2 enhancement.
+- **Wear OS companion**, **Fares**, **Sector recommendations**, **Journey sharing**,
+  **Android Auto Backup** — all v2.
 
 ## Data source
 
