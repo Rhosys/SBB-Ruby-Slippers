@@ -149,13 +149,27 @@ etc.). All fare displays adjust to the user's profile. A GA holder sees
 
 ## Home-screen widget
 
-### 🔲 Q8 — Widget modes
-Journey monitor only (tracks locked-in trip) / departure board only (next N
-departures from a pinned place) / both with user-selectable config?
+### ✅ Q8 — Widget modes
+**Decided: one widget, three automatic states — no user configuration.**
 
-### 🔲 Q9 — Widget config activity
-Let the user configure via an "Edit" tap on the home screen, or just pick up the
-default home place automatically?
+| State | Condition | Shows |
+|---|---|---|
+| Journey active | A trip is locked in | Active leg: next stop, time remaining, delay badge |
+| At saved location | No active journey + geofence entry for a saved place | Departure board: next N departures from that place |
+| Idle | Neither of the above | Nothing (blank / app icon) |
+
+**Battery design:**
+- Journey active: widget updates piggy-back on the RT poll already running for
+  the active journey. Zero extra battery cost.
+- At saved location: **Android Geofencing** (not continuous GPS) detects
+  entry/exit of each saved place's radius. Low-power significant-location-change
+  detector, not GPS. The stationboard RT poll starts only when a geofence fires
+  and stops on geofence exit.
+- Idle: no polling, no location work, widget is static.
+
+### ✅ Q9 — Widget config activity
+**Decided: no config activity.** Widget reads saved places automatically.
+No user setup required.
 
 ---
 
