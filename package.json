@@ -2,6 +2,12 @@
   "private": true,
   "scripts": {
     "prepare": "husky",
+    "setup": "bash scripts/setup.sh",
+    "start": "bash scripts/dev.sh debug",
+    "start:release": "bash scripts/dev.sh release",
+    "emulator:create": "bash scripts/emulator-create.sh",
+    "emulator:start": "bash scripts/emulator-start.sh",
+    "emulator:delete": "bash scripts/emulator-delete.sh",
     "test": "jest",
     "deploy:play-store": "tsx deployment/deploy-play-store.ts",
     "deploy:notify": "tsx deployment/notify-deploy.ts"
