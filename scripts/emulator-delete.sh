@@ -3,7 +3,7 @@
 # Run via: npm run emulator:delete
 set -euo pipefail
 
-AVD_NAME="SbbAVD"
+AVD_NAME="WorkspaceAVD"
 AVDMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/avdmanager"
 
 if [ ! -f "$AVDMANAGER" ]; then

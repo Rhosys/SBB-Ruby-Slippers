@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# emulator-start.sh — Start the SbbAVD emulator in foreground.
+# emulator-start.sh — Start the WorkspaceAVD emulator in foreground.
 #
 # Run via:  npm run emulator:start
 #
@@ -8,7 +8,7 @@
 # =============================================================================
 set -euo pipefail
 
-AVD_NAME="SbbAVD"
+AVD_NAME="WorkspaceAVD"
 
 BOLD='\033[1m'
 GREEN='\033[0;32m'
