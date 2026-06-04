@@ -242,6 +242,20 @@ required; user saves the file wherever they want.
 
 ---
 
+## Return trip
+
+### 🔲 QRT1 — "Plan return trip" button
+On the journey detail / active journey strip, a button that opens a new connection
+search pre-filled with:
+- Origin and destination **swapped**
+- Routing time set to **DepartAfter** the **arrival time** of the current trip
+- Date carried forward (handles overnight trips correctly)
+
+Tapping it is equivalent to the user manually reversing the search and entering
+the arrival time — just one tap instead of several.
+
+---
+
 ## Reachability screen
 
 ### 🔲 QR1 — "Where can I get by this time?"
