@@ -264,5 +264,26 @@ Pending decisions:
 
 ## Release order
 
-### 🔲 Q12 — What ships first
-Routing engine / widget / Wear OS / fares — or is this all one V2 release?
+### ✅ Q12 — Release order and build process
+**Decided: build everything, serially, one feature at a time. TDD throughout.
+Ask UX/reliability/performance questions as each feature is built. CI benchmarks
+on every feature with a measurable cost.**
+
+**Build order** (each depends on the previous):
+1. **Routing engine** — CSR binary format, import pipeline, routing algorithm,
+   `LocalTransportRepository`, progressive `Flow`-based results, state persistence
+2. **RT layer** — GTFS-RT TripUpdates + Alerts, state re-computation triggers
+   (time, location, delay), alert categorization
+3. **Widget** — geofence-driven, 3 automatic states, battery-optimized
+4. **Wear OS** — tile + app screen + notification relay via Wearable Data Layer
+5. **Fares** — gated on feed-coverage spike; Level C with fare profile
+6. **Sector recommendations** — gated on Perron data investigation
+7. **Journey sharing** — deep link, Android share sheet, web fallback
+8. **Android Auto Backup** — manifest config + backup rules
+
+**Process per feature:**
+- Tests first; iterate until green
+- Ask questions as implementation raises UX, reliability, or performance concerns
+- CI benchmark jobs for any feature with a measurable cost (routing query latency
+  cold/warm, CSR build time, geofence trigger latency, etc.)
+- Audit before moving to the next feature
