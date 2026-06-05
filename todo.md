@@ -42,16 +42,57 @@ deploy pipeline runs there. Set the project variable:
 (AWS infra reuses existing `GitLabRunnerRole` + `alias/deployment-encryption-key` —
 no AWS changes needed beyond the keystore in Todo 1.)
 
-### 🔲 5. (Optional) opentransportdata.swiss token
-If/when official real-time data (OJP 2.0, delay feeds, etc.) is needed beyond
-the free `transport.opendata.ch` API, register at `opentransportdata.swiss` for
-a free API token and add it as a GitLab/GitHub secret.
+### 🔲 5. Register at opentransportdata.swiss and wire the API token
+Free registration at `opentransportdata.swiss` → `api-manager.opentransportdata.swiss`.
+Two things unlock immediately with the token:
 
-### 🔲 6. (Optional) Branded launcher icon
+- **GTFS-RT** — real-time trip-update and service-alert protobuf feed.
+  `GtfsRtRefreshWorker` already calls this URL but has a placeholder constant.
+  Wire the token through `UserPreferencesRepository` (new `stringPreferencesKey`) or
+  as a build-time `BuildConfig` field (better: keep it server-side once the backend
+  proxy exists — see Backend Service Todos).
+- **OJP 2.0** — `GET /ojp` XML journey planner with 50 req/min free tier.
+  The beta **OJP Fare** endpoint returns price information per connection, which is
+  the first step toward showing fares in `TripReviewScreen`.
+
+Add the token as a secret to GitHub Actions (`OPENTRANSPORT_API_TOKEN`) and to the
+GitLab project variable of the same name once the mirror exists (Todo 4).
+
+### 🔲 6. SwissPass / SwissID OAuth 2.0 login
+Register with SBB's developer portal and implement "Login with SwissPass" on the
+onboarding screen. Uses standard OAuth 2.0 RFC 8252 + PKCE — no SDK required
+(the iOS SDK is public; no Android SDK published, but raw OIDC endpoints work fine).
+
+What it unlocks for the user:
+- Read subscription tier (GA, Half-Fare, none) → `UserPreferencesRepository` →
+  apply discount to displayed fares from OJP Fare API.
+- Single sign-on across SBB partner services.
+
+Steps:
+1. Register app at `developer.sbb.ch` — get client ID + OIDC metadata URL.
+2. Add `net.openid:appauth` (AppAuth Android) to `libs.versions.toml`.
+3. Add `SwissPassAuthRepository` (new) that wraps the AppAuth flow.
+4. Add "Continue with SwissPass" button to `OnboardingScreen` (optional step).
+5. Store token/tier in DataStore; expose `subscriptionTier: Flow<SubscriptionTier>` from
+   `UserPreferencesRepository`.
+
+### 🔲 7. Contact SBB partner team — B2P API access + deep link spec
+Two things only unlock through a formal contact with SBB:
+
+**B2P API** (`developer.sbb.ch/apis/b2p`) — requires SBB approval after registering.
+Gives live supersaver pricing, seat reservations, and pre-booking with exclusive holds.
+Needed before `TripReviewScreen` can offer in-app ticket purchase.
+Contact: `opendata@sbb.ch` with a brief description of the app.
+
+**Deep link spec** — `sbb://` URI scheme exists in SBB Mobile but is not publicly
+documented. Request the spec to allow handing off to SBB Mobile from `TripReviewScreen`
+("Buy in SBB Mobile" fallback when B2P is not yet wired up).
+
+### 🔲 8. (Optional) Branded launcher icon
 Replace the placeholder launcher icon with a custom SBB Ruby Slippers icon in
 `app/src/main/res/drawable/ic_launcher_*.xml` and `mipmap-anydpi-v26/`.
 
-### 🔲 7. (Optional) PostHog project
+### 🔲 9. (Optional) PostHog project
 Create a dedicated PostHog project for SBB Ruby Slippers at `live.rhosys.ch`
 and replace the `phc_D195...` key in `SbbRubySlippersApp.kt` with the new key.
 Currently reuses the Lyra (Kinetic-Jewelry) project key.
@@ -381,18 +422,31 @@ the full pass list for a journey.
 Persist favourite stations using DataStore; show them as quick-pick chips
 in the stationboard screen.
 
-### 🔲 Journey restore on app reopen
-When the process is killed while a journey is in progress, reopen directly
-to `JourneyStripScreen` instead of Home. Persist the active journey as a
-single `PersistedJourney` JSON key (see DataStore strategy above) and restore
-by re-fetching connections on first `JourneyStripViewModel` init.
-Status: implementation in progress — blocked on DataStore key fix above.
+### ✅ Journey restore on app reopen
+Active journey persisted as `PersistedJourney` JSON in DataStore. On fresh
+process start `MainActivity` navigates to the Journeys tab if `arrivalEpoch > now`.
+`JourneysViewModel` re-fetches connections on init if `JourneyStateHolder` is empty.
 
 ### 🔲 Place management (home screen edit mode)
 Add/edit/delete/reorder the place tiles shown on the Home screen.
 Blocked on design decision above (inline edit mode vs separate screen).
 
-### 🔲 Home screen: active-journey banner
-When `JourneyStateHolder` has an active journey and the user navigates to
-Home, show a persistent banner ("Bern — 08:57, IC 1 — tap to resume") above
-the tile grid instead of silently ignoring the in-progress trip.
+### ✅ Home screen: active-journey banner
+Implemented as a top sheet that slides down from the top of HomeScreen.
+Shows departure/arrival station + time; tap navigates to Journeys/Active;
+swipe-up clears the journey. Active journey takes precedence over scorer result.
+
+### 🔲 Fare display in TripReviewScreen
+Once opentransportdata.swiss token is registered (Infra Todo 5), call the OJP Fare
+beta endpoint for the selected connection and display the price (full fare, Half-Fare,
+GA-free) in `TripReviewScreen`. Requires `subscriptionTier` from SwissPass OAuth
+(Infra Todo 6) to pick the right price column.
+Implementation sketch: `OjpFareRepository` → `GET /ojp` with `<OJPFareRequest>` XML →
+parse `<FareResult>` → emit `FareResult(fullFareCHF, halfFareCHF)` domain type →
+show in TripReviewScreen below the departure/arrival header.
+
+### 🔲 "Buy in SBB Mobile" handoff
+Once the deep link spec is obtained (Infra Todo 7), add a secondary button in
+`TripReviewScreen` that opens SBB Mobile at the same connection. Fallback for when
+B2P in-app purchase is not yet wired up.
+URI sketch: `sbb://journey?from=<id>&to=<id>&date=<ISO>&via=<id>` (spec TBD).
