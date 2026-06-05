@@ -14,10 +14,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -27,6 +24,7 @@ import ch.rhosys.sbb.ui.navigation.AppNavHost
 import ch.rhosys.sbb.ui.navigation.Screen
 import ch.rhosys.sbb.ui.theme.SbbRubySlippersTheme
 import dagger.hilt.android.AndroidEntryPoint
+import java.time.Instant
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -36,6 +34,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Captured once: true only when the process is freshly started, not resumed.
+        val isFreshStart = savedInstanceState == null
 
         setContent {
             SbbRubySlippersTheme {
@@ -48,7 +49,7 @@ class MainActivity : ComponentActivity() {
                 val hasOnboarded by prefs.hasCompletedOnboarding
                     .collectAsStateWithLifecycle(initialValue = null)
 
-                if (hasOnboarded == null) return@SbbRubySlippersTheme  // wait for DataStore
+                if (hasOnboarded == null) return@SbbRubySlippersTheme
 
                 val startDestination = if (hasOnboarded == true)
                     Screen.Home.route
@@ -58,6 +59,18 @@ class MainActivity : ComponentActivity() {
                 val navController = rememberNavController()
                 val backStack by navController.currentBackStackEntryAsState()
                 val currentRoute = backStack?.destination?.route
+
+                // On a fresh process start, navigate to the Journey screen if there is
+                // an unfinished journey persisted. LaunchedEffect runs after the NavHost
+                // is composed, so the navigation target is always valid.
+                if (isFreshStart && hasOnboarded == true) {
+                    LaunchedEffect(Unit) {
+                        val journey = prefs.activeJourney.first() ?: return@LaunchedEffect
+                        if (journey.arrivalEpoch > Instant.now().epochSecond) {
+                            navController.navigate(Screen.Journey.route)
+                        }
+                    }
+                }
 
                 val tabScreens = listOf(
                     Triple(Screen.Home,         "Home",       Icons.Default.Home),
