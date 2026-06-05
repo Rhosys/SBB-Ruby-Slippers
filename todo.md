@@ -364,7 +364,7 @@ The backend validates the token and forwards the downstream request without the
 Lessons captured from implementation mistakes. Apply these before writing code,
 not after a review catches the problem.
 
-### 🔲 DataStore: store compound values as one serialized key, not many primitive keys
+### ✅ DataStore: store compound values as one serialized key, not many primitive keys
 
 **Failure**: `ACTIVE_JOURNEY_FROM` + `ACTIVE_JOURNEY_TO` + `ACTIVE_JOURNEY_ARRIVAL`
 were added as three separate DataStore keys for what is one logical value. This is

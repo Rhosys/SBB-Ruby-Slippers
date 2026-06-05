@@ -1,25 +1,17 @@
 package ch.rhosys.sbb.ui.places
 
-import android.Manifest
-import android.content.Context
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import ch.rhosys.sbb.data.local.location.LocationProvider
 import ch.rhosys.sbb.domain.PlaceRepository
 import ch.rhosys.sbb.domain.TransportRepository
 import ch.rhosys.sbb.domain.model.Place
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
-import com.google.android.gms.tasks.CancellationTokenSource
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 
 private const val PROXIMITY_METERS = 500.0
@@ -45,7 +37,7 @@ data class SuggestionItem(
 
 @HiltViewModel
 class PlacesViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
+    private val locationProvider: LocationProvider,
     private val placeRepository: PlaceRepository,
     private val transportRepository: TransportRepository,
 ) : ViewModel() {
@@ -65,7 +57,7 @@ class PlacesViewModel @Inject constructor(
 
     fun onTileTap(place: Place) {
         viewModelScope.launch {
-            val location = getLocationOrNull()
+            val location = locationProvider.getLocationOrNull()
             val from = if (location != null) {
                 val nearest = _uiState.value.places
                     .filter { it.id != place.id }
@@ -169,18 +161,5 @@ class PlacesViewModel @Inject constructor(
 
     fun deletePlace(id: Long) {
         viewModelScope.launch { placeRepository.deletePlace(id) }
-    }
-
-    private suspend fun getLocationOrNull(): Pair<Double, Double>? {
-        val hasPermission = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.ACCESS_COARSE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-        if (!hasPermission) return null
-        return runCatching {
-            val client = LocationServices.getFusedLocationProviderClient(context)
-            val cts = CancellationTokenSource()
-            val loc = client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts.token).await()
-            loc?.let { Pair(it.latitude, it.longitude) }
-        }.getOrNull()
     }
 }
