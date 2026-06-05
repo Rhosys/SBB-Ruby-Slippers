@@ -24,7 +24,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
@@ -43,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,12 +64,19 @@ import ch.rhosys.sbb.domain.model.Place
 @Composable
 fun PlacesScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToSearch: (from: String, to: String) -> Unit,
     viewModel: PlacesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
     var draggingId by remember { mutableStateOf<Long?>(null) }
     var dragOverTrash by remember { mutableStateOf(false) }
     val trashBoundsState = remember { mutableStateOf<Rect?>(null) }
+
+    LaunchedEffect(state.pendingNavigateTo) {
+        val nav = state.pendingNavigateTo ?: return@LaunchedEffect
+        onNavigateToSearch(nav.from, nav.to)
+        viewModel.onNavigationHandled()
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
@@ -93,7 +100,7 @@ fun PlacesScreen(
                 Spacer(Modifier.height(8.dp))
 
                 Text(
-                    "Tap a tile to set it as your home place. Long-press and drag to the trash to remove.",
+                    "Tap a tile to find connections. Long-press and drag to the trash to remove.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -108,7 +115,7 @@ fun PlacesScreen(
                         DraggablePlaceEditTile(
                             place = place,
                             isDragging = draggingId == place.id,
-                            onSetHome = { viewModel.setHome(place.id) },
+                            onTap = { viewModel.onTileTap(place) },
                             onDragStart = {
                                 draggingId = place.id
                                 dragOverTrash = false
@@ -186,7 +193,7 @@ fun PlacesScreen(
 private fun DraggablePlaceEditTile(
     place: Place,
     isDragging: Boolean,
-    onSetHome: () -> Unit,
+    onTap: () -> Unit,
     onDragStart: () -> Unit,
     onDragMove: (overTrash: Boolean) -> Unit,
     onDragEnd: (hitTrash: Boolean) -> Unit,
@@ -226,23 +233,16 @@ private fun DraggablePlaceEditTile(
             },
     ) {
         FilledTonalButton(
-            onClick = onSetHome,
+            onClick = onTap,
             contentPadding = PaddingValues(start = 10.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
-            colors = when {
-                isDragging -> ButtonDefaults.filledTonalButtonColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                )
-                place.isHome -> ButtonDefaults.filledTonalButtonColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-                else -> ButtonDefaults.filledTonalButtonColors()
-            },
+            colors = if (isDragging) ButtonDefaults.filledTonalButtonColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+            ) else ButtonDefaults.filledTonalButtonColors(),
         ) {
             Icon(
-                if (place.isHome) Icons.Default.Home else Icons.Default.LocationOn,
-                contentDescription = if (place.isHome) "Home" else "Place",
+                Icons.Default.LocationOn,
+                contentDescription = "Place",
                 modifier = Modifier.size(16.dp),
             )
             Spacer(Modifier.size(4.dp))
