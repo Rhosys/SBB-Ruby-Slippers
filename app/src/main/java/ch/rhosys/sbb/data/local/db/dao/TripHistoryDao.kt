@@ -12,6 +12,9 @@ interface TripHistoryDao {
     @Query("SELECT * FROM trip_history ORDER BY searchedAtMillis DESC LIMIT 50")
     fun getRecentHistory(): Flow<List<TripHistoryEntity>>
 
+    @Query("SELECT * FROM trip_history WHERE wasLockedIn = 1 ORDER BY departureEpoch DESC, searchedAtMillis DESC")
+    fun getLockedInHistory(): Flow<List<TripHistoryEntity>>
+
     @Query("SELECT * FROM trip_history ORDER BY searchedAtMillis DESC LIMIT :limit")
     suspend fun getRecentHistoryOnce(limit: Int = 20): List<TripHistoryEntity>
 
@@ -20,4 +23,7 @@ interface TripHistoryDao {
 
     @Query("DELETE FROM trip_history WHERE id NOT IN (SELECT id FROM trip_history ORDER BY searchedAtMillis DESC LIMIT 200)")
     suspend fun pruneOldEntries()
+
+    @Query("DELETE FROM trip_history WHERE wasLockedIn = 0 AND (departureEpoch IS NULL OR departureEpoch < :nowEpoch)")
+    suspend fun pruneExpiredBrowsed(nowEpoch: Long)
 }

@@ -1,6 +1,6 @@
 package ch.rhosys.sbb.ui.search
 
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,28 +19,26 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import ch.rhosys.sbb.R
 import ch.rhosys.sbb.domain.model.Connection
-import kotlin.math.abs
 
 @Composable
 fun ConnectionSearchScreen(
-    onNavigateToJourney: () -> Unit,
+    onNavigateToReview: () -> Unit,
     viewModel: ConnectionSearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -98,9 +96,9 @@ fun ConnectionSearchScreen(
                     ConnectionCard(
                         connection = connection,
                         isHero = connection == state.connections.firstOrNull(),
-                        onLockIn = {
-                            viewModel.lockIn(connection)
-                            onNavigateToJourney()
+                        onClick = {
+                            viewModel.openTripReview(connection)
+                            onNavigateToReview()
                         },
                     )
                 }
@@ -143,59 +141,65 @@ private fun AutocompleteField(
 private fun ConnectionCard(
     connection: Connection,
     isHero: Boolean,
-    onLockIn: () -> Unit,
+    onClick: () -> Unit,
 ) {
-    var offsetX by remember { mutableStateOf(0f) }
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragEnd = {
-                        if (abs(offsetX) > 120f) onLockIn()
-                        offsetX = 0f
-                    },
-                    onDragCancel = { offsetX = 0f },
-                ) { _, dragAmount -> offsetX += dragAmount }
-            },
+            .clickable(onClick = onClick),
         colors = if (isHero) CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer,
         ) else CardDefaults.cardColors(),
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(connection.departure.displayTime(), style = MaterialTheme.typography.titleMedium)
-                Text(connection.arrival.displayTime(), style = MaterialTheme.typography.titleMedium)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(connection.departure.displayTime(),
+                        style = MaterialTheme.typography.titleMedium)
+                    Text(connection.arrival.displayTime(),
+                        style = MaterialTheme.typography.titleMedium)
+                }
+                val lines = connection.lineNames.joinToString(" → ")
+                val transfers = connection.transfers
+                Text(
+                    text = buildString {
+                        if (lines.isNotBlank()) append(lines)
+                        if (transfers > 0) append(" · $transfers transfer${if (transfers > 1) "s" else ""}")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (connection.departure.isDelayed) {
+                    Text(
+                        "+${connection.departure.delayMinutes} min",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                if (isHero) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Tap to review →",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
             }
-            val lines = connection.lineNames.joinToString(" → ")
-            val transfers = connection.transfers
-            Text(
-                text = buildString {
-                    if (lines.isNotBlank()) append(lines)
-                    if (transfers > 0) append(" · $transfers transfer${if (transfers > 1) "s" else ""}")
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = "Review trip",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 8.dp),
             )
-            if (connection.departure.isDelayed) {
-                Text(
-                    "+${connection.departure.delayMinutes} min",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-            if (isHero) {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Swipe to lock in →",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-            }
         }
     }
 }

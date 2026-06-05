@@ -12,4 +12,5 @@ data class TripHistoryEntity(
     val toLng: Double,
     val searchedAtMillis: Long = System.currentTimeMillis(),
     val wasLockedIn: Boolean = false,
+    val departureEpoch: Long? = null,
 )

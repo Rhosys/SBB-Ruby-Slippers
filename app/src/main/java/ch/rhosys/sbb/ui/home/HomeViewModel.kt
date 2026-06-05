@@ -31,17 +31,28 @@ import java.time.LocalTime
 import java.time.ZonedDateTime
 import javax.inject.Inject
 
-sealed class HomeUiState {
-    object Loading : HomeUiState()
-    data class Hero(
-        val destination: String,
-        val connections: List<Connection>,
-        val from: SearchEndpoint,
-        val to: SearchEndpoint,
-        val places: List<Place>,
-    ) : HomeUiState()
-    data class TileGrid(val places: List<Place>) : HomeUiState()
-}
+data class ScorerResult(
+    val destination: String,
+    val connections: List<Connection>,
+    val from: SearchEndpoint,
+    val to: SearchEndpoint,
+)
+
+data class ActiveJourneyBanner(
+    val connection: Connection,
+    val from: SearchEndpoint,
+    val to: SearchEndpoint,
+)
+
+data class HomeUiState(
+    val isLoading: Boolean = true,
+    val places: List<Place> = emptyList(),
+    val scorerResult: ScorerResult? = null,
+    val activeJourney: ActiveJourneyBanner? = null,
+    // Inline search form
+    val fromText: String = "",
+    val toText: String = "",
+)
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -52,21 +63,45 @@ class HomeViewModel @Inject constructor(
     private val journeyStateHolder: JourneyStateHolder,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
+    private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState
 
     init {
         viewModelScope.launch { infer() }
+        viewModelScope.launch {
+            journeyStateHolder.activeJourney.collect { activeJourney ->
+                _uiState.value = _uiState.value.copy(
+                    activeJourney = if (activeJourney != null) {
+                        ActiveJourneyBanner(activeJourney.connection, activeJourney.from, activeJourney.to)
+                    } else null
+                )
+            }
+        }
     }
 
     fun refresh() {
         viewModelScope.launch { infer() }
     }
 
-    // Tap-to-route: immediately query from the user's current GPS position to the given place.
+    fun onFromTextChanged(value: String) {
+        _uiState.value = _uiState.value.copy(fromText = value)
+    }
+
+    fun onToTextChanged(value: String) {
+        _uiState.value = _uiState.value.copy(toText = value)
+    }
+
+    fun dismissScorer() {
+        _uiState.value = _uiState.value.copy(scorerResult = null)
+    }
+
+    fun abandonActiveJourney() {
+        journeyStateHolder.clear()
+    }
+
     fun routeFromCurrentLocationTo(place: Place) {
         viewModelScope.launch {
-            _uiState.value = HomeUiState.Loading
+            _uiState.value = _uiState.value.copy(isLoading = true)
             val places = placeRepository.getPlaces().first()
             val location = getLocationOrNull()
             val from = if (location != null)
@@ -78,35 +113,23 @@ class HomeViewModel @Inject constructor(
                 transportRepository.getConnections(from, place.toSearchEndpoint())
             }.getOrNull() ?: emptyList()
 
-            _uiState.value = if (connections.isNotEmpty()) {
-                HomeUiState.Hero(
-                    destination = place.name,
-                    connections = connections,
-                    from = from,
-                    to = place.toSearchEndpoint(),
-                    places = places,
-                )
-            } else {
-                HomeUiState.TileGrid(places)
-            }
-        }
-    }
-
-    fun lockIn(connection: Connection, from: SearchEndpoint, to: SearchEndpoint) {
-        journeyStateHolder.lockIn(connection, from, to)
-        viewModelScope.launch {
-            routeRepository.recordSearch(
-                fromName = from.displayName(),
-                toName = to.displayName(),
-                toLat = (to as? SearchEndpoint.NamedPlace)?.lat ?: 0.0,
-                toLng = (to as? SearchEndpoint.NamedPlace)?.lng ?: 0.0,
-                wasLockedIn = true,
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                scorerResult = if (connections.isNotEmpty()) {
+                    ScorerResult(
+                        destination = place.name,
+                        connections = connections,
+                        from = from,
+                        to = place.toSearchEndpoint(),
+                    )
+                } else null,
+                places = places,
             )
         }
     }
 
     private suspend fun infer() {
-        _uiState.value = HomeUiState.Loading
+        _uiState.value = _uiState.value.copy(isLoading = true)
         val places = placeRepository.getPlaces().first()
         val location = getLocationOrNull()
 
@@ -127,18 +150,21 @@ class HomeViewModel @Inject constructor(
             }.getOrNull() ?: emptyList()
 
             if (connections.isNotEmpty()) {
-                _uiState.value = HomeUiState.Hero(
-                    destination = candidate.destinationName,
-                    connections = connections,
-                    from = from,
-                    to = candidate.toDestinationEndpoint(),
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
                     places = places,
+                    scorerResult = ScorerResult(
+                        destination = candidate.destinationName,
+                        connections = connections,
+                        from = from,
+                        to = candidate.toDestinationEndpoint(),
+                    ),
                 )
                 return
             }
         }
 
-        _uiState.value = HomeUiState.TileGrid(places)
+        _uiState.value = _uiState.value.copy(isLoading = false, places = places)
     }
 
     private suspend fun scoreBestCandidate(
@@ -149,7 +175,6 @@ class HomeViewModel @Inject constructor(
         val now = Instant.now()
         val windowEnd = now.plusSeconds(2 * 60 * 60)
 
-        // 1. Imminent saved routes (within next 2 hours)
         val savedRoutes = routeRepository.getSavedRoutes().first()
         val imminentRoute = savedRoutes
             .filter { route ->
@@ -159,7 +184,6 @@ class HomeViewModel @Inject constructor(
             .minByOrNull { it.scheduledAt!! }
         if (imminentRoute != null) return imminentRoute
 
-        // 2. Recurring routes matching today's schedule
         val recurringRoutes = routeRepository.getRecurringRoutes().first()
         val recurringCandidate = recurringRoutes
             .filter { !it.isPaused && it.matchesToday() }
@@ -182,7 +206,6 @@ class HomeViewModel @Inject constructor(
             )
         }
 
-        // 3. If we're near a non-home place, suggest going Home
         val home = placeRepository.getHomePlace().first()
         if (nearestPlace != null && home != null && nearestPlace.id != home.id) {
             return SavedRoute(

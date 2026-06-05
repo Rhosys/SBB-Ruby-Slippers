@@ -35,7 +35,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Captured once: true only when the process is freshly started, not resumed.
         val isFreshStart = savedInstanceState == null
 
         setContent {
@@ -60,27 +59,23 @@ class MainActivity : ComponentActivity() {
                 val backStack by navController.currentBackStackEntryAsState()
                 val currentRoute = backStack?.destination?.route
 
-                // On a fresh process start, navigate to the Journey screen if there is
-                // an unfinished journey persisted. LaunchedEffect runs after the NavHost
-                // is composed, so the navigation target is always valid.
                 if (isFreshStart && hasOnboarded == true) {
                     LaunchedEffect(Unit) {
                         val journey = prefs.activeJourney.first() ?: return@LaunchedEffect
                         if (journey.arrivalEpoch > Instant.now().epochSecond) {
-                            navController.navigate(Screen.Journey.route)
+                            navController.navigate(Screen.Journeys.route)
                         }
                     }
                 }
 
                 val tabScreens = listOf(
-                    Triple(Screen.Home,         "Home",       Icons.Default.Home),
-                    Triple(Screen.Stationboard, "Departures", Icons.Default.DateRange),
-                    Triple(Screen.Settings,     "Settings",   Icons.Default.Settings),
+                    Triple(Screen.Home,     "Home",     Icons.Default.Home),
+                    Triple(Screen.Journeys, "Journeys", Icons.Default.DateRange),
+                    Triple(Screen.Settings, "Settings", Icons.Default.Settings),
                 )
 
                 val hideBottomNav = currentRoute in setOf(
                     Screen.Onboarding.route,
-                    Screen.Journey.route,
                 )
 
                 Scaffold(
