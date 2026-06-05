@@ -24,6 +24,6 @@ interface TripHistoryDao {
     @Query("DELETE FROM trip_history WHERE id NOT IN (SELECT id FROM trip_history ORDER BY searchedAtMillis DESC LIMIT 200)")
     suspend fun pruneOldEntries()
 
-    @Query("DELETE FROM trip_history WHERE wasLockedIn = 0 AND (departureEpoch IS NULL OR departureEpoch < :nowEpoch)")
+    @Query("DELETE FROM trip_history WHERE wasLockedIn = 0 AND arrivalEpoch IS NOT NULL AND arrivalEpoch < :nowEpoch")
     suspend fun pruneExpiredBrowsed(nowEpoch: Long)
 }

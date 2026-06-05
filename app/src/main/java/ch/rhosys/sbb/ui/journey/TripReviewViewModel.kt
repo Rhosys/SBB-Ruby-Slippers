@@ -40,7 +40,6 @@ class TripReviewViewModel @Inject constructor(
 
     private fun recordView() {
         val candidate = holder.candidate.value ?: return
-        val departureEpoch = candidate.connection.departure.effectiveTime?.epochSecond
         viewModelScope.launch {
             routeRepository.recordSearch(
                 fromName = candidate.from.displayName(),
@@ -48,7 +47,8 @@ class TripReviewViewModel @Inject constructor(
                 toLat = 0.0,
                 toLng = 0.0,
                 wasLockedIn = false,
-                departureEpoch = departureEpoch,
+                departureEpoch = candidate.connection.departure.effectiveTime?.epochSecond,
+                arrivalEpoch = candidate.connection.arrival.effectiveTime?.epochSecond,
             )
         }
     }
@@ -64,6 +64,7 @@ class TripReviewViewModel @Inject constructor(
                 toLng = 0.0,
                 wasLockedIn = true,
                 departureEpoch = candidate.connection.departure.effectiveTime?.epochSecond,
+                arrivalEpoch = candidate.connection.arrival.effectiveTime?.epochSecond,
             )
         }
         holder.clear()
