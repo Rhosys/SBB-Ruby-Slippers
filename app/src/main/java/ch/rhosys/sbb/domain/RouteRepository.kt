@@ -31,6 +31,7 @@ interface RouteRepository {
         toLng: Double,
         wasLockedIn: Boolean,
         departureEpoch: Long? = null,
+        arrivalEpoch: Long? = null,
     )
     suspend fun pruneExpiredBrowsedTrips()
 }

@@ -83,6 +83,7 @@ class RoomRouteRepository @Inject constructor(
         toLng: Double,
         wasLockedIn: Boolean,
         departureEpoch: Long?,
+        arrivalEpoch: Long?,
     ) {
         tripHistoryDao.insert(
             TripHistoryEntity(
@@ -92,6 +93,7 @@ class RoomRouteRepository @Inject constructor(
                 toLng = toLng,
                 wasLockedIn = wasLockedIn,
                 departureEpoch = departureEpoch,
+                arrivalEpoch = arrivalEpoch,
             )
         )
         tripHistoryDao.pruneOldEntries()
