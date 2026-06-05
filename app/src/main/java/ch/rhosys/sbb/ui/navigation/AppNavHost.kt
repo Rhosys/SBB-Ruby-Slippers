@@ -54,6 +54,9 @@ fun AppNavHost(
         composable(Screen.Places.route) {
             PlacesScreen(
                 onNavigateBack = { navController.popBackStack() },
+                onNavigateToSearch = { from, to ->
+                    navController.navigate(Screen.Search.withArgs(from, to))
+                },
             )
         }
 
