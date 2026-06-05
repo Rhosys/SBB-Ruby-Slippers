@@ -1,11 +1,8 @@
 package ch.rhosys.sbb.ui.home
 
-import android.Manifest
-import android.content.Context
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import ch.rhosys.sbb.data.local.location.LocationProvider
 import ch.rhosys.sbb.domain.PlaceRepository
 import ch.rhosys.sbb.domain.RouteRepository
 import ch.rhosys.sbb.domain.TransportRepository
@@ -15,16 +12,11 @@ import ch.rhosys.sbb.domain.model.RecurringRoute
 import ch.rhosys.sbb.domain.model.SavedRoute
 import ch.rhosys.sbb.domain.model.SearchEndpoint
 import ch.rhosys.sbb.ui.journey.JourneyStateHolder
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
-import com.google.android.gms.tasks.CancellationTokenSource
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalTime
@@ -49,14 +41,13 @@ data class HomeUiState(
     val places: List<Place> = emptyList(),
     val scorerResult: ScorerResult? = null,
     val activeJourney: ActiveJourneyBanner? = null,
-    // Inline search form
     val fromText: String = "",
     val toText: String = "",
 )
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
+    private val locationProvider: LocationProvider,
     private val placeRepository: PlaceRepository,
     private val routeRepository: RouteRepository,
     private val transportRepository: TransportRepository,
@@ -102,8 +93,7 @@ class HomeViewModel @Inject constructor(
     fun routeFromCurrentLocationTo(place: Place) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
-            val places = placeRepository.getPlaces().first()
-            val location = getLocationOrNull()
+            val location = locationProvider.getLocationOrNull()
             val from = if (location != null)
                 SearchEndpoint.CurrentLocation(location.first, location.second)
             else
@@ -123,7 +113,6 @@ class HomeViewModel @Inject constructor(
                         to = place.toSearchEndpoint(),
                     )
                 } else null,
-                places = places,
             )
         }
     }
@@ -131,19 +120,14 @@ class HomeViewModel @Inject constructor(
     private suspend fun infer() {
         _uiState.value = _uiState.value.copy(isLoading = true)
         val places = placeRepository.getPlaces().first()
-        val location = getLocationOrNull()
-
-        val nearestPlace = if (location != null) {
-            places.minByOrNull { it.distanceMetersTo(location.first, location.second) }
-        } else null
-
-        val candidate = scoreBestCandidate(location, nearestPlace, places)
+        val location = locationProvider.getLocationOrNull()
+        val candidate = scoreBestCandidate()
 
         if (candidate != null) {
             val from = if (location != null)
                 SearchEndpoint.CurrentLocation(location.first, location.second)
             else
-                SearchEndpoint.NamedPlace(nearestPlace?.name ?: "")
+                SearchEndpoint.NamedPlace("")
 
             val connections = runCatching {
                 transportRepository.getConnections(from, candidate.toDestinationEndpoint())
@@ -167,11 +151,7 @@ class HomeViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(isLoading = false, places = places)
     }
 
-    private suspend fun scoreBestCandidate(
-        location: Pair<Double, Double>?,
-        nearestPlace: Place?,
-        places: List<Place>,
-    ): SavedRoute? {
+    private suspend fun scoreBestCandidate(): SavedRoute? {
         val now = Instant.now()
         val windowEnd = now.plusSeconds(2 * 60 * 60)
 
@@ -207,21 +187,6 @@ class HomeViewModel @Inject constructor(
         }
 
         return null
-    }
-
-    private suspend fun getLocationOrNull(): Pair<Double, Double>? {
-        val hasPermission = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.ACCESS_COARSE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (!hasPermission) return null
-
-        return runCatching {
-            val client = LocationServices.getFusedLocationProviderClient(context)
-            val cts = CancellationTokenSource()
-            val loc = client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts.token).await()
-            loc?.let { Pair(it.latitude, it.longitude) }
-        }.getOrNull()
     }
 }
 
