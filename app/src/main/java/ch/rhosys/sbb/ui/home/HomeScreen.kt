@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.Button
@@ -39,6 +40,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -74,6 +76,7 @@ import ch.rhosys.sbb.domain.model.Place
 fun HomeScreen(
     onNavigateToSearch: (from: String, to: String) -> Unit,
     onNavigateToJourneys: () -> Unit,
+    onNavigateToPlaces: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -104,14 +107,26 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(horizontal = 16.dp),
         ) {
-            Spacer(Modifier.height(8.dp))
+            // Edit icon pinned to top-right
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                IconButton(onClick = onNavigateToPlaces) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "Manage places",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
 
             // Place tiles or giant + button — fills available space
             Box(Modifier.weight(1f)) {
                 if (state.places.isEmpty() && !state.isLoading) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         FloatingActionButton(
-                            onClick = { /* TODO: add place dialog */ },
+                            onClick = onNavigateToPlaces,
                             modifier = Modifier.size(120.dp),
                         ) {
                             Icon(

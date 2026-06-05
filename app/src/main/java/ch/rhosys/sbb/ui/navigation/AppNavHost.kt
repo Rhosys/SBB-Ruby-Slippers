@@ -9,6 +9,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import ch.rhosys.sbb.ui.fares.FaresTeaserScreen
 import ch.rhosys.sbb.ui.home.HomeScreen
+import ch.rhosys.sbb.ui.places.PlacesScreen
 import ch.rhosys.sbb.ui.journey.JourneysScreen
 import ch.rhosys.sbb.ui.journey.TripReviewScreen
 import ch.rhosys.sbb.ui.onboarding.OnboardingScreen
@@ -44,6 +45,15 @@ fun AppNavHost(
                 onNavigateToJourneys = {
                     navController.navigate(Screen.Journeys.route)
                 },
+                onNavigateToPlaces = {
+                    navController.navigate(Screen.Places.route)
+                },
+            )
+        }
+
+        composable(Screen.Places.route) {
+            PlacesScreen(
+                onNavigateBack = { navController.popBackStack() },
             )
         }
 
