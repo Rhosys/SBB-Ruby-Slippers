@@ -8,18 +8,21 @@ import ch.rhosys.sbb.data.local.routing.rt.RtAlert
 import ch.rhosys.sbb.domain.TransportRepository
 import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.Leg
+import ch.rhosys.sbb.domain.model.SearchEndpoint
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.time.Instant
 import javax.inject.Inject
 
 data class JourneyStripUiState(
     val activeConnection: Connection?,
     val switchPrompt: SwitchPrompt? = null,
     val isMonitoring: Boolean = true,
+    val isRestoring: Boolean = false,
     val rtAlerts: List<RtAlert> = emptyList(),
 )
 
@@ -43,8 +46,43 @@ class JourneyStripViewModel @Inject constructor(
     val uiState: StateFlow<JourneyStripUiState> = _uiState
 
     init {
+        if (journeyStateHolder.activeJourney.value == null) {
+            viewModelScope.launch { restoreJourney() }
+        }
         startMonitoring()
         observeRtAlerts()
+    }
+
+    private suspend fun restoreJourney() {
+        val persisted = prefs.activeJourney.first() ?: return
+        if (persisted.arrivalEpoch <= Instant.now().epochSecond) {
+            prefs.clearActiveJourney()
+            return
+        }
+
+        _uiState.value = _uiState.value.copy(isRestoring = true)
+
+        val connections = runCatching {
+            transportRepository.getConnections(
+                SearchEndpoint.NamedPlace(persisted.fromName),
+                SearchEndpoint.NamedPlace(persisted.toName),
+            )
+        }.getOrNull()
+
+        if (!connections.isNullOrEmpty()) {
+            journeyStateHolder.lockIn(
+                connections.first(),
+                SearchEndpoint.NamedPlace(persisted.fromName),
+                SearchEndpoint.NamedPlace(persisted.toName),
+            )
+            _uiState.value = _uiState.value.copy(
+                activeConnection = connections.first(),
+                isRestoring = false,
+            )
+        } else {
+            prefs.clearActiveJourney()
+            _uiState.value = _uiState.value.copy(isRestoring = false)
+        }
     }
 
     private fun startMonitoring() {
@@ -56,7 +94,6 @@ class JourneyStripViewModel @Inject constructor(
         }
     }
 
-    // Filter RT alerts to only those that affect stops on the active connection.
     private fun observeRtAlerts() {
         viewModelScope.launch {
             rtStore.alerts.collect { allAlerts ->
