@@ -18,7 +18,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
@@ -30,6 +29,8 @@ data class NavigationTarget(val from: String, val to: String)
 data class PlacesUiState(
     val places: List<Place> = emptyList(),
     val addQuery: String = "",
+    val addLabel: String = "",
+    val addPhotoUri: String? = null,
     val addSuggestions: List<SuggestionItem> = emptyList(),
     val showAddDialog: Boolean = false,
     val selectedSuggestion: SuggestionItem? = null,
@@ -71,8 +72,8 @@ class PlacesViewModel @Inject constructor(
                     .minByOrNull { it.distanceMetersTo(location.first, location.second) }
                 if (nearest != null && nearest.distanceMetersTo(location.first, location.second) <= PROXIMITY_METERS) {
                     nearest.name
-                } else ""
-            } else ""
+                } else "Current location"
+            } else "Current location"
             _uiState.value = _uiState.value.copy(
                 pendingNavigateTo = NavigationTarget(from = from, to = place.name)
             )
@@ -87,6 +88,8 @@ class PlacesViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             showAddDialog = true,
             addQuery = "",
+            addLabel = "",
+            addPhotoUri = null,
             addSuggestions = emptyList(),
             selectedSuggestion = null,
         )
@@ -97,6 +100,8 @@ class PlacesViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             showAddDialog = false,
             addQuery = "",
+            addLabel = "",
+            addPhotoUri = null,
             addSuggestions = emptyList(),
             selectedSuggestion = null,
         )
@@ -127,6 +132,14 @@ class PlacesViewModel @Inject constructor(
         }
     }
 
+    fun onLabelChanged(label: String) {
+        _uiState.value = _uiState.value.copy(addLabel = label)
+    }
+
+    fun onPhotoSelected(uri: String?) {
+        _uiState.value = _uiState.value.copy(addPhotoUri = uri)
+    }
+
     fun selectSuggestion(item: SuggestionItem) {
         suggestJob?.cancel()
         _uiState.value = _uiState.value.copy(
@@ -143,12 +156,12 @@ class PlacesViewModel @Inject constructor(
             ?: return
 
         viewModelScope.launch {
-            val isFirst = placeRepository.getPlaces().first().isEmpty()
             placeRepository.upsertPlace(
                 name = item.name,
                 lat = item.lat,
                 lng = item.lng,
-                isHome = isFirst,
+                label = _uiState.value.addLabel.takeIf { it.isNotBlank() },
+                photoUri = _uiState.value.addPhotoUri,
             )
         }
         dismissAddDialog()
