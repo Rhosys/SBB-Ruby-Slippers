@@ -7,6 +7,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import ch.rhosys.sbb.ui.fares.FaresTeaserScreen
 import ch.rhosys.sbb.ui.home.HomeScreen
 import ch.rhosys.sbb.ui.journey.JourneysScreen
 import ch.rhosys.sbb.ui.journey.TripReviewScreen
@@ -57,6 +58,9 @@ fun AppNavHost(
                 onNavigateToReview = {
                     navController.navigate(Screen.TripReview.route)
                 },
+                onNavigateToFares = {
+                    navController.navigate(Screen.FaresTeaser.route)
+                },
             )
         }
 
@@ -68,6 +72,15 @@ fun AppNavHost(
                         popUpTo(Screen.Home.route) { saveState = false }
                     }
                 },
+                onNavigateToFares = {
+                    navController.navigate(Screen.FaresTeaser.route)
+                },
+            )
+        }
+
+        composable(Screen.FaresTeaser.route) {
+            FaresTeaserScreen(
+                onNavigateBack = { navController.popBackStack() },
             )
         }
 
