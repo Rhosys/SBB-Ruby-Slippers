@@ -206,18 +206,6 @@ class HomeViewModel @Inject constructor(
             )
         }
 
-        val home = placeRepository.getHomePlace().first()
-        if (nearestPlace != null && home != null && nearestPlace.id != home.id) {
-            return SavedRoute(
-                id = -1,
-                label = "Home",
-                destinationName = home.name,
-                destinationLat = home.lat,
-                destinationLng = home.lng,
-                scheduledAt = null,
-            )
-        }
-
         return null
     }
 

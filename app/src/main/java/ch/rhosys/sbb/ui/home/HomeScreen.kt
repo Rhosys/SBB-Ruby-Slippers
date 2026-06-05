@@ -492,7 +492,7 @@ fun PlaceTileGrid(
             places.forEachIndexed { idx, place ->
                 PlaceTile(
                     label = place.name,
-                    icon = if (place.isHome) Icons.Default.Place else Icons.Default.LocationOn,
+                    icon = Icons.Default.LocationOn,
                     onClick = { onTileClick(place) },
                     isSource = dragSourceIdx == idx,
                     isTarget = dragTargetIdx == idx,

@@ -99,6 +99,9 @@ dependencies {
     implementation(libs.glance.appwidget)
     implementation(libs.glance.material3)
 
+    // Image loading — place tile photos
+    implementation(libs.coil.compose)
+
     // Networking — direct calls to transport.opendata.ch (public, no auth)
     implementation(libs.retrofit)
     implementation(libs.retrofit.serialization)

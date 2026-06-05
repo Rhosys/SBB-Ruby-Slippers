@@ -1,5 +1,9 @@
 package ch.rhosys.sbb.ui.places
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -20,6 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -50,15 +55,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import ch.rhosys.sbb.domain.model.Place
+import coil.compose.AsyncImage
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -68,6 +77,7 @@ fun PlacesScreen(
     viewModel: PlacesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
     var draggingId by remember { mutableStateOf<Long?>(null) }
     var dragOverTrash by remember { mutableStateOf(false) }
     val trashBoundsState = remember { mutableStateOf<Rect?>(null) }
@@ -76,6 +86,19 @@ fun PlacesScreen(
         val nav = state.pendingNavigateTo ?: return@LaunchedEffect
         onNavigateToSearch(nav.from, nav.to)
         viewModel.onNavigationHandled()
+    }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            viewModel.onPhotoSelected(uri.toString())
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -179,9 +202,18 @@ fun PlacesScreen(
     if (state.showAddDialog) {
         AddPlaceDialog(
             query = state.addQuery,
+            label = state.addLabel,
+            photoUri = state.addPhotoUri,
             suggestions = state.addSuggestions,
             onQueryChange = viewModel::onQueryChanged,
+            onLabelChange = viewModel::onLabelChanged,
             onSuggestionSelect = viewModel::selectSuggestion,
+            onPickPhoto = {
+                photoPickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            },
+            onRemovePhoto = { viewModel.onPhotoSelected(null) },
             onConfirm = viewModel::confirmAdd,
             onDismiss = viewModel::dismissAddDialog,
             canConfirm = state.addQuery.isNotBlank(),
@@ -199,7 +231,6 @@ private fun DraggablePlaceEditTile(
     onDragEnd: (hitTrash: Boolean) -> Unit,
     trashBoundsProvider: () -> Rect?,
 ) {
-    // Mutable fields captured by gesture lambdas — not state, so no recomposition on update.
     val dragCoords = remember {
         object {
             var rootOffset = Offset.Zero
@@ -234,19 +265,30 @@ private fun DraggablePlaceEditTile(
     ) {
         FilledTonalButton(
             onClick = onTap,
-            contentPadding = PaddingValues(start = 10.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+            contentPadding = PaddingValues(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
             colors = if (isDragging) ButtonDefaults.filledTonalButtonColors(
                 containerColor = MaterialTheme.colorScheme.errorContainer,
                 contentColor = MaterialTheme.colorScheme.onErrorContainer,
             ) else ButtonDefaults.filledTonalButtonColors(),
         ) {
-            Icon(
-                Icons.Default.LocationOn,
-                contentDescription = "Place",
-                modifier = Modifier.size(16.dp),
-            )
-            Spacer(Modifier.size(4.dp))
-            Text(place.name, style = MaterialTheme.typography.labelLarge)
+            if (place.photoUri != null) {
+                AsyncImage(
+                    model = place.photoUri,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Icon(
+                    Icons.Default.LocationOn,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(Modifier.size(6.dp))
+            Text(place.displayName, style = MaterialTheme.typography.labelLarge)
         }
     }
 }
@@ -266,9 +308,14 @@ private fun AddTile(onClick: () -> Unit) {
 @Composable
 private fun AddPlaceDialog(
     query: String,
+    label: String,
+    photoUri: String?,
     suggestions: List<SuggestionItem>,
     onQueryChange: (String) -> Unit,
+    onLabelChange: (String) -> Unit,
     onSuggestionSelect: (SuggestionItem) -> Unit,
+    onPickPhoto: () -> Unit,
+    onRemovePhoto: () -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     canConfirm: Boolean,
@@ -299,6 +346,38 @@ private fun AddPlaceDialog(
                             if (index < suggestions.lastIndex) HorizontalDivider()
                         }
                     }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = label,
+                    onValueChange = onLabelChange,
+                    label = { Text("Label (optional)") },
+                    placeholder = { Text(query.ifBlank { "Custom name" }) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                if (photoUri != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        AsyncImage(
+                            model = photoUri,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(MaterialTheme.shapes.small),
+                            contentScale = ContentScale.Crop,
+                        )
+                        TextButton(onClick = onRemovePhoto) { Text("Remove photo") }
+                    }
+                } else {
+                    TextButton(onClick = onPickPhoto) { Text("Add photo") }
                 }
             }
         },
