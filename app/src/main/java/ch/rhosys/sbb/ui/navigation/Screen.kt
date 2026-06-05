@@ -8,7 +8,8 @@ sealed class Screen(val route: String) {
             "search?from=${encode(from)}&to=${encode(to)}"
         private fun encode(s: String) = java.net.URLEncoder.encode(s, "UTF-8")
     }
-    object TripReview  : Screen("trip_review")
-    object Journeys    : Screen("journeys")
+    object TripReview    : Screen("trip_review")
+    object FaresTeaser   : Screen("fares_teaser")
+    object Journeys      : Screen("journeys")
     object Settings    : Screen("settings")
 }

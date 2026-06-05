@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -38,6 +39,7 @@ import ch.rhosys.sbb.domain.model.Leg
 fun TripReviewScreen(
     onNavigateBack: () -> Unit,
     onJourneyStarted: () -> Unit,
+    onNavigateToFares: () -> Unit,
     viewModel: TripReviewViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -53,6 +55,15 @@ fun TripReviewScreen(
                         onNavigateBack()
                     }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onNavigateToFares) {
+                        Icon(
+                            Icons.Default.MonetizationOn,
+                            contentDescription = "See fares",
+                            tint = MaterialTheme.colorScheme.tertiary,
+                        )
                     }
                 },
             )

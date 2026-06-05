@@ -33,12 +33,14 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.MonetizationOn
 import ch.rhosys.sbb.R
 import ch.rhosys.sbb.domain.model.Connection
 
 @Composable
 fun ConnectionSearchScreen(
     onNavigateToReview: () -> Unit,
+    onNavigateToFares: () -> Unit,
     viewModel: ConnectionSearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -100,6 +102,7 @@ fun ConnectionSearchScreen(
                             viewModel.openTripReview(connection)
                             onNavigateToReview()
                         },
+                        onFaresTap = onNavigateToFares,
                     )
                 }
             }
@@ -142,6 +145,7 @@ private fun ConnectionCard(
     connection: Connection,
     isHero: Boolean,
     onClick: () -> Unit,
+    onFaresTap: () -> Unit,
 ) {
     Card(
         modifier = Modifier
@@ -194,12 +198,23 @@ private fun ConnectionCard(
                     )
                 }
             }
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = "Review trip",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(start = 8.dp),
-            )
+            ) {
+                IconButton(onClick = onFaresTap) {
+                    Icon(
+                        Icons.Default.MonetizationOn,
+                        contentDescription = "See fares",
+                        tint = MaterialTheme.colorScheme.tertiary,
+                    )
+                }
+                Text(
+                    "CHF",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.tertiary,
+                )
+            }
         }
     }
 }
