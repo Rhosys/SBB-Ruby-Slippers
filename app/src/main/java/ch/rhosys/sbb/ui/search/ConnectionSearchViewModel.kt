@@ -3,11 +3,10 @@ package ch.rhosys.sbb.ui.search
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import ch.rhosys.sbb.domain.RouteRepository
 import ch.rhosys.sbb.domain.TransportRepository
 import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.SearchEndpoint
-import ch.rhosys.sbb.ui.journey.JourneyStateHolder
+import ch.rhosys.sbb.ui.journey.TripReviewHolder
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -29,8 +28,7 @@ data class ConnectionSearchUiState(
 @HiltViewModel
 class ConnectionSearchViewModel @Inject constructor(
     private val repository: TransportRepository,
-    private val routeRepository: RouteRepository,
-    private val journeyStateHolder: JourneyStateHolder,
+    private val tripReviewHolder: TripReviewHolder,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -115,20 +113,13 @@ class ConnectionSearchViewModel @Inject constructor(
         }
     }
 
-    fun lockIn(connection: Connection) {
-        val fromName = _uiState.value.fromText.trim()
-        val toName   = _uiState.value.toText.trim()
-        val from = SearchEndpoint.NamedPlace(fromName)
-        val to   = SearchEndpoint.NamedPlace(toName)
-        journeyStateHolder.lockIn(connection, from, to)
-        viewModelScope.launch {
-            routeRepository.recordSearch(
-                fromName = fromName.ifBlank { toName },
-                toName = toName,
-                toLat = 0.0,
-                toLng = 0.0,
-                wasLockedIn = true,
-            )
-        }
+    fun openTripReview(connection: Connection) {
+        val fromText = _uiState.value.fromText.trim()
+        val toText   = _uiState.value.toText.trim()
+        tripReviewHolder.set(
+            connection = connection,
+            from = SearchEndpoint.NamedPlace(fromText.ifBlank { toText }),
+            to   = SearchEndpoint.NamedPlace(toText),
+        )
     }
 }

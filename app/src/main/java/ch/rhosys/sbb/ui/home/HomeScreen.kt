@@ -4,10 +4,14 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,26 +23,25 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Place
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -47,12 +50,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -66,21 +69,16 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.Place
-import kotlinx.coroutines.launch
-import kotlin.math.abs
 
 @Composable
 fun HomeScreen(
     onNavigateToSearch: (from: String, to: String) -> Unit,
-    onNavigateToJourney: () -> Unit,
+    onNavigateToJourneys: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
-    val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    // Request location permission on first launch; refresh scorer if granted.
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -96,138 +94,257 @@ fun HomeScreen(
         if (missing.isNotEmpty()) locationPermissionLauncher.launch(missing.toTypedArray())
     }
 
-    Box(Modifier.fillMaxSize()) {
-        when (val s = state) {
-            is HomeUiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
+    // Active journey top sheet takes precedence over scorer
+    val topSheetVisible = state.activeJourney != null || state.scorerResult != null
 
-            is HomeUiState.Hero -> HeroContent(
-                state = s,
-                onLockIn = { connection ->
-                    viewModel.lockIn(connection, s.from, s.to)
-                    onNavigateToJourney()
-                    scope.launch {
-                        val result = snackbarHostState.showSnackbar(
-                            message = "Trip locked in",
-                            actionLabel = "Undo",
-                            duration = SnackbarDuration.Short,
-                        )
-                        if (result == SnackbarResult.ActionPerformed) {
-                            // undo: journey screen's back navigation clears the state
+    Box(Modifier.fillMaxSize()) {
+        // Main content: tiles / empty state
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+        ) {
+            Spacer(Modifier.height(8.dp))
+
+            // Place tiles or giant + button — fills available space
+            Box(Modifier.weight(1f)) {
+                if (state.places.isEmpty() && !state.isLoading) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        FloatingActionButton(
+                            onClick = { /* TODO: add place dialog */ },
+                            modifier = Modifier.size(120.dp),
+                        ) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = "Add place",
+                                modifier = Modifier.size(56.dp),
+                            )
                         }
                     }
-                },
-                onTileClick = { place -> viewModel.routeFromCurrentLocationTo(place) },
-                onDragRoute = { from, to -> onNavigateToSearch(from, to) },
-                onRefresh = viewModel::refresh,
-            )
+                } else {
+                    PlaceTileGrid(
+                        places = state.places,
+                        onTileClick = { place -> viewModel.routeFromCurrentLocationTo(place) },
+                        onDragRoute = { from, to -> onNavigateToSearch(from, to) },
+                    )
+                }
+            }
 
-            is HomeUiState.TileGrid -> TileGridContent(
-                places = s.places,
-                onTileClick = { place -> viewModel.routeFromCurrentLocationTo(place) },
-                onDragRoute = { from, to -> onNavigateToSearch(from, to) },
+            // Persistent bottom search form
+            SearchForm(
+                fromText = state.fromText,
+                toText = state.toText,
+                onFromChanged = viewModel::onFromTextChanged,
+                onToChanged = viewModel::onToTextChanged,
+                onSearch = { onNavigateToSearch(state.fromText, state.toText) },
+            )
+            Spacer(Modifier.height(8.dp))
+        }
+
+        // Scrim behind the top sheet
+        AnimatedVisibility(
+            visible = topSheetVisible,
+            enter = slideInVertically { -it },
+            exit = slideOutVertically { -it },
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0f)),
+            )
+        }
+        if (topSheetVisible) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.4f))
+                    .clickable {
+                        viewModel.dismissScorer()
+                    },
             )
         }
 
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter),
+        // Top sheet
+        AnimatedVisibility(
+            visible = topSheetVisible,
+            enter = slideInVertically { -it },
+            exit = slideOutVertically { -it },
+            modifier = Modifier.align(Alignment.TopCenter),
+        ) {
+            var dragOffsetY by remember { mutableStateOf(0f) }
+            val swipeUpThreshold = -80f
+
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 200.dp, max = 420.dp)
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onDragEnd = {
+                                if (dragOffsetY < swipeUpThreshold) {
+                                    if (state.activeJourney != null) {
+                                        viewModel.abandonActiveJourney()
+                                    } else {
+                                        viewModel.dismissScorer()
+                                    }
+                                }
+                                dragOffsetY = 0f
+                            },
+                            onDragCancel = { dragOffsetY = 0f },
+                        ) { _, dragAmount -> dragOffsetY += dragAmount }
+                    },
+                tonalElevation = 4.dp,
+                shadowElevation = 8.dp,
+                shape = MaterialTheme.shapes.extraLarge,
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    // Drag handle
+                    Box(
+                        Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .size(width = 40.dp, height = 4.dp)
+                            .background(
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                MaterialTheme.shapes.small,
+                            ),
+                    )
+                    Spacer(Modifier.height(12.dp))
+
+                    if (state.activeJourney != null) {
+                        ActiveJourneySheetContent(
+                            banner = state.activeJourney,
+                            onTap = onNavigateToJourneys,
+                        )
+                    } else if (state.scorerResult != null) {
+                        ScorerSheetContent(
+                            result = state.scorerResult,
+                            onCardTap = { connection ->
+                                // Navigate to search to see trip review
+                                onNavigateToSearch(
+                                    state.scorerResult.from.displayName(),
+                                    state.scorerResult.to.displayName(),
+                                )
+                            },
+                        )
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Swipe up to dismiss",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActiveJourneySheetContent(
+    banner: ActiveJourneyBanner,
+    onTap: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onTap),
+    ) {
+        Text(
+            "Active journey",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.height(4.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column {
+                Text(
+                    banner.connection.departure.stationName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    banner.connection.departure.displayTime(),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    banner.connection.arrival.stationName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    banner.connection.arrival.displayTime(),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Tap for details →",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
 @Composable
-private fun HeroContent(
-    state: HomeUiState.Hero,
-    onLockIn: (Connection) -> Unit,
-    onTileClick: (Place) -> Unit,
-    onDragRoute: (from: String, to: String) -> Unit,
-    onRefresh: () -> Unit,
+private fun ScorerSheetContent(
+    result: ScorerResult,
+    onCardTap: (Connection) -> Unit,
 ) {
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "→ ${state.destination}",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            "→ ${result.destination}",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(Modifier.height(8.dp))
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 4.dp),
+            modifier = Modifier.heightIn(max = 280.dp),
+        ) {
+            items(result.connections.take(3)) { connection ->
+                ConnectionSummaryCard(
+                    connection = connection,
+                    isHero = connection == result.connections.firstOrNull(),
+                    onClick = { onCardTap(connection) },
                 )
-                IconButton(onClick = onRefresh) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                }
             }
-        }
-
-        items(state.connections) { connection ->
-            SwipeToLockCard(
-                connection = connection,
-                isHero = connection == state.connections.firstOrNull(),
-                onLockIn = { onLockIn(connection) },
-            )
-        }
-
-        item {
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Places",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
-        item {
-            PlaceTileGrid(
-                places = state.places,
-                onTileClick = onTileClick,
-                onDragRoute = onDragRoute,
-            )
         }
     }
 }
 
 @Composable
-private fun SwipeToLockCard(
+private fun ConnectionSummaryCard(
     connection: Connection,
     isHero: Boolean,
-    onLockIn: () -> Unit,
+    onClick: () -> Unit,
 ) {
-    var offsetX by remember { mutableStateOf(0f) }
-    val swipeThreshold = 120f
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .animateContentSize()
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragEnd = {
-                        if (abs(offsetX) > swipeThreshold) onLockIn()
-                        offsetX = 0f
-                    },
-                    onDragCancel = { offsetX = 0f },
-                ) { _, dragAmount -> offsetX += dragAmount }
-            },
+            .clickable(onClick = onClick),
         colors = if (isHero) CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
         ) else CardDefaults.cardColors(),
     ) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(12.dp)) {
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(connection.departure.displayTime(), style = MaterialTheme.typography.titleLarge)
-                Text(connection.arrival.displayTime(), style = MaterialTheme.typography.titleLarge)
+                Text(connection.departure.displayTime(),
+                    style = MaterialTheme.typography.titleMedium)
+                Text(connection.arrival.displayTime(),
+                    style = MaterialTheme.typography.titleMedium)
             }
-            Spacer(Modifier.height(4.dp))
             val lines = connection.lineNames.joinToString(" → ")
             val transfers = connection.transfers
             Text(
@@ -240,17 +357,9 @@ private fun SwipeToLockCard(
             )
             if (connection.departure.isDelayed) {
                 Text(
-                    text = "+${connection.departure.delayMinutes} min delay",
+                    "+${connection.departure.delayMinutes} min delay",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.error,
-                )
-            }
-            if (isHero) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "Swipe to lock in →",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
             }
         }
@@ -258,28 +367,50 @@ private fun SwipeToLockCard(
 }
 
 @Composable
-private fun TileGridContent(
-    places: List<Place>,
-    onTileClick: (Place) -> Unit,
-    onDragRoute: (from: String, to: String) -> Unit,
+private fun SearchForm(
+    fromText: String,
+    toText: String,
+    onFromChanged: (String) -> Unit,
+    onToChanged: (String) -> Unit,
+    onSearch: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
     ) {
-        Text("Where to?", style = MaterialTheme.typography.headlineMedium)
-        PlaceTileGrid(
-            places = places,
-            onTileClick = onTileClick,
-            onDragRoute = onDragRoute,
-        )
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedTextField(
+                value = fromText,
+                onValueChange = onFromChanged,
+                label = { Text("From") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+            OutlinedTextField(
+                value = toText,
+                onValueChange = onToChanged,
+                label = { Text("To") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+            Button(
+                onClick = onSearch,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = toText.isNotBlank(),
+            ) {
+                Text("Search connections")
+            }
+        }
     }
 }
 
 // Tile grid with two gestures:
-//   Tap  → onTileClick(place)  — routes from current GPS location to this place
+//   Tap  → onTileClick(place)
 //   Drag → draws a directed line between tiles; on release triggers onDragRoute(from, to)
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -299,7 +430,7 @@ fun PlaceTileGrid(
 
     Box(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxSize()
             .onGloballyPositioned { coords ->
                 val b = coords.boundsInWindow()
                 boxWindowOrigin = Offset(b.left, b.top)
@@ -337,7 +468,9 @@ fun PlaceTileGrid(
             },
     ) {
         FlowRow(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -355,7 +488,6 @@ fun PlaceTileGrid(
             }
         }
 
-        // Drag-line overlay: drawn on a Canvas sitting on top of the FlowRow.
         if (dragSourceIdx >= 0) {
             val sourceBounds = tileWindowBounds[dragSourceIdx]
             if (sourceBounds != null) {
@@ -374,7 +506,6 @@ fun PlaceTileGrid(
                         dragCurrentWindowPos.y - boxWindowOrigin.y,
                     )
 
-                    // Dashed directed line
                     drawLine(
                         color = lineColor,
                         start = sourceCenter,
@@ -383,11 +514,8 @@ fun PlaceTileGrid(
                         cap = StrokeCap.Round,
                         pathEffect = PathEffect.dashPathEffect(floatArrayOf(18f, 9f)),
                     )
-
-                    // Origin dot
                     drawCircle(color = lineColor, radius = 6.dp.toPx(), center = sourceCenter)
 
-                    // Target ring when hovering over a destination tile
                     if (snapTarget != null) {
                         drawCircle(
                             color = targetColor,

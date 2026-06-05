@@ -13,20 +13,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -39,41 +35,46 @@ import ch.rhosys.sbb.domain.model.Leg
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun JourneyStripScreen(
+fun TripReviewScreen(
     onNavigateBack: () -> Unit,
-    viewModel: JourneyStripViewModel = hiltViewModel(),
+    onJourneyStarted: () -> Unit,
+    viewModel: TripReviewViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
-    val connection = state.activeConnection
+    val connection = state.connection
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(connection?.arrival?.stationName ?: "Journey") },
+                title = { Text(connection?.arrival?.stationName ?: "Trip details") },
                 navigationIcon = {
                     IconButton(onClick = {
-                        viewModel.abandonJourney()
+                        viewModel.onLeave()
                         onNavigateBack()
                     }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
             )
-        }
-    ) { innerPadding ->
-        if (state.isRestoring) {
-            Box(
-                Modifier.fillMaxSize().padding(innerPadding),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator()
+        },
+        bottomBar = {
+            if (connection != null) {
+                Button(
+                    onClick = {
+                        if (viewModel.lockIn()) onJourneyStarted()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                ) {
+                    Text("Start journey")
+                }
             }
-            return@Scaffold
-        }
-
+        },
+    ) { innerPadding ->
         if (connection == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No active journey")
+                Text("No trip selected")
             }
             return@Scaffold
         }
@@ -85,64 +86,48 @@ fun JourneyStripScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
-            if (state.rtAlerts.isNotEmpty()) {
-                item {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        color = MaterialTheme.colorScheme.errorContainer,
-                        shape = MaterialTheme.shapes.small,
-                    ) {
-                        Column(Modifier.padding(12.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.Warning,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onErrorContainer,
-                                    modifier = Modifier.padding(end = 8.dp),
-                                )
-                                Text(
-                                    "Service alert",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                )
-                            }
-                            state.rtAlerts.forEach { alert ->
-                                if (alert.headerText.isNotBlank()) {
-                                    Text(
-                                        alert.headerText,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onErrorContainer,
-                                        modifier = Modifier.padding(top = 4.dp),
-                                    )
-                                }
-                            }
-                        }
+            item {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column {
+                        Text("Departs", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(connection.departure.displayTime(),
+                            style = MaterialTheme.typography.headlineSmall)
+                        Text(connection.departure.stationName,
+                            style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("Arrives", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(connection.arrival.displayTime(),
+                            style = MaterialTheme.typography.headlineSmall)
+                        Text(connection.arrival.stationName,
+                            style = MaterialTheme.typography.bodyMedium)
                     }
                 }
+                Spacer(Modifier.height(12.dp))
             }
 
-            items(connection.legs) { leg ->
-                LegRow(leg)
-            }
+            items(connection.legs) { leg -> LegRow(leg) }
 
             item {
                 Spacer(Modifier.height(16.dp))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
                 ) {
                     Column(Modifier.padding(16.dp)) {
                         Text("Arrive", style = MaterialTheme.typography.labelMedium)
-                        Text(
-                            connection.arrival.stationName,
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        Text(
-                            connection.arrival.displayTime(),
-                            style = MaterialTheme.typography.headlineSmall,
-                        )
+                        Text(connection.arrival.stationName,
+                            style = MaterialTheme.typography.titleMedium)
+                        Text(connection.arrival.displayTime(),
+                            style = MaterialTheme.typography.headlineSmall)
                         if (connection.arrival.isDelayed) {
                             Text(
                                 "+${connection.arrival.delayMinutes} min",
@@ -152,33 +137,14 @@ fun JourneyStripScreen(
                         }
                     }
                 }
+                Spacer(Modifier.height(80.dp))
             }
         }
-    }
-
-    state.switchPrompt?.let { prompt ->
-        AlertDialog(
-            onDismissRequest = viewModel::dismissSwitch,
-            icon = { Icon(Icons.Default.Warning, contentDescription = null) },
-            title = { Text("Better option found") },
-            text = {
-                Text(
-                    "${prompt.reason} ${prompt.betterConnection.lineNames.firstOrNull() ?: "Next departure"} " +
-                            "arrives ${prompt.minutesSaved} min earlier."
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = viewModel::confirmSwitch) { Text("Switch") }
-            },
-            dismissButton = {
-                TextButton(onClick = viewModel::dismissSwitch) { Text("Dismiss") }
-            },
-        )
     }
 }
 
 @Composable
-private fun LegRow(leg: Leg) {
+internal fun LegRow(leg: Leg) {
     when (leg) {
         is Leg.Transit -> TransitLegRow(leg)
         is Leg.Walk -> WalkLegRow(leg)
@@ -211,7 +177,8 @@ private fun TransitLegRow(leg: Leg.Transit) {
                 }
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(top = 4.dp)) {
             Text(
                 leg.arrival.displayTime(),
                 style = MaterialTheme.typography.titleMedium,

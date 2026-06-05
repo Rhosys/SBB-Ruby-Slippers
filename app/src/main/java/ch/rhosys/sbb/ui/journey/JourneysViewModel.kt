@@ -5,26 +5,25 @@ import androidx.lifecycle.viewModelScope
 import ch.rhosys.sbb.data.local.preferences.UserPreferencesRepository
 import ch.rhosys.sbb.data.local.routing.rt.GtfsRtStore
 import ch.rhosys.sbb.data.local.routing.rt.RtAlert
+import ch.rhosys.sbb.domain.RouteRepository
 import ch.rhosys.sbb.domain.TransportRepository
 import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.Leg
+import ch.rhosys.sbb.domain.model.RecurringRoute
+import ch.rhosys.sbb.domain.model.SavedRoute
 import ch.rhosys.sbb.domain.model.SearchEndpoint
+import ch.rhosys.sbb.domain.model.TripHistoryItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.Instant
 import javax.inject.Inject
 
-data class JourneyStripUiState(
-    val activeConnection: Connection?,
-    val switchPrompt: SwitchPrompt? = null,
-    val isMonitoring: Boolean = true,
-    val isRestoring: Boolean = false,
-    val rtAlerts: List<RtAlert> = emptyList(),
-)
+enum class JourneysTab { ACTIVE, PAST, PLANNED }
 
 data class SwitchPrompt(
     val reason: String,
@@ -32,25 +31,48 @@ data class SwitchPrompt(
     val minutesSaved: Int,
 )
 
+data class JourneysUiState(
+    val selectedTab: JourneysTab = JourneysTab.ACTIVE,
+    // Active tab
+    val activeConnection: Connection? = null,
+    val rtAlerts: List<RtAlert> = emptyList(),
+    val switchPrompt: SwitchPrompt? = null,
+    val isRestoring: Boolean = false,
+    // Past tab
+    val lockedInHistory: List<TripHistoryItem> = emptyList(),
+    // Planned tab
+    val savedRoutes: List<SavedRoute> = emptyList(),
+    val recurringRoutes: List<RecurringRoute> = emptyList(),
+)
+
 @HiltViewModel
-class JourneyStripViewModel @Inject constructor(
+class JourneysViewModel @Inject constructor(
     private val journeyStateHolder: JourneyStateHolder,
     private val transportRepository: TransportRepository,
     private val prefs: UserPreferencesRepository,
     private val rtStore: GtfsRtStore,
+    private val routeRepository: RouteRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
-        JourneyStripUiState(activeConnection = journeyStateHolder.activeJourney.value?.connection)
+        JourneysUiState(
+            activeConnection = journeyStateHolder.activeJourney.value?.connection,
+        )
     )
-    val uiState: StateFlow<JourneyStripUiState> = _uiState
+    val uiState: StateFlow<JourneysUiState> = _uiState
 
     init {
         if (journeyStateHolder.activeJourney.value == null) {
             viewModelScope.launch { restoreJourney() }
         }
-        startMonitoring()
+        startPolling()
         observeRtAlerts()
+        observePastAndPlanned()
+        viewModelScope.launch { routeRepository.pruneExpiredBrowsedTrips() }
+    }
+
+    fun selectTab(tab: JourneysTab) {
+        _uiState.value = _uiState.value.copy(selectedTab = tab)
     }
 
     private suspend fun restoreJourney() {
@@ -85,12 +107,47 @@ class JourneyStripViewModel @Inject constructor(
         }
     }
 
-    private fun startMonitoring() {
+    private fun startPolling() {
         viewModelScope.launch {
-            while (_uiState.value.isMonitoring) {
+            while (true) {
                 delay(30_000)
                 poll()
             }
+        }
+    }
+
+    private suspend fun poll() {
+        val journey = journeyStateHolder.activeJourney.value ?: return
+
+        // Auto-expire if arrival is in the past
+        val arrivalEpoch = journey.connection.arrival.effectiveTime?.epochSecond
+        if (arrivalEpoch != null && arrivalEpoch <= Instant.now().epochSecond) {
+            journeyStateHolder.clear()
+            _uiState.value = _uiState.value.copy(activeConnection = null, switchPrompt = null)
+            return
+        }
+
+        val threshold = prefs.switchThresholdMinutes.first()
+        val candidates = runCatching {
+            transportRepository.getConnections(journey.from, journey.to)
+        }.getOrNull() ?: return
+
+        val active = journey.connection
+        val activeArrival = active.arrival.effectiveTime ?: return
+        val best = candidates.firstOrNull() ?: return
+        val bestArrival = best.arrival.effectiveTime ?: return
+
+        val savedSeconds = activeArrival.epochSecond - bestArrival.epochSecond
+        val savedMinutes = (savedSeconds / 60).toInt()
+
+        if (savedMinutes >= threshold && best != active) {
+            _uiState.value = _uiState.value.copy(
+                switchPrompt = SwitchPrompt(
+                    reason = buildReason(active, best),
+                    betterConnection = best,
+                    minutesSaved = savedMinutes,
+                )
+            )
         }
     }
 
@@ -115,30 +172,21 @@ class JourneyStripViewModel @Inject constructor(
         }
     }
 
-    private suspend fun poll() {
-        val journey = journeyStateHolder.activeJourney.value ?: return
-        val threshold = prefs.switchThresholdMinutes.first()
-
-        val candidates = runCatching {
-            transportRepository.getConnections(journey.from, journey.to)
-        }.getOrNull() ?: return
-
-        val active = journey.connection
-        val activeArrival = active.arrival.effectiveTime ?: return
-        val best = candidates.firstOrNull() ?: return
-        val bestArrival = best.arrival.effectiveTime ?: return
-
-        val savedSeconds = activeArrival.epochSecond - bestArrival.epochSecond
-        val savedMinutes = (savedSeconds / 60).toInt()
-
-        if (savedMinutes >= threshold && best != active) {
-            _uiState.value = _uiState.value.copy(
-                switchPrompt = SwitchPrompt(
-                    reason = buildReason(active, best),
-                    betterConnection = best,
-                    minutesSaved = savedMinutes,
+    private fun observePastAndPlanned() {
+        viewModelScope.launch {
+            combine(
+                routeRepository.getLockedInTripHistory(),
+                routeRepository.getSavedRoutes(),
+                routeRepository.getRecurringRoutes(),
+            ) { history, saved, recurring ->
+                Triple(history, saved, recurring)
+            }.collect { (history, saved, recurring) ->
+                _uiState.value = _uiState.value.copy(
+                    lockedInHistory = history,
+                    savedRoutes = saved,
+                    recurringRoutes = recurring,
                 )
-            )
+            }
         }
     }
 
@@ -154,11 +202,6 @@ class JourneyStripViewModel @Inject constructor(
 
     fun dismissSwitch() {
         _uiState.value = _uiState.value.copy(switchPrompt = null)
-    }
-
-    fun abandonJourney() {
-        _uiState.value = _uiState.value.copy(isMonitoring = false)
-        journeyStateHolder.clear()
     }
 
     private fun buildReason(active: Connection, better: Connection): String {

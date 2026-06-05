@@ -8,12 +8,11 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import ch.rhosys.sbb.ui.home.HomeScreen
-import ch.rhosys.sbb.ui.journey.JourneyStripScreen
+import ch.rhosys.sbb.ui.journey.JourneysScreen
+import ch.rhosys.sbb.ui.journey.TripReviewScreen
 import ch.rhosys.sbb.ui.onboarding.OnboardingScreen
 import ch.rhosys.sbb.ui.search.ConnectionSearchScreen
 import ch.rhosys.sbb.ui.settings.SettingsScreen
-import ch.rhosys.sbb.ui.stationboard.DepartureDetailsScreen
-import ch.rhosys.sbb.ui.stationboard.StationboardScreen
 
 @Composable
 fun AppNavHost(
@@ -41,8 +40,8 @@ fun AppNavHost(
                 onNavigateToSearch = { from, to ->
                     navController.navigate(Screen.Search.withArgs(from, to))
                 },
-                onNavigateToJourney = {
-                    navController.navigate(Screen.Journey.route)
+                onNavigateToJourneys = {
+                    navController.navigate(Screen.Journeys.route)
                 },
             )
         }
@@ -55,30 +54,25 @@ fun AppNavHost(
             ),
         ) {
             ConnectionSearchScreen(
-                onNavigateToJourney = {
-                    navController.navigate(Screen.Journey.route)
+                onNavigateToReview = {
+                    navController.navigate(Screen.TripReview.route)
                 },
             )
         }
 
-        composable(Screen.Stationboard.route) {
-            StationboardScreen(
-                onNavigateToDetails = {
-                    navController.navigate(Screen.DepartureDetails.route)
+        composable(Screen.TripReview.route) {
+            TripReviewScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onJourneyStarted = {
+                    navController.navigate(Screen.Journeys.route) {
+                        popUpTo(Screen.Home.route) { saveState = false }
+                    }
                 },
             )
         }
 
-        composable(Screen.DepartureDetails.route) {
-            DepartureDetailsScreen(
-                onNavigateBack = { navController.popBackStack() },
-            )
-        }
-
-        composable(Screen.Journey.route) {
-            JourneyStripScreen(
-                onNavigateBack = { navController.popBackStack() },
-            )
+        composable(Screen.Journeys.route) {
+            JourneysScreen()
         }
 
         composable(Screen.Settings.route) { SettingsScreen() }
