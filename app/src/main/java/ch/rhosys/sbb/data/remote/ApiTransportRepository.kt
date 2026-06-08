@@ -1,12 +1,13 @@
 package ch.rhosys.sbb.data.remote
 
 import ch.rhosys.sbb.data.remote.dto.ConnectionDto
+import ch.rhosys.sbb.data.remote.dto.JourneyEntryDto
 import ch.rhosys.sbb.data.remote.dto.LocationsResponseDto
 import ch.rhosys.sbb.data.remote.dto.SectionDto
-import ch.rhosys.sbb.data.remote.dto.StationboardResponseDto
 import ch.rhosys.sbb.data.remote.dto.StopDto
 import ch.rhosys.sbb.domain.TransportRepository
 import ch.rhosys.sbb.domain.model.Connection
+import ch.rhosys.sbb.domain.model.Departure
 import ch.rhosys.sbb.domain.model.Leg
 import ch.rhosys.sbb.domain.model.SearchEndpoint
 import ch.rhosys.sbb.domain.model.Stop
@@ -24,8 +25,8 @@ class ApiTransportRepository @Inject constructor(
         return api.getConnections(from = fromStr, to = toStr).connections.map { it.toDomain() }
     }
 
-    override suspend fun getStationboard(station: String): StationboardResponseDto =
-        api.getStationboard(station)
+    override suspend fun getStationboard(station: String): List<Departure> =
+        api.getStationboard(station).stationboard.map { it.toDomain() }
 
     override suspend fun getLocations(query: String): LocationsResponseDto =
         api.getLocations(query)
@@ -89,6 +90,16 @@ class ApiTransportRepository @Inject constructor(
             )
         }
     }
+
+    private fun JourneyEntryDto.toDomain(): Departure = Departure(
+        lineName = name ?: number ?: "",
+        lineCategory = category ?: "",
+        direction = to ?: "",
+        scheduledDeparture = stop?.departure?.toInstantOrNull(),
+        delayMinutes = stop?.delay ?: 0,
+        platform = stop?.platform,
+        operator = operator,
+    )
 
     private fun String.toInstantOrNull(): Instant? = runCatching {
         OffsetDateTime.parse(this).toInstant()

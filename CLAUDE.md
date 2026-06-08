@@ -87,6 +87,7 @@ app/src/main/java/ch/rhosys/sbb/
     navigation/{Screen,AppNavHost}.kt
     onboarding/{OnboardingScreen,OnboardingViewModel}.kt
     search/{ConnectionSearchScreen,ConnectionSearchViewModel}.kt ← smart suggestions + transport API autocomplete
+    stationboard/{StationboardScreen,StationboardViewModel}.kt  ← live departures; polls every 30 s; resets on nav
     settings/{SettingsScreen,SettingsViewModel}.kt
     fares/FaresTeaserScreen.kt         ← placeholder; wired once OJP Fare token available
     theme/Theme.kt

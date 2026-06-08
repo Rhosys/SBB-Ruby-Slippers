@@ -15,6 +15,7 @@ import ch.rhosys.sbb.ui.journey.TripReviewScreen
 import ch.rhosys.sbb.ui.onboarding.OnboardingScreen
 import ch.rhosys.sbb.ui.search.ConnectionSearchScreen
 import ch.rhosys.sbb.ui.settings.SettingsScreen
+import ch.rhosys.sbb.ui.stationboard.StationboardScreen
 
 @Composable
 fun AppNavHost(
@@ -100,6 +101,8 @@ fun AppNavHost(
         composable(Screen.Journeys.route) {
             JourneysScreen()
         }
+
+        composable(Screen.Stationboard.route) { StationboardScreen() }
 
         composable(Screen.Settings.route) { SettingsScreen() }
     }
