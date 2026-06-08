@@ -44,8 +44,8 @@ class TripReviewViewModel @Inject constructor(
             routeRepository.recordSearch(
                 fromName = candidate.from.displayName(),
                 toName = candidate.to.displayName(),
-                toLat = 0.0,
-                toLng = 0.0,
+                toLat = candidate.to.latOrNull() ?: 0.0,
+                toLng = candidate.to.lngOrNull() ?: 0.0,
                 wasLockedIn = false,
                 departureEpoch = candidate.connection.departure.effectiveTime?.epochSecond,
                 arrivalEpoch = candidate.connection.arrival.effectiveTime?.epochSecond,
@@ -60,8 +60,8 @@ class TripReviewViewModel @Inject constructor(
             routeRepository.recordSearch(
                 fromName = candidate.from.displayName(),
                 toName = candidate.to.displayName(),
-                toLat = 0.0,
-                toLng = 0.0,
+                toLat = candidate.to.latOrNull() ?: 0.0,
+                toLng = candidate.to.lngOrNull() ?: 0.0,
                 wasLockedIn = true,
                 departureEpoch = candidate.connection.departure.effectiveTime?.epochSecond,
                 arrivalEpoch = candidate.connection.arrival.effectiveTime?.epochSecond,
