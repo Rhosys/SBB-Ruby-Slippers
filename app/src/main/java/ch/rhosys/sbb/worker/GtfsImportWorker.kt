@@ -16,36 +16,11 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.time.DayOfWeek
-import java.time.LocalDate
-import java.time.temporal.TemporalAdjusters
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
 
-// The Swiss Fahrplanwechsel (timetable changeover) is the second Sunday of December each year.
-// "Fahrplan YEAR" starts on that date and the dataset URL includes the year.
-// We compute the current year dynamically so the URL never needs updating in code.
+private const val GTFS_FEED_URL = "https://opentransportdata.swiss/en/dataset/timetable-gtfs2020/permalink/resource/gtfs_fp.zip"
 private const val REFRESH_INTERVAL_DAYS = 1L
-
-private val NEEDED_FILES = setOf(
-    "stops.txt", "routes.txt", "trips.txt", "stop_times.txt",
-    "calendar.txt", "calendar_dates.txt", "transfers.txt",
-)
-
-private fun currentGtfsFeedUrl(): String {
-    val year = gtfsYear(LocalDate.now())
-    return "https://opentransportdata.swiss/en/dataset/timetable-$year-gtfs2020/permalink/resource/gtfs_fp$year.zip"
-}
-
-private fun gtfsYear(today: LocalDate): Int {
-    val changeover = secondSundayOfDecember(today.year)
-    return if (!today.isBefore(changeover)) today.year + 1 else today.year
-}
-
-private fun secondSundayOfDecember(year: Int): LocalDate {
-    val dec1 = LocalDate.of(year, 12, 1)
-    return dec1.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY)).plusWeeks(1)
-}
 
 @HiltWorker
 class GtfsImportWorker @AssistedInject constructor(
@@ -57,7 +32,7 @@ class GtfsImportWorker @AssistedInject constructor(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
-        val url = inputData.getString(KEY_URL) ?: currentGtfsFeedUrl()
+        val url = inputData.getString(KEY_URL) ?: GTFS_FEED_URL
 
         // If the URL has changed (Fahrplanwechsel), the stored ETag is for the old feed — don't send it.
         val urlChanged = store.lastUrl() != url
