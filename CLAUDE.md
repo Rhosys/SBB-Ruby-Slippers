@@ -91,7 +91,10 @@ app/src/main/java/ch/rhosys/sbb/
     fares/FaresTeaserScreen.kt         ← placeholder; wired once OJP Fare token available
     theme/Theme.kt
     widget/DepartureWidget.kt          ← Glance placeholder (no real data yet)
-  worker/CalendarSyncWorker.kt         ← @HiltWorker: syncs calendar events → saved routes
+  worker/
+    CalendarSyncWorker.kt              ← @HiltWorker: syncs calendar events → saved routes
+    GtfsImportWorker.kt                ← @HiltWorker: weekly GTFS timetable download (ETag cached)
+    GtfsRtRefreshWorker.kt             ← @HiltWorker: 15 min RT delays feed (skips if no token)
 app/src/main/res/xml/departure_widget_info.xml
 deployment/
   android-upload-signing.json  ← PLACEHOLDER — must be replaced before release
@@ -118,8 +121,6 @@ deployment/
 
 ## Known gaps (v2)
 
-- **RT token**: GtfsRtRefreshWorker URL requires a free token from opentransportdata.swiss;
-  wire the token through UserPreferencesRepository once token-onboarding is built.
 - **RT per-leg delays**: GtfsRtStore wired into JourneyStripViewModel for banner alerts;
   per-leg delay overlay (red "+Xmin" on individual stops) requires stationId on Stop
   objects from local GTFS routing (already set) and from the remote API (TODO).

@@ -9,17 +9,18 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import ch.rhosys.sbb.data.local.preferences.UserPreferencesRepository
 import ch.rhosys.sbb.data.local.routing.rt.GtfsRtDecoder
 import ch.rhosys.sbb.data.local.routing.rt.GtfsRtStore
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
 // GTFS-RT feed from opentransportdata.swiss — requires a free API token.
-// Set the token in UserPreferencesRepository once the token onboarding flow is built.
-// See todo.md for the infra steps needed to obtain and configure the token.
+// Enter the token in Settings → Real-time data. Worker skips silently if no token is configured.
 private const val RT_FEED_URL = "https://api.opentransportdata.swiss/gtfs-rt-datasets/resource/gtfs-rt.pb"
 
 private const val REFRESH_INTERVAL_MINUTES = 15L
@@ -30,11 +31,14 @@ class GtfsRtRefreshWorker @AssistedInject constructor(
     @Assisted params: WorkerParameters,
     private val okHttpClient: OkHttpClient,
     private val rtStore: GtfsRtStore,
+    private val prefs: UserPreferencesRepository,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
         val url = inputData.getString(KEY_URL) ?: RT_FEED_URL
-        val token = inputData.getString(KEY_TOKEN) ?: ""
+        val token = prefs.rtToken.first()
+
+        if (token.isBlank()) return Result.success()
 
         val bytes = try {
             fetchFeed(url, token)
@@ -54,7 +58,7 @@ class GtfsRtRefreshWorker @AssistedInject constructor(
     private fun fetchFeed(url: String, token: String): ByteArray {
         val req = Request.Builder()
             .url(url)
-            .apply { if (token.isNotBlank()) header("Authorization", "Bearer $token") }
+            .header("Authorization", "Bearer $token")
             .build()
         val response = okHttpClient.newCall(req).execute()
         check(response.isSuccessful) { "RT feed download failed: ${response.code}" }
@@ -64,7 +68,6 @@ class GtfsRtRefreshWorker @AssistedInject constructor(
     companion object {
         private const val WORK_NAME = "gtfs_rt_refresh"
         const val KEY_URL = "rt_feed_url"
-        const val KEY_TOKEN = "rt_feed_token"
 
         fun schedule(context: Context) {
             val request = PeriodicWorkRequestBuilder<GtfsRtRefreshWorker>(
