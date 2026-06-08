@@ -110,6 +110,13 @@ fun TripReviewScreen(
                             style = MaterialTheme.typography.headlineSmall)
                         Text(connection.departure.stationName,
                             style = MaterialTheme.typography.bodyMedium)
+                        if (connection.departure.platform != null) {
+                            Text(
+                                "Platform ${connection.departure.platform}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text("Arrives", style = MaterialTheme.typography.labelSmall,
@@ -118,6 +125,13 @@ fun TripReviewScreen(
                             style = MaterialTheme.typography.headlineSmall)
                         Text(connection.arrival.stationName,
                             style = MaterialTheme.typography.bodyMedium)
+                        if (connection.arrival.platform != null) {
+                            Text(
+                                "Platform ${connection.arrival.platform}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -173,7 +187,19 @@ private fun TransitLegRow(leg: Leg.Transit) {
             )
             Spacer(Modifier.width(8.dp))
             Column {
-                Text(leg.departure.stationName, style = MaterialTheme.typography.bodyLarge)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(leg.departure.stationName, style = MaterialTheme.typography.bodyLarge)
+                    if (leg.departure.platform != null) {
+                        Text(
+                            "Pl. ${leg.departure.platform}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
                 Text(
                     "${leg.lineName} → ${leg.direction}",
                     style = MaterialTheme.typography.bodySmall,
