@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import ch.rhosys.sbb.ui.widget.JourneyWidgetSyncer
+import ch.rhosys.sbb.worker.GtfsImportWorker
 import com.posthog.PostHog
 import com.posthog.android.PostHogAndroid
 import com.posthog.android.PostHogAndroidConfig
@@ -28,6 +29,7 @@ class SbbRubySlippersApp : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         journeyWidgetSyncer.start()
+        GtfsImportWorker.schedule(this)
         installCrashHandler()
 
         try {
