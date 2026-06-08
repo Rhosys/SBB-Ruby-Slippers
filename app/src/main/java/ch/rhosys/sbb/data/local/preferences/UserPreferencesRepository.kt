@@ -36,6 +36,7 @@ class UserPreferencesRepository @Inject constructor(
         val HAS_COMPLETED_ONBOARDING  = booleanPreferencesKey("has_completed_onboarding")
         val FAVOURITE_STATIONS        = stringSetPreferencesKey("favourite_stations")
         val ACTIVE_JOURNEY            = stringPreferencesKey("active_journey")
+        val RT_TOKEN                  = stringPreferencesKey("rt_token")
     }
 
     val walkingPaceKmh: Flow<Float>   = dataStore.data.map { it[WALKING_PACE_KMH] ?: 6f }
@@ -45,6 +46,7 @@ class UserPreferencesRepository @Inject constructor(
     val calendarSyncIntervalHours: Flow<Int> = dataStore.data.map { it[CALENDAR_SYNC_INTERVAL_HOURS] ?: 4 }
     val hasCompletedOnboarding: Flow<Boolean> = dataStore.data.map { it[HAS_COMPLETED_ONBOARDING] ?: false }
     val favouriteStations: Flow<Set<String>> = dataStore.data.map { it[FAVOURITE_STATIONS] ?: emptySet() }
+    val rtToken: Flow<String>         = dataStore.data.map { it[RT_TOKEN] ?: "" }
     val activeJourney: Flow<PersistedJourney?> = dataStore.data.map { prefs ->
         prefs[ACTIVE_JOURNEY]?.let { runCatching { Json.decodeFromString<PersistedJourney>(it) }.getOrNull() }
     }
@@ -61,6 +63,8 @@ class UserPreferencesRepository @Inject constructor(
     suspend fun removeFavouriteStation(name: String) = dataStore.edit { prefs ->
         prefs[FAVOURITE_STATIONS] = (prefs[FAVOURITE_STATIONS] ?: emptySet()) - name
     }
+
+    suspend fun setRtToken(token: String) = dataStore.edit { it[RT_TOKEN] = token }
 
     suspend fun persistActiveJourney(journey: PersistedJourney) = dataStore.edit { prefs ->
         prefs[ACTIVE_JOURNEY] = Json.encodeToString(journey)
