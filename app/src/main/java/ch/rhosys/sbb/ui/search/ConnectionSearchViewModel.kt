@@ -4,6 +4,9 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ch.rhosys.sbb.data.local.location.LocationProvider
+import ch.rhosys.sbb.data.local.routing.LocalRoutingState
+import ch.rhosys.sbb.data.local.routing.LocalTransportRepository
+import ch.rhosys.sbb.data.local.routing.algorithm.RoutingTime
 import ch.rhosys.sbb.domain.PlaceRepository
 import ch.rhosys.sbb.domain.RouteRepository
 import ch.rhosys.sbb.domain.TransportRepository
@@ -17,6 +20,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
 import javax.inject.Inject
 
 data class ConnectionSearchUiState(
@@ -33,6 +39,7 @@ data class ConnectionSearchUiState(
 @HiltViewModel
 class ConnectionSearchViewModel @Inject constructor(
     private val repository: TransportRepository,
+    private val localRouter: LocalTransportRepository,
     private val routeRepository: RouteRepository,
     private val placeRepository: PlaceRepository,
     private val locationProvider: LocationProvider,
@@ -146,27 +153,57 @@ class ConnectionSearchViewModel @Inject constructor(
         val to   = _uiState.value.toText.trim()
         if (to.isBlank()) return
 
-        val fromEndpoint = if (from.isBlank())
-            SearchEndpoint.NamedPlace(to)
-        else
-            SearchEndpoint.NamedPlace(from)
+        val fromEndpoint = if (from.isBlank()) SearchEndpoint.NamedPlace(to) else SearchEndpoint.NamedPlace(from)
         val toEndpoint = SearchEndpoint.NamedPlace(to)
 
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isLoading = true,
                 error = null,
+                connections = emptyList(),
                 fromSuggestions = emptyList(),
                 toSuggestions = emptyList(),
             )
-            runCatching { repository.getConnections(fromEndpoint, toEndpoint) }
-                .onSuccess { connections ->
-                    _uiState.value = _uiState.value.copy(connections = connections, isLoading = false)
-                }
-                .onFailure { e ->
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Unknown error")
-                }
+
+            if (localRouter.hasData()) {
+                searchLocally(fromEndpoint, toEndpoint)
+            } else {
+                searchViaApi(fromEndpoint, toEndpoint)
+            }
         }
+    }
+
+    private suspend fun searchLocally(from: SearchEndpoint, to: SearchEndpoint) {
+        val swiss = ZoneId.of("Europe/Zurich")
+        localRouter.routeConnections(
+            from = from,
+            to = to,
+            date = LocalDate.now(swiss),
+            routingTime = RoutingTime.DepartAfter(LocalTime.now(swiss)),
+        ).collect { state ->
+            when (state) {
+                is LocalRoutingState.Results -> _uiState.value = _uiState.value.copy(
+                    connections = state.connections,
+                    isLoading = !state.isComplete,
+                )
+                is LocalRoutingState.NoResults -> _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = state.reason.ifBlank { null },
+                )
+                is LocalRoutingState.NoData -> searchViaApi(from, to)
+                LocalRoutingState.Loading -> Unit
+            }
+        }
+    }
+
+    private suspend fun searchViaApi(from: SearchEndpoint, to: SearchEndpoint) {
+        runCatching { repository.getConnections(from, to) }
+            .onSuccess { connections ->
+                _uiState.value = _uiState.value.copy(connections = connections, isLoading = false)
+            }
+            .onFailure { e ->
+                _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Unknown error")
+            }
     }
 
     fun openTripReview(connection: Connection) {
