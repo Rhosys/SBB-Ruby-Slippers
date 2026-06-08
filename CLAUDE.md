@@ -87,14 +87,14 @@ app/src/main/java/ch/rhosys/sbb/
     navigation/{Screen,AppNavHost}.kt
     onboarding/{OnboardingScreen,OnboardingViewModel}.kt
     search/{ConnectionSearchScreen,ConnectionSearchViewModel}.kt ← smart suggestions + transport API autocomplete
-    stationboard/{StationboardScreen,StationboardViewModel}.kt  ← live departures; polls every 30 s; resets on nav
+    stationboard/{StationboardScreen,StationboardViewModel}.kt  ← live departures; polls every 30 s; not in bottom nav (reserved for future station-tap deep-link)
     settings/{SettingsScreen,SettingsViewModel}.kt
     fares/FaresTeaserScreen.kt         ← placeholder; wired once OJP Fare token available
     theme/Theme.kt
     widget/DepartureWidget.kt          ← Glance placeholder (no real data yet)
   worker/
     CalendarSyncWorker.kt              ← @HiltWorker: syncs calendar events → saved routes
-    GtfsImportWorker.kt                ← @HiltWorker: weekly GTFS timetable download (ETag cached)
+    GtfsImportWorker.kt                ← @HiltWorker: daily GTFS check (ETag + URL tracking; auto-detects Fahrplanwechsel)
     GtfsRtRefreshWorker.kt             ← @HiltWorker: 15 min RT delays feed (skips if no token)
 app/src/main/res/xml/departure_widget_info.xml
 deployment/

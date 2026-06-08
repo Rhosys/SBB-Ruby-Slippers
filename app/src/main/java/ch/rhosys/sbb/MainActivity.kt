@@ -8,7 +8,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Train
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -70,10 +69,9 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val tabScreens = listOf(
-                    Triple(Screen.Home,         "Home",       Icons.Default.Home),
-                    Triple(Screen.Journeys,     "Journeys",   Icons.Default.DateRange),
-                    Triple(Screen.Stationboard, "Departures", Icons.Default.Train),
-                    Triple(Screen.Settings,     "Settings",   Icons.Default.Settings),
+                    Triple(Screen.Home,     "Home",     Icons.Default.Home),
+                    Triple(Screen.Journeys, "Journeys", Icons.Default.DateRange),
+                    Triple(Screen.Settings, "Settings", Icons.Default.Settings),
                 )
 
                 val hideBottomNav = currentRoute in setOf(
