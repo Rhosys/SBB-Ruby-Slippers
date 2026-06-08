@@ -46,14 +46,14 @@ no AWS changes needed beyond the keystore in Todo 1.)
 Free registration at `opentransportdata.swiss` → `api-manager.opentransportdata.swiss`.
 Two things unlock immediately with the token:
 
-- **GTFS-RT** — real-time trip-update and service-alert protobuf feed.
-  `GtfsRtRefreshWorker` already calls this URL but has a placeholder constant.
-  Wire the token through `UserPreferencesRepository` (new `stringPreferencesKey`) or
-  as a build-time `BuildConfig` field (better: keep it server-side once the backend
-  proxy exists — see Backend Service Todos).
+- **GTFS-RT** — `GtfsRtRefreshWorker` already fetches from `opentransportdata.swiss`
+  but uses an empty bearer token. Wire the token through a new
+  `stringPreferencesKey("opentransport_api_token")` in `UserPreferencesRepository`,
+  expose it as a `Flow<String>`, and pass it into the worker via `WorkManager`
+  `inputData` when scheduling. Add a token-entry field to `SettingsScreen`.
 - **OJP 2.0** — `GET /ojp` XML journey planner with 50 req/min free tier.
-  The beta **OJP Fare** endpoint returns price information per connection, which is
-  the first step toward showing fares in `TripReviewScreen`.
+  The beta **OJP Fare** endpoint returns price information per connection — first
+  step toward fares in `TripReviewScreen`.
 
 Add the token as a secret to GitHub Actions (`OPENTRANSPORT_API_TOKEN`) and to the
 GitLab project variable of the same name once the mirror exists (Todo 4).
@@ -319,7 +319,7 @@ Update `RT_FEED_URL` as shown at the top of this section.
 The feed contains two message types the app decodes:
 - `TripUpdate` (field 5 in `FeedEntity`) — per-stop departure/arrival delays in seconds
 - `Alert` (field 6 in `FeedEntity`) — service disruption text shown as a banner in
-  `JourneyStripScreen`
+  `JourneysScreen`
 
 ---
 
@@ -359,82 +359,7 @@ The backend validates the token and forwards the downstream request without the
 
 ---
 
-## Development Strategy
-
-Lessons captured from implementation mistakes. Apply these before writing code,
-not after a review catches the problem.
-
-### ✅ DataStore: store compound values as one serialized key, not many primitive keys
-
-**Failure**: `ACTIVE_JOURNEY_FROM` + `ACTIVE_JOURNEY_TO` + `ACTIVE_JOURNEY_ARRIVAL`
-were added as three separate DataStore keys for what is one logical value. This is
-brittle: the three writes are not atomic, schema evolution requires migrating each
-key individually, and the reader must reconstruct the object from loose parts.
-
-**Fix needed**: replace the three keys in `UserPreferencesRepository` with a single
-`stringPreferencesKey("active_journey")` holding a `@Serializable data class
-PersistedJourney(val fromName: String, val toName: String, val arrivalEpoch: Long)`.
-Encode with `Json.encodeToString` / decode with `Json.decodeFromString`.
-
-**Rule**: before adding multiple DataStore keys, ask whether they belong to one
-value. If any two keys are always read or written together, they are one value.
-
----
-
-### 🔲 Home screen: design states and edit model before implementing
-
-**Failure**: place management (add/edit/delete tiles on the home screen) was
-implemented as a backlog item without first agreeing on the interaction model.
-Work was started and then interrupted for a design discussion that should have
-happened first.
-
-**States to finalise before implementing:**
-
-| State | Condition | What is shown |
-|:------|:----------|:--------------|
-| Empty | No places added yet | "Add your first place" CTA |
-| Tile grid | Has places, scorer idle | Grid of place tiles (tap → route from GPS; drag → plan search) |
-| Scorer hero | Scheduled/recurring route or near-home found | Connection cards above tile grid |
-| Journey in progress | `JourneyStateHolder` has an active journey but user is on Home | In-progress banner at top (tap → JourneyStripScreen); tile grid below |
-
-**Edit model to agree on before implementing:**
-- Long-press any tile → grid enters edit mode: tiles show delete handle, `+` tile
-  appears at the end, tiles are draggable for reordering. Immediate drag ≠ long-press
-  drag, so route-gesture and reorder-gesture do not conflict.
-- Home station (used by scorer for "go home" suggestion) is editable separately via
-  a "Set home" action inside edit mode or in Settings.
-- Confirm this model (or choose Option B: separate `PlacesScreen` reached via a
-  pencil icon in the Home top bar) before writing any code.
-
----
-
 ## Feature Todos
-
-### ✅ Location autocomplete
-Wire `TransportApi.getLocations()` to the from/to text fields in
-`ConnectionSearchScreen` for typeahead suggestions.
-
-### ✅ Departure details screen
-Navigate from a `StationboardScreen` entry to a detail screen showing
-the full pass list for a journey.
-
-### ✅ Favourite stations
-Persist favourite stations using DataStore; show them as quick-pick chips
-in the stationboard screen.
-
-### ✅ Journey restore on app reopen
-Active journey persisted as `PersistedJourney` JSON in DataStore. On fresh
-process start `MainActivity` navigates to the Journeys tab if `arrivalEpoch > now`.
-`JourneysViewModel` re-fetches connections on init if `JourneyStateHolder` is empty.
-
-### 🔲 Place management (home screen edit mode)
-Add/edit/delete/reorder the place tiles shown on the Home screen.
-Blocked on design decision above (inline edit mode vs separate screen).
-
-### ✅ Home screen: active-journey banner
-Implemented as a top sheet that slides down from the top of HomeScreen.
-Shows departure/arrival station + time; tap navigates to Journeys/Active;
-swipe-up clears the journey. Active journey takes precedence over scorer result.
 
 ### 🔲 Fare display in TripReviewScreen
 Once opentransportdata.swiss token is registered (Infra Todo 5), call the OJP Fare
