@@ -22,6 +22,11 @@ import java.util.zip.ZipInputStream
 private const val GTFS_FEED_URL = "https://opentransportdata.swiss/en/dataset/timetable-gtfs2020/permalink/resource/gtfs_fp.zip"
 private const val REFRESH_INTERVAL_DAYS = 1L
 
+private val NEEDED_FILES = setOf(
+    "stops.txt", "routes.txt", "trips.txt", "stop_times.txt",
+    "calendar.txt", "calendar_dates.txt", "transfers.txt",
+)
+
 @HiltWorker
 class GtfsImportWorker @AssistedInject constructor(
     @Assisted context: Context,

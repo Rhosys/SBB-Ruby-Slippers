@@ -12,4 +12,14 @@ sealed class SearchEndpoint {
         is CurrentLocation -> "Current location"
         is NamedPlace -> name
     }
+
+    fun latOrNull(): Double? = when (this) {
+        is CurrentLocation -> lat
+        is NamedPlace -> lat
+    }
+
+    fun lngOrNull(): Double? = when (this) {
+        is CurrentLocation -> lng
+        is NamedPlace -> lng
+    }
 }
