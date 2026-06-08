@@ -10,7 +10,7 @@ sealed class Screen(val route: String) {
     }
     object TripReview    : Screen("trip_review")
     object FaresTeaser   : Screen("fares_teaser")
-    object Places        : Screen("places")
+    object HomeEdit      : Screen("home_edit")
     object Journeys      : Screen("journeys")
     object Settings    : Screen("settings")
 }

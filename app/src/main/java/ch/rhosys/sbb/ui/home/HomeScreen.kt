@@ -5,6 +5,12 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
@@ -28,6 +34,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
@@ -58,9 +65,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import kotlin.math.sqrt
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -76,7 +85,7 @@ import ch.rhosys.sbb.domain.model.Place
 fun HomeScreen(
     onNavigateToSearch: (from: String, to: String) -> Unit,
     onNavigateToJourneys: () -> Unit,
-    onNavigateToPlaces: () -> Unit,
+    onNavigateToHomeEdit: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -112,7 +121,7 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
             ) {
-                IconButton(onClick = onNavigateToPlaces) {
+                IconButton(onClick = onNavigateToHomeEdit) {
                     Icon(
                         Icons.Default.Edit,
                         contentDescription = "Manage places",
@@ -126,7 +135,7 @@ fun HomeScreen(
                 if (state.places.isEmpty() && !state.isLoading) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         FloatingActionButton(
-                            onClick = onNavigateToPlaces,
+                            onClick = onNavigateToHomeEdit,
                             modifier = Modifier.size(120.dp),
                         ) {
                             Icon(
@@ -192,7 +201,7 @@ fun HomeScreen(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 200.dp, max = 420.dp)
+                    .heightIn(min = 200.dp, max = 560.dp)
                     .pointerInput(Unit) {
                         detectVerticalDragGestures(
                             onDragEnd = {
@@ -230,11 +239,14 @@ fun HomeScreen(
                             banner = state.activeJourney,
                             onTap = onNavigateToJourneys,
                         )
-                    } else if (state.scorerResult != null) {
+                    }
+                    if (state.activeJourney != null && state.scorerResult != null) {
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    }
+                    if (state.scorerResult != null) {
                         ScorerSheetContent(
                             result = state.scorerResult,
-                            onCardTap = { connection ->
-                                // Navigate to search to see trip review
+                            onCardTap = {
                                 onNavigateToSearch(
                                     state.scorerResult.from.displayName(),
                                     state.scorerResult.to.displayName(),
@@ -443,6 +455,17 @@ fun PlaceTileGrid(
     val lineColor = MaterialTheme.colorScheme.primary
     val targetColor = MaterialTheme.colorScheme.secondary
 
+    val infiniteTransition = rememberInfiniteTransition(label = "arrow")
+    val dashPhase by infiniteTransition.animateFloat(
+        initialValue = 27f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "dashPhase",
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -521,15 +544,49 @@ fun PlaceTileGrid(
                         dragCurrentWindowPos.y - boxWindowOrigin.y,
                     )
 
+                    // Animated dashed shaft flowing source → target
                     drawLine(
                         color = lineColor,
                         start = sourceCenter,
                         end = tipPos,
                         strokeWidth = 4.dp.toPx(),
                         cap = StrokeCap.Round,
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(18f, 9f)),
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(18f, 9f), phase = dashPhase),
                     )
+                    // Source dot
                     drawCircle(color = lineColor, radius = 6.dp.toPx(), center = sourceCenter)
+
+                    // Arrowhead at tip
+                    val dx = tipPos.x - sourceCenter.x
+                    val dy = tipPos.y - sourceCenter.y
+                    val len = sqrt(dx * dx + dy * dy)
+                    if (len > 0f) {
+                        val ndx = dx / len
+                        val ndy = dy / len
+                        val arrowLen = 20f
+                        val arrowWing = 10f
+                        val base = androidx.compose.ui.geometry.Offset(
+                            tipPos.x - ndx * arrowLen,
+                            tipPos.y - ndy * arrowLen,
+                        )
+                        val w1 = androidx.compose.ui.geometry.Offset(
+                            base.x - ndy * arrowWing,
+                            base.y + ndx * arrowWing,
+                        )
+                        val w2 = androidx.compose.ui.geometry.Offset(
+                            base.x + ndy * arrowWing,
+                            base.y - ndx * arrowWing,
+                        )
+                        drawPath(
+                            path = Path().apply {
+                                moveTo(tipPos.x, tipPos.y)
+                                lineTo(w1.x, w1.y)
+                                lineTo(w2.x, w2.y)
+                                close()
+                            },
+                            color = if (snapTarget != null) targetColor else lineColor,
+                        )
+                    }
 
                     if (snapTarget != null) {
                         drawCircle(
