@@ -3,6 +3,9 @@ package ch.rhosys.sbb.ui.search
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import ch.rhosys.sbb.data.local.location.LocationProvider
+import ch.rhosys.sbb.domain.PlaceRepository
+import ch.rhosys.sbb.domain.RouteRepository
 import ch.rhosys.sbb.domain.TransportRepository
 import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.SearchEndpoint
@@ -12,6 +15,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -20,6 +24,7 @@ data class ConnectionSearchUiState(
     val toText: String = "",
     val fromSuggestions: List<String> = emptyList(),
     val toSuggestions: List<String> = emptyList(),
+    val smartSuggestions: List<String> = emptyList(),
     val connections: List<Connection> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
@@ -28,14 +33,20 @@ data class ConnectionSearchUiState(
 @HiltViewModel
 class ConnectionSearchViewModel @Inject constructor(
     private val repository: TransportRepository,
+    private val routeRepository: RouteRepository,
+    private val placeRepository: PlaceRepository,
+    private val locationProvider: LocationProvider,
     private val tripReviewHolder: TripReviewHolder,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
+    private val initialFrom = savedStateHandle.get<String>("from") ?: ""
+    private val initialTo   = savedStateHandle.get<String>("to") ?: ""
+
     private val _uiState = MutableStateFlow(
         ConnectionSearchUiState(
-            fromText = savedStateHandle.get<String>("from") ?: "",
-            toText = savedStateHandle.get<String>("to") ?: "",
+            fromText = initialFrom,
+            toText = initialTo,
         )
     )
     val uiState: StateFlow<ConnectionSearchUiState> = _uiState
@@ -43,8 +54,49 @@ class ConnectionSearchViewModel @Inject constructor(
     private var fromSuggestJob: Job? = null
     private var toSuggestJob: Job? = null
 
+    init {
+        viewModelScope.launch { loadSmartSuggestions() }
+    }
+
+    private suspend fun loadSmartSuggestions() {
+        val seen = mutableSetOf<String>()
+        val result = mutableListOf<String>()
+
+        // 1. Closest saved places ≤3
+        val location = locationProvider.getLocationOrNull()
+        if (location != null) {
+            placeRepository.getPlaces().first()
+                .sortedBy { it.distanceMetersTo(location.first, location.second) }
+                .take(3)
+                .forEach { if (seen.add(it.name)) result.add(it.name) }
+        }
+
+        // 2. Last 4 actually travelled (wasLockedIn = true)
+        routeRepository.getRecentSearches(50)
+            .filter { it.wasLockedIn }
+            .distinctBy { it.toName }
+            .take(4)
+            .forEach { if (seen.add(it.toName)) result.add(it.toName) }
+
+        // 3. Last 4 searched (any)
+        routeRepository.getRecentSearches(50)
+            .distinctBy { it.toName }
+            .take(4)
+            .forEach { if (seen.add(it.toName)) result.add(it.toName) }
+
+        _uiState.value = _uiState.value.copy(
+            smartSuggestions = result,
+            fromSuggestions = if (initialFrom.isEmpty()) result else emptyList(),
+            toSuggestions = if (initialTo.isEmpty()) result else emptyList(),
+        )
+    }
+
     fun onFromChanged(value: String) {
-        _uiState.value = _uiState.value.copy(fromText = value, fromSuggestions = emptyList())
+        val smart = _uiState.value.smartSuggestions
+        _uiState.value = _uiState.value.copy(
+            fromText = value,
+            fromSuggestions = if (value.isEmpty()) smart else emptyList(),
+        )
         fromSuggestJob?.cancel()
         if (value.length >= 2) {
             fromSuggestJob = viewModelScope.launch {
@@ -60,7 +112,11 @@ class ConnectionSearchViewModel @Inject constructor(
     }
 
     fun onToChanged(value: String) {
-        _uiState.value = _uiState.value.copy(toText = value, toSuggestions = emptyList())
+        val smart = _uiState.value.smartSuggestions
+        _uiState.value = _uiState.value.copy(
+            toText = value,
+            toSuggestions = if (value.isEmpty()) smart else emptyList(),
+        )
         toSuggestJob?.cancel()
         if (value.length >= 2) {
             toSuggestJob = viewModelScope.launch {

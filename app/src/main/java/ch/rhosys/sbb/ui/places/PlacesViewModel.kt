@@ -18,7 +18,7 @@ private const val PROXIMITY_METERS = 500.0
 
 data class NavigationTarget(val from: String, val to: String)
 
-data class PlacesUiState(
+data class HomeEditUiState(
     val places: List<Place> = emptyList(),
     val addQuery: String = "",
     val addLabel: String = "",
@@ -36,14 +36,14 @@ data class SuggestionItem(
 )
 
 @HiltViewModel
-class PlacesViewModel @Inject constructor(
+class HomeEditViewModel @Inject constructor(
     private val locationProvider: LocationProvider,
     private val placeRepository: PlaceRepository,
     private val transportRepository: TransportRepository,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(PlacesUiState())
-    val uiState: StateFlow<PlacesUiState> = _uiState
+    private val _uiState = MutableStateFlow(HomeEditUiState())
+    val uiState: StateFlow<HomeEditUiState> = _uiState
 
     private var suggestJob: Job? = null
 
@@ -74,6 +74,21 @@ class PlacesViewModel @Inject constructor(
 
     fun onNavigationHandled() {
         _uiState.value = _uiState.value.copy(pendingNavigateTo = null)
+    }
+
+    fun reorderTiles(draggedId: Long, targetId: Long) {
+        val places = _uiState.value.places.toMutableList()
+        val fromIdx = places.indexOfFirst { it.id == draggedId }
+        val toIdx = places.indexOfFirst { it.id == targetId }
+        if (fromIdx < 0 || toIdx < 0 || fromIdx == toIdx) return
+        val tmp = places[fromIdx]
+        places[fromIdx] = places[toIdx]
+        places[toIdx] = tmp
+        viewModelScope.launch {
+            places.forEachIndexed { idx, place ->
+                placeRepository.updatePlace(place.copy(sortOrder = idx))
+            }
+        }
     }
 
     fun openAddDialog() {

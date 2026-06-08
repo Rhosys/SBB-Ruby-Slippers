@@ -33,5 +33,6 @@ interface RouteRepository {
         departureEpoch: Long? = null,
         arrivalEpoch: Long? = null,
     )
+    suspend fun getRecentSearches(limit: Int = 20): List<TripHistoryItem>
     suspend fun pruneExpiredBrowsedTrips()
 }

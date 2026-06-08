@@ -99,6 +99,9 @@ class RoomRouteRepository @Inject constructor(
         tripHistoryDao.pruneOldEntries()
     }
 
+    override suspend fun getRecentSearches(limit: Int): List<TripHistoryItem> =
+        tripHistoryDao.getRecentHistoryOnce(limit).map { it.toDomain() }
+
     override suspend fun pruneExpiredBrowsedTrips() {
         tripHistoryDao.pruneExpiredBrowsed(Instant.now().epochSecond)
     }
