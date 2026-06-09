@@ -69,7 +69,9 @@ class RoutingEngine(
                             pointer[nextStop] = JourneyPointer(
                                 leg = FoundLeg.Transit(
                                     routeName = route.name,
+                                    routeIdx = routeIdx,
                                     boardStopId = stopId,
+                                    boardPos = pos,
                                     alightStopId = nextStop,
                                     boardSeconds = tripDeparture(trip, pos),
                                     alightSeconds = arrivalSec,
@@ -214,7 +216,9 @@ class RoutingEngine(
                             pointer[prevStop] = JourneyPointer(
                                 leg = FoundLeg.Transit(
                                     routeName = route.name,
+                                    routeIdx = routeIdx,
                                     boardStopId = prevStop,
+                                    boardPos = p,
                                     alightStopId = stopId,
                                     boardSeconds = depSec,
                                     alightSeconds = tripArrival(trip, pos),

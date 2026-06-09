@@ -92,11 +92,6 @@ documented. Request the spec to allow handing off to SBB Mobile from `TripReview
 Replace the placeholder launcher icon with a custom SBB Ruby Slippers icon in
 `app/src/main/res/drawable/ic_launcher_*.xml` and `mipmap-anydpi-v26/`.
 
-### 🔲 9. (Optional) PostHog project
-Create a dedicated PostHog project for SBB Ruby Slippers at `live.rhosys.ch`
-and replace the `phc_D195...` key in `SbbRubySlippersApp.kt` with the new key.
-Currently reuses the Lyra (Kinetic-Jewelry) project key.
-
 ---
 
 ## Backend Service Todos

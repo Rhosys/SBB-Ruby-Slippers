@@ -87,7 +87,6 @@ app/src/main/java/ch/rhosys/sbb/
     navigation/{Screen,AppNavHost}.kt
     onboarding/{OnboardingScreen,OnboardingViewModel}.kt
     search/{ConnectionSearchScreen,ConnectionSearchViewModel}.kt ← smart suggestions + transport API autocomplete
-    stationboard/{StationboardScreen,StationboardViewModel}.kt  ← live departures; polls every 30 s; not in bottom nav (reserved for future station-tap deep-link)
     settings/{SettingsScreen,SettingsViewModel}.kt
     fares/FaresTeaserScreen.kt         ← placeholder; wired once OJP Fare token available
     theme/Theme.kt
@@ -122,7 +121,7 @@ deployment/
 
 ## Known gaps (v2)
 
-- **RT per-leg delays**: GtfsRtStore wired into JourneyStripViewModel for banner alerts;
+- **RT per-leg delays**: GtfsRtStore wired into JourneysViewModel for banner alerts;
   per-leg delay overlay (red "+Xmin" on individual stops) requires stationId on Stop
   objects from local GTFS routing (already set) and from the remote API (TODO).
 - **Widget geofence**: DepartureWidget reads from JourneyStateHolder; geofence-driven
