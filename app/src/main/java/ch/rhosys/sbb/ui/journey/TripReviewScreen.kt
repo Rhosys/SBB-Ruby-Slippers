@@ -1,5 +1,6 @@
 package ch.rhosys.sbb.ui.journey
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,9 @@ import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -178,6 +182,7 @@ internal fun LegRow(leg: Leg) {
 
 @Composable
 private fun TransitLegRow(leg: Leg.Transit) {
+    var stopsExpanded by remember { mutableStateOf(false) }
     Column(Modifier.padding(vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -217,6 +222,29 @@ private fun TransitLegRow(leg: Leg.Transit) {
                 }
             }
         }
+        if (leg.intermediateStops.isNotEmpty()) {
+            Text(
+                if (stopsExpanded) "▲ Hide stops" else "▼ ${leg.intermediateStops.size} stops",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .padding(start = 60.dp, top = 2.dp, bottom = 2.dp)
+                    .clickable { stopsExpanded = !stopsExpanded },
+            )
+            if (stopsExpanded) {
+                Column(Modifier.padding(start = 60.dp, bottom = 4.dp)) {
+                    leg.intermediateStops.forEach { stop ->
+                        Text(
+                            stop.stationName,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 2.dp),
+                        )
+                    }
+                }
+            }
+        }
+
         Row(verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(top = 4.dp)) {
             Text(
