@@ -381,49 +381,6 @@ on locally-routed stops from GTFS data). Once stationIds are populated for API
 connections, look up the delay from `GtfsRtStore.delayFor(stationId, tripId)` and
 render the delta inline with each stop row.
 
-### 🔲 Recurring route push notifications
-`RecurringRoute.notifyBeforeMinutes` is stored in the Room DB but no notification
-scheduling code exists. When a recurring route's next departure is within
-`notifyBeforeMinutes`, the user should receive a push notification.
-
-Implementation sketch:
-1. After `CalendarSyncWorker` upserts a `RecurringRoute`, schedule a
-   `NotificationWorker` (one-time, `setInitialDelay`) for each upcoming occurrence.
-2. `NotificationWorker` calls `NotificationManager.notify()` with a deep link
-   into `ConnectionSearchScreen` pre-filled with the route's from/to.
-3. Re-schedule on boot (`BOOT_COMPLETED` broadcast) and on sync.
-Requires `POST_NOTIFICATIONS` permission (Android 13+) — add to manifest and
-request at runtime from `SettingsScreen`.
-
-### ✅ Widget / journey auto-clear (implemented)
-`JourneyAutoClearManager` (wired into `JourneyStateHolder`) registers three
-complementary clearing triggers on every `lockIn()` call, and cancels all of them
-in `clear()`:
-
-1. **Destination geofence** (`GeofencingClient`, radius 150 m) — `JourneyGeofenceReceiver`
-   enqueues `JourneyClearWorker` immediately on `GEOFENCE_TRANSITION_ENTER`.
-   `setInitialTrigger(0)` prevents a spurious fire if the user is already near the
-   destination before departure.
-
-2. **Arrival time + 15 min** (`JourneyClearWorker`, WorkManager one-shot) — time-based
-   safety net that fires even without GPS (tunnel, dead phone, indoor location loss).
-
-3. **Missed boarding check** (`MissedBoardingWorker`, WorkManager one-shot at
-   departure + 10 min) — fetches last-known location; if the user is still within
-   300 m of the origin they didn't board → clears. If they've moved away they're
-   traveling and the check is a no-op (journey stays active until trigger 1 or 2).
-   If no location is available the check is also a no-op (conservative — don't clear
-   on uncertainty).
-
-`ACCESS_BACKGROUND_LOCATION` is already declared in the manifest and requested
-contextually at lock-in time.
-
-### 🔲 Wear OS companion
-Surface the active journey and next departure on a Wear OS watch face / tile.
-Requires a separate `:wear` Gradle module with `DataClient` sync from the phone.
-Scope: read-only mirror of `JourneyStateHolder` + next departure from
-`HomeViewModel`; no search or booking on-watch.
-
 ### 🔲 Sector/platform recommendations
 On Swiss mainline platforms, coaches are assigned to sectors (A–F). Once sector
 maps are available (either from OJP or a static lookup keyed on train category +
@@ -442,16 +399,3 @@ before release and verify the proguard rules in `app/proguard-rules.pro` cover a
 reflection-heavy dependencies: Hilt, Retrofit + kotlinx-serialization, PostHog, and
 the Glance widget. Run `npm run start:release` on the emulator to catch any stripping
 crashes before shipping.
-
-### 🔲 Android Auto Backup
-Add `android:fullBackupContent="@xml/backup_rules"` to the `<application>` tag in
-`AndroidManifest.xml` and create `res/xml/backup_rules.xml` to exclude the RT token
-and cached GTFS files from Google's Auto Backup (they should not roam to other
-devices). DataStore preferences and Room DB can be backed up.
-```xml
-<!-- res/xml/backup_rules.xml -->
-<full-backup-content>
-    <exclude domain="file" path="gtfs/" />
-    <exclude domain="sharedpref" path="rt_token" />
-</full-backup-content>
-```
