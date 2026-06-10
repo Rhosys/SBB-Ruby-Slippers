@@ -395,16 +395,28 @@ Implementation sketch:
 Requires `POST_NOTIFICATIONS` permission (Android 13+) — add to manifest and
 request at runtime from `SettingsScreen`.
 
-### 🔲 Widget geofence auto-clear
-`DepartureWidget` reads the active journey from `JourneyStateHolder`. Currently the
-user must manually end a journey. Auto-clear when the device enters a geofence
-around the destination (using `GeofencingClient`).
+### ✅ Widget / journey auto-clear (implemented)
+`JourneyAutoClearManager` (wired into `JourneyStateHolder`) registers three
+complementary clearing triggers on every `lockIn()` call, and cancels all of them
+in `clear()`:
 
-Implementation sketch: when `JourneyStateHolder.lockIn()` is called, register a
-`GeofencingRequest` for the destination coordinates (radius ~150 m). On
-`GEOFENCE_TRANSITION_ENTER`, call `JourneyStateHolder.clear()` and remove the
-geofence. Cancel the geofence registration in `JourneyStateHolder.clear()` if the
-user ends the journey manually first.
+1. **Destination geofence** (`GeofencingClient`, radius 150 m) — `JourneyGeofenceReceiver`
+   enqueues `JourneyClearWorker` immediately on `GEOFENCE_TRANSITION_ENTER`.
+   `setInitialTrigger(0)` prevents a spurious fire if the user is already near the
+   destination before departure.
+
+2. **Arrival time + 15 min** (`JourneyClearWorker`, WorkManager one-shot) — time-based
+   safety net that fires even without GPS (tunnel, dead phone, indoor location loss).
+
+3. **Missed boarding check** (`MissedBoardingWorker`, WorkManager one-shot at
+   departure + 10 min) — fetches last-known location; if the user is still within
+   300 m of the origin they didn't board → clears. If they've moved away they're
+   traveling and the check is a no-op (journey stays active until trigger 1 or 2).
+   If no location is available the check is also a no-op (conservative — don't clear
+   on uncertainty).
+
+`ACCESS_BACKGROUND_LOCATION` is already declared in the manifest and requested
+contextually at lock-in time.
 
 ### 🔲 Wear OS companion
 Surface the active journey and next departure on a Wear OS watch face / tile.
