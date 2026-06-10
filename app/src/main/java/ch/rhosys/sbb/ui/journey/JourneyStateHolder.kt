@@ -16,6 +16,7 @@ import javax.inject.Singleton
 @Singleton
 class JourneyStateHolder @Inject constructor(
     private val prefs: UserPreferencesRepository,
+    private val autoClearManager: JourneyAutoClearManager,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -24,20 +25,26 @@ class JourneyStateHolder @Inject constructor(
 
     fun lockIn(connection: Connection, from: SearchEndpoint, to: SearchEndpoint) {
         _activeJourney.value = ActiveJourney(connection, from, to)
-        val arrivalEpoch = connection.arrival.effectiveTime?.epochSecond ?: return
+        val departureEpoch = connection.departure.effectiveTime?.epochSecond
+        val arrivalEpoch = connection.arrival.effectiveTime?.epochSecond
         scope.launch {
-            prefs.persistActiveJourney(
-                PersistedJourney(
-                    fromName = from.displayName(),
-                    toName = to.displayName(),
-                    arrivalEpoch = arrivalEpoch,
+            arrivalEpoch?.let {
+                prefs.persistActiveJourney(
+                    PersistedJourney(fromName = from.displayName(), toName = to.displayName(), arrivalEpoch = it)
                 )
-            )
+            }
         }
+        autoClearManager.schedule(
+            fromLat = from.latOrNull(), fromLng = from.lngOrNull(),
+            toLat = to.latOrNull(), toLng = to.lngOrNull(),
+            departureEpoch = departureEpoch,
+            arrivalEpoch = arrivalEpoch,
+        )
     }
 
     fun clear() {
         _activeJourney.value = null
+        autoClearManager.cancel()
         scope.launch { prefs.clearActiveJourney() }
     }
 
