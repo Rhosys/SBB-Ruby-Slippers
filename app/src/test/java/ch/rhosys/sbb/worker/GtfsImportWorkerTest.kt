@@ -1,7 +1,7 @@
 package ch.rhosys.sbb.worker
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -47,26 +47,10 @@ class GtfsImportWorkerTest {
     }
 
     @Test
-    fun `currentTimetableYear is current year before changeover`() {
-        // June 10, 2026 — changeover is Dec 13 2026, so timetable year = 2026
-        assertEquals(2026, GtfsImportWorker.currentTimetableYear(LocalDate.of(2026, 6, 10)))
-    }
-
-    @Test
-    fun `currentTimetableYear advances on changeover day`() {
-        val switchDay2025 = GtfsImportWorker.fahrplanwechselDate(2025) // Dec 14 2025
-        assertEquals(2025, GtfsImportWorker.currentTimetableYear(switchDay2025.minusDays(1)))
-        assertEquals(2026, GtfsImportWorker.currentTimetableYear(switchDay2025))
-        assertEquals(2026, GtfsImportWorker.currentTimetableYear(switchDay2025.plusDays(1)))
-    }
-
-    @Test
-    fun `gtfsFeedUrl contains no hardcoded year`() {
-        val url2025 = GtfsImportWorker.gtfsFeedUrl(LocalDate.of(2025, 6, 1))
-        val url2026 = GtfsImportWorker.gtfsFeedUrl(LocalDate.of(2026, 6, 1))
-        assertTrue(url2025.contains("timetable-gtfs2025"))
-        assertTrue(url2026.contains("timetable-gtfs2026"))
-        assertFalse(url2025.contains("gtfs2020"))
-        assertFalse(url2026.contains("gtfs2020"))
+    fun `feed URL contains no year`() {
+        assertFalse(
+            "URL must not contain a hardcoded year",
+            GtfsImportWorker.GTFS_FEED_URL.contains(Regex("\\d{4}")),
+        )
     }
 }
