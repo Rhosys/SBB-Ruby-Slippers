@@ -234,22 +234,25 @@ fun HomeScreen(
                     )
                     Spacer(Modifier.height(12.dp))
 
-                    if (state.activeJourney != null) {
+                    val activeJourney = state.activeJourney
+                    val scorerResult = state.scorerResult
+
+                    if (activeJourney != null) {
                         ActiveJourneySheetContent(
-                            banner = state.activeJourney,
+                            banner = activeJourney,
                             onTap = onNavigateToJourneys,
                         )
                     }
-                    if (state.activeJourney != null && state.scorerResult != null) {
+                    if (activeJourney != null && scorerResult != null) {
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                     }
-                    if (state.scorerResult != null) {
+                    if (scorerResult != null) {
                         ScorerSheetContent(
-                            result = state.scorerResult,
+                            result = scorerResult,
                             onCardTap = {
                                 onNavigateToSearch(
-                                    state.scorerResult.from.displayName(),
-                                    state.scorerResult.to.displayName(),
+                                    scorerResult.from.displayName(),
+                                    scorerResult.to.displayName(),
                                 )
                             },
                         )
