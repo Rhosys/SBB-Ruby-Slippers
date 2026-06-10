@@ -69,7 +69,7 @@ class GtfsImportWorker @AssistedInject constructor(
         val files = try {
             response.body!!.use { body ->
                 ZipInputStream(body.byteStream()).use { zip ->
-                    buildMap {
+                    buildMap<String, String> {
                         var entry = zip.nextEntry
                         while (entry != null) {
                             if (!entry.isDirectory && entry.name in NEEDED_FILES) {
