@@ -5,7 +5,7 @@ name: Android CI
 
 on:
   push:
-    branches: [main, "claude/**"]
+    branches: [main]
     paths-ignore:
       - "firmware/**"
       - ".github/workflows/firmware.yml"
