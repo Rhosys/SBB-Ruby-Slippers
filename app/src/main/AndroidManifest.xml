@@ -11,6 +11,8 @@
     <!-- Calendar sync — requested contextually when user enables in Settings -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Departure reminders — requested contextually in Settings (API 33+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".SbbRubySlippersApp"
@@ -19,6 +21,8 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.SbbRubySlippers"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         tools:targetApi="35">
 
         <activity

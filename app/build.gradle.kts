@@ -80,6 +80,7 @@ dependencies {
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
+    implementation(libs.play.services.wearable)
     implementation(libs.datastore.preferences)
     implementation(libs.posthog.android)
 

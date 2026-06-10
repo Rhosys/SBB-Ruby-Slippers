@@ -17,6 +17,7 @@ import ch.rhosys.sbb.domain.RouteRepository
 import ch.rhosys.sbb.domain.TransportRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 
 @HiltWorker
@@ -26,6 +27,7 @@ class CalendarSyncWorker @AssistedInject constructor(
     private val calendarRepository: CalendarRepository,
     private val routeRepository: RouteRepository,
     private val transportRepository: TransportRepository,
+    private val notificationScheduler: RouteNotificationScheduler,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -58,6 +60,7 @@ class CalendarSyncWorker @AssistedInject constructor(
         }
 
         routeRepository.pruneStaleCalendarRoutes(activeIds)
+        notificationScheduler.schedule(routeRepository.getRecurringRoutes().first())
         return Result.success()
     }
 
