@@ -4,6 +4,9 @@ import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -60,6 +63,17 @@ class JourneyAutoClearManager @Inject constructor(
 
     @SuppressLint("MissingPermission")
     private fun registerDestinationGeofence(lat: Double, lng: Double) {
+        // Android 10+ requires ACCESS_BACKGROUND_LOCATION for geofences to fire when the
+        // app is not in the foreground. This permission can only be granted via system
+        // Settings on API 30+ — no popup is possible. Skip registration if not granted;
+        // the arrival-time and missed-boarding workers still provide coverage.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val granted = ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) return
+        }
+
         val geofence = Geofence.Builder()
             .setRequestId(DESTINATION_GEOFENCE_ID)
             .setCircularRegion(lat, lng, DESTINATION_RADIUS_M)
