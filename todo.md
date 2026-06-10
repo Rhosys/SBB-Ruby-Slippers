@@ -370,3 +370,69 @@ Once the deep link spec is obtained (Infra Todo 7), add a secondary button in
 `TripReviewScreen` that opens SBB Mobile at the same connection. Fallback for when
 B2P in-app purchase is not yet wired up.
 URI sketch: `sbb://journey?from=<id>&to=<id>&date=<ISO>&via=<id>` (spec TBD).
+
+### 🔲 RT per-leg delay overlays
+`GtfsRtStore` is wired into `JourneysViewModel` for service-alert banners, but
+per-leg delay overlays (**"+X min"** in red on individual stops in `TripReviewScreen`
+and the active-journey card in `JourneysScreen`) are not yet shown.
+
+Requires: `stationId` on `Stop` objects from the remote API path (already present
+on locally-routed stops from GTFS data). Once stationIds are populated for API
+connections, look up the delay from `GtfsRtStore.delayFor(stationId, tripId)` and
+render the delta inline with each stop row.
+
+### 🔲 Recurring route push notifications
+`RecurringRoute.notifyBeforeMinutes` is stored in the Room DB but no notification
+scheduling code exists. When a recurring route's next departure is within
+`notifyBeforeMinutes`, the user should receive a push notification.
+
+Implementation sketch:
+1. After `CalendarSyncWorker` upserts a `RecurringRoute`, schedule a
+   `NotificationWorker` (one-time, `setInitialDelay`) for each upcoming occurrence.
+2. `NotificationWorker` calls `NotificationManager.notify()` with a deep link
+   into `ConnectionSearchScreen` pre-filled with the route's from/to.
+3. Re-schedule on boot (`BOOT_COMPLETED` broadcast) and on sync.
+Requires `POST_NOTIFICATIONS` permission (Android 13+) — add to manifest and
+request at runtime from `SettingsScreen`.
+
+### 🔲 Widget geofence auto-clear
+`DepartureWidget` reads the active journey from `JourneyStateHolder`. Currently the
+user must manually end a journey. Auto-clear when the device enters a geofence
+around the destination (using `GeofencingClient`).
+
+Implementation sketch: when `JourneyStateHolder.lockIn()` is called, register a
+`GeofencingRequest` for the destination coordinates (radius ~150 m). On
+`GEOFENCE_TRANSITION_ENTER`, call `JourneyStateHolder.clear()` and remove the
+geofence. Cancel the geofence registration in `JourneyStateHolder.clear()` if the
+user ends the journey manually first.
+
+### 🔲 Wear OS companion
+Surface the active journey and next departure on a Wear OS watch face / tile.
+Requires a separate `:wear` Gradle module with `DataClient` sync from the phone.
+Scope: read-only mirror of `JourneyStateHolder` + next departure from
+`HomeViewModel`; no search or booking on-watch.
+
+### 🔲 Sector/platform recommendations
+On Swiss mainline platforms, coaches are assigned to sectors (A–F). Once sector
+maps are available (either from OJP or a static lookup keyed on train category +
+platform), show the recommended boarding sector on the leg departure row in
+`TripReviewScreen` alongside the platform number.
+
+### 🔲 Journey sharing
+Add a **Share** action (share sheet) on `TripReviewScreen` that serialises the
+selected `Connection` to a deep link (e.g. `sbbrs://journey?...`) or a human-
+readable plain-text summary. Receiving side: handle the deep link in `MainActivity`
+and navigate directly to `TripReviewScreen` with the pre-populated connection.
+
+### 🔲 Android Auto Backup
+Add `android:fullBackupContent="@xml/backup_rules"` to the `<application>` tag in
+`AndroidManifest.xml` and create `res/xml/backup_rules.xml` to exclude the RT token
+and cached GTFS files from Google's Auto Backup (they should not roam to other
+devices). DataStore preferences and Room DB can be backed up.
+```xml
+<!-- res/xml/backup_rules.xml -->
+<full-backup-content>
+    <exclude domain="file" path="gtfs/" />
+    <exclude domain="sharedpref" path="rt_token" />
+</full-backup-content>
+```
