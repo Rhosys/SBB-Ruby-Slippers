@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "SbbRubySlippers"
 include(":app")
+include(":wear")

@@ -150,6 +150,13 @@ class LocalTransportRepository @Inject constructor(
                 is FoundLeg.Transit -> {
                     val boardStop = network.stops.getOrNull(leg.boardStopId) ?: return null
                     val alightStop = network.stops.getOrNull(leg.alightStopId) ?: return null
+                    val route = network.routes.getOrNull(leg.routeIdx)
+                    val alightPos = route?.stopIds?.indexOf(leg.alightStopId) ?: -1
+                    val intermediateStops = if (route != null && alightPos > leg.boardPos + 1) {
+                        route.stopIds.subList(leg.boardPos + 1, alightPos).mapNotNull { id ->
+                            network.stops.getOrNull(id)?.let { Stop(stationName = it.name) }
+                        }
+                    } else emptyList()
                     Leg.Transit(
                         departure = Stop(
                             stationName = boardStop.name,
@@ -162,6 +169,7 @@ class LocalTransportRepository @Inject constructor(
                         lineName = leg.routeName,
                         lineCategory = "",
                         direction = alightStop.name,
+                        intermediateStops = intermediateStops,
                     )
                 }
                 is FoundLeg.Walk -> Leg.Walk(

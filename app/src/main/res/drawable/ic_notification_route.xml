@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Bus/tram silhouette — status-bar-safe monochrome icon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M4,16L4,7C4,5.34 5.34,4 7,4L17,4C18.66,4 20,5.34 20,7L20,16C20,17.32 19.28,18.47 18.21,19.09L19.5,20.5L18,22L15.97,19.88C15.36,20 14.69,20 14,20L10,20C9.31,20 8.64,19.99 8.03,19.88L6,22L4.5,20.5L5.79,19.09C4.72,18.47 4,17.32 4,16ZM7.5,15C8.33,15 9,14.33 9,13.5C9,12.67 8.33,12 7.5,12C6.67,12 6,12.67 6,13.5C6,14.33 6.67,15 7.5,15ZM16.5,15C17.33,15 18,14.33 18,13.5C18,12.67 17.33,12 16.5,12C15.67,12 15,12.67 15,13.5C15,14.33 15.67,15 16.5,15ZM6,10L18,10L18,7L6,7L6,10Z" />
+</vector>

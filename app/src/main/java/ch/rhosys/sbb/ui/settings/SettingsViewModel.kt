@@ -21,6 +21,7 @@ data class SettingsUiState(
     val switchThresholdMinutes: Int = 1,
     val calendarSyncEnabled: Boolean = false,
     val calendarSyncIntervalHours: Int = 4,
+    val rtToken: String = "",
 )
 
 @HiltViewModel
@@ -30,13 +31,11 @@ class SettingsViewModel @Inject constructor(
 ) : ViewModel() {
 
     val uiState: StateFlow<SettingsUiState> = combine(
-        prefs.walkingPaceKmh,
-        prefs.runningPaceKmh,
-        prefs.switchThresholdMinutes,
-        prefs.calendarSyncEnabled,
-        prefs.calendarSyncIntervalHours,
-    ) { walking, running, threshold, calSync, calInterval ->
-        SettingsUiState(walking, running, threshold, calSync, calInterval)
+        combine(prefs.walkingPaceKmh, prefs.runningPaceKmh, prefs.switchThresholdMinutes) { w, r, t -> Triple(w, r, t) },
+        combine(prefs.calendarSyncEnabled, prefs.calendarSyncIntervalHours) { e, i -> e to i },
+        prefs.rtToken,
+    ) { (walking, running, threshold), (calSync, calInterval), token ->
+        SettingsUiState(walking, running, threshold, calSync, calInterval, token)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
     fun setWalkingPace(kmh: Float) = viewModelScope.launch { prefs.setWalkingPace(kmh) }
@@ -59,4 +58,6 @@ class SettingsViewModel @Inject constructor(
             CalendarSyncWorker.schedule(context, hours)
         }
     }
+
+    fun setRtToken(token: String) = viewModelScope.launch { prefs.setRtToken(token) }
 }

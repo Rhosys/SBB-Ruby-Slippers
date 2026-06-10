@@ -13,9 +13,6 @@ interface PlaceDao {
     @Query("SELECT * FROM places ORDER BY sortOrder ASC, createdAt ASC")
     fun getAllPlaces(): Flow<List<PlaceEntity>>
 
-    @Query("SELECT * FROM places WHERE isHome = 1 LIMIT 1")
-    fun getHomePlace(): Flow<PlaceEntity?>
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(place: PlaceEntity): Long
 
@@ -24,10 +21,4 @@ interface PlaceDao {
 
     @Query("DELETE FROM places WHERE id = :id")
     suspend fun deleteById(id: Long)
-
-    @Query("UPDATE places SET isHome = 0")
-    suspend fun clearHomeFlag()
-
-    @Query("UPDATE places SET isHome = 1 WHERE id = :id")
-    suspend fun setHome(id: Long)
 }

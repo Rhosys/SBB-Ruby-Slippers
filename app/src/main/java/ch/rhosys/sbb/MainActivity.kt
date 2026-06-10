@@ -14,28 +14,33 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.first
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import ch.rhosys.sbb.data.local.preferences.UserPreferencesRepository
 import ch.rhosys.sbb.ui.error.StartupErrorScreen
+import ch.rhosys.sbb.ui.journey.JourneyStateHolder
+import ch.rhosys.sbb.ui.journey.MissedBoardingDialog
 import ch.rhosys.sbb.ui.navigation.AppNavHost
 import ch.rhosys.sbb.ui.navigation.Screen
 import ch.rhosys.sbb.ui.theme.SbbRubySlippersTheme
 import dagger.hilt.android.AndroidEntryPoint
+import java.time.Instant
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var prefs: UserPreferencesRepository
+    @Inject lateinit var journeyStateHolder: JourneyStateHolder
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val isFreshStart = savedInstanceState == null
 
         setContent {
             SbbRubySlippersTheme {
@@ -48,7 +53,7 @@ class MainActivity : ComponentActivity() {
                 val hasOnboarded by prefs.hasCompletedOnboarding
                     .collectAsStateWithLifecycle(initialValue = null)
 
-                if (hasOnboarded == null) return@SbbRubySlippersTheme  // wait for DataStore
+                if (hasOnboarded == null) return@SbbRubySlippersTheme
 
                 val startDestination = if (hasOnboarded == true)
                     Screen.Home.route
@@ -59,15 +64,37 @@ class MainActivity : ComponentActivity() {
                 val backStack by navController.currentBackStackEntryAsState()
                 val currentRoute = backStack?.destination?.route
 
+                if (isFreshStart && hasOnboarded == true) {
+                    LaunchedEffect(Unit) {
+                        val journey = prefs.activeJourney.first() ?: return@LaunchedEffect
+                        if (journey.arrivalEpoch > Instant.now().epochSecond) {
+                            navController.navigate(Screen.Journeys.route)
+                        }
+                    }
+                }
+
+                val missedBoardingPrompt by journeyStateHolder.missedBoardingPrompt
+                    .collectAsStateWithLifecycle(initialValue = false)
+                val activeJourney by journeyStateHolder.activeJourney
+                    .collectAsStateWithLifecycle(initialValue = null)
+
+                if (missedBoardingPrompt && activeJourney != null) {
+                    MissedBoardingDialog(
+                        fromName = activeJourney!!.from.displayName(),
+                        onMissedIt = { journeyStateHolder.clear() },
+                        onDifferentRoute = { journeyStateHolder.clear() },
+                        onStillOnIt = { journeyStateHolder.dismissMissedBoardingPrompt() },
+                    )
+                }
+
                 val tabScreens = listOf(
-                    Triple(Screen.Home,         "Home",       Icons.Default.Home),
-                    Triple(Screen.Stationboard, "Departures", Icons.Default.DateRange),
-                    Triple(Screen.Settings,     "Settings",   Icons.Default.Settings),
+                    Triple(Screen.Home,     "Home",     Icons.Default.Home),
+                    Triple(Screen.Journeys, "Journeys", Icons.Default.DateRange),
+                    Triple(Screen.Settings, "Settings", Icons.Default.Settings),
                 )
 
                 val hideBottomNav = currentRoute in setOf(
                     Screen.Onboarding.route,
-                    Screen.Journey.route,
                 )
 
                 Scaffold(

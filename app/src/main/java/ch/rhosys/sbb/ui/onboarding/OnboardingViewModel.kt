@@ -43,7 +43,7 @@ class OnboardingViewModel @Inject constructor(
             if (name.isNotBlank()) {
                 val lat = state.homeLat ?: 47.3769
                 val lng = state.homeLng ?: 8.5417
-                placeRepository.upsertPlace(name = name, lat = lat, lng = lng, isHome = true)
+                placeRepository.upsertPlace(name = name, lat = lat, lng = lng)
             }
             prefs.setHasCompletedOnboarding(true)
             _uiState.value = _uiState.value.copy(isSaving = false, isComplete = true)

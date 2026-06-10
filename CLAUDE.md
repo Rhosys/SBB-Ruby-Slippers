@@ -76,19 +76,25 @@ app/src/main/java/ch/rhosys/sbb/
       SavedRoute.kt / RecurringRoute.kt / SearchEndpoint.kt
   ui/
     error/StartupErrorScreen.kt
-    home/{HomeScreen,HomeViewModel}.kt ← app-open scorer + swipe-to-lock cards + tile grid
+    home/{HomeScreen,HomeViewModel}.kt ← scorer + pull-over sheet (active journey above next departure) + tile grid
+    homeedit/{HomeEditScreen,HomeEditViewModel}.kt ← place management: add/delete/reorder tiles
     journey/
       JourneyStateHolder.kt            ← @Singleton: locked-in connection + from/to
-      JourneyStripScreen.kt            ← legs list + switch-prompt AlertDialog
-      JourneyStripViewModel.kt         ← 30 s polling; switch-prompt when saved ≥ threshold
+      JourneysScreen.kt                ← three-tab screen: Active / Past / Planned
+      JourneysViewModel.kt             ← 30 s polling; switch-prompt when saved ≥ threshold
+      TripReviewScreen.kt              ← full leg breakdown; "Start journey" locks in connection
+      TripReviewViewModel.kt
     navigation/{Screen,AppNavHost}.kt
     onboarding/{OnboardingScreen,OnboardingViewModel}.kt
-    search/{ConnectionSearchScreen,ConnectionSearchViewModel}.kt
+    search/{ConnectionSearchScreen,ConnectionSearchViewModel}.kt ← smart suggestions + transport API autocomplete
     settings/{SettingsScreen,SettingsViewModel}.kt
-    stationboard/{StationboardScreen,StationboardViewModel}.kt
+    fares/FaresTeaserScreen.kt         ← placeholder; wired once OJP Fare token available
     theme/Theme.kt
     widget/DepartureWidget.kt          ← Glance placeholder (no real data yet)
-  worker/CalendarSyncWorker.kt         ← @HiltWorker: syncs calendar events → saved routes
+  worker/
+    CalendarSyncWorker.kt              ← @HiltWorker: syncs calendar events → saved routes
+    GtfsImportWorker.kt                ← @HiltWorker: daily GTFS check (ETag + URL tracking; auto-detects Fahrplanwechsel)
+    GtfsRtRefreshWorker.kt             ← @HiltWorker: 15 min RT delays feed (skips if no token)
 app/src/main/res/xml/departure_widget_info.xml
 deployment/
   android-upload-signing.json  ← PLACEHOLDER — must be replaced before release
@@ -100,18 +106,22 @@ deployment/
 
 ## Tile interaction model
 
+### HomeScreen
 - **Tap** a place tile → routes from the user's current GPS location to that place
-  (HomeViewModel.routeFromCurrentLocationTo).
-- **Drag** from one tile to another → draws a dashed directed line on screen while
-  dragging; on release navigates to ConnectionSearchScreen with from/to pre-filled.
-  Source tile highlights in primary, target tile highlights in secondary, Canvas
-  overlay draws the line in real-time.
+  (HomeViewModel.routeFromCurrentLocationTo); result shown in the pull-over sheet.
+- **Drag** from one tile to another → animated flowing arrow (dashes animate
+  source → target, arrowhead at tip); on release navigates to ConnectionSearchScreen
+  with from/to pre-filled. Source tile highlights in primary, target in secondary.
+
+### HomeEditScreen
+- **Tap** a tile → navigates to ConnectionSearchScreen with nearest saved place or
+  current location as the from endpoint.
+- **Short-press drag** → drag to reorder; drop on another tile swaps sort order.
+  Drop on the trash zone (appears at top while dragging) deletes the tile.
 
 ## Known gaps (v2)
 
-- **RT token**: GtfsRtRefreshWorker URL requires a free token from opentransportdata.swiss;
-  wire the token through UserPreferencesRepository once token-onboarding is built.
-- **RT per-leg delays**: GtfsRtStore wired into JourneyStripViewModel for banner alerts;
+- **RT per-leg delays**: GtfsRtStore wired into JourneysViewModel for banner alerts;
   per-leg delay overlay (red "+Xmin" on individual stops) requires stationId on Stop
   objects from local GTFS routing (already set) and from the remote API (TODO).
 - **Widget geofence**: DepartureWidget reads from JourneyStateHolder; geofence-driven
