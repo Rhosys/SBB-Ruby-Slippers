@@ -436,6 +436,13 @@ selected `Connection` to a deep link (e.g. `sbbrs://journey?...`) or a human-
 readable plain-text summary. Receiving side: handle the deep link in `MainActivity`
 and navigate directly to `TripReviewScreen` with the pre-populated connection.
 
+### 🔲 Re-enable R8 minification
+`isMinifyEnabled` is currently commented out in `app/build.gradle.kts`. Re-enable it
+before release and verify the proguard rules in `app/proguard-rules.pro` cover all
+reflection-heavy dependencies: Hilt, Retrofit + kotlinx-serialization, PostHog, and
+the Glance widget. Run `npm run start:release` on the emulator to catch any stripping
+crashes before shipping.
+
 ### 🔲 Android Auto Backup
 Add `android:fullBackupContent="@xml/backup_rules"` to the `<application>` tag in
 `AndroidManifest.xml` and create `res/xml/backup_rules.xml` to exclude the RT token
