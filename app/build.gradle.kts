@@ -31,7 +31,7 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
+            // isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Sign release with the shared debug key so the minified variant is
             // installable on a local emulator (npm run start:release) to catch
