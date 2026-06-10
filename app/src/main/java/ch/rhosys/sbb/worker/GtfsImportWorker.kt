@@ -18,13 +18,17 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
+import org.tukaani.xz.XZInputStream
 import java.io.File
+import java.io.InputStream
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
 import java.util.concurrent.TimeUnit
+import java.util.zip.GZIPInputStream
 import java.util.zip.ZipInputStream
 
 private const val REFRESH_INTERVAL_DAYS = 1L
@@ -68,17 +72,7 @@ class GtfsImportWorker @AssistedInject constructor(
 
         val files = try {
             response.body!!.use { body ->
-                ZipInputStream(body.byteStream()).use { zip ->
-                    buildMap<String, String> {
-                        var entry = zip.nextEntry
-                        while (entry != null) {
-                            if (!entry.isDirectory && entry.name in NEEDED_FILES) {
-                                put(entry.name, zip.readBytes().toString(Charsets.UTF_8))
-                            }
-                            entry = zip.nextEntry
-                        }
-                    }
-                }
+                extractGtfsFiles(body.byteStream())
             }
         } catch (e: Exception) {
             return if (runAttemptCount < 3) Result.retry() else Result.failure()
@@ -97,6 +91,54 @@ class GtfsImportWorker @AssistedInject constructor(
         scheduleFahrplanwechsel(applicationContext)
         return Result.success()
     }
+
+    private fun extractGtfsFiles(inputStream: InputStream): Map<String, String> {
+        val buf = inputStream.buffered()
+        buf.mark(6)
+        val magic = ByteArray(6).also { buf.read(it) }
+        buf.reset()
+        return when {
+            // ZIP: PK\x03\x04
+            magic[0] == 0x50.toByte() && magic[1] == 0x4B.toByte() ->
+                extractZip(buf)
+            // XZ: \xFD7zXZ\x00
+            magic[0] == 0xFD.toByte() && magic[1] == 0x37.toByte() && magic[2] == 0x7A.toByte() ->
+                extractTar(XZInputStream(buf))
+            // GZip / tar.gz: \x1F\x8B
+            magic[0] == 0x1F.toByte() && magic[1] == 0x8B.toByte() ->
+                extractTar(GZIPInputStream(buf))
+            // Bare TAR (or unknown — let TarArchiveInputStream throw if not a tar)
+            else ->
+                extractTar(buf)
+        }
+    }
+
+    private fun extractZip(inputStream: InputStream): Map<String, String> =
+        ZipInputStream(inputStream).use { zip ->
+            buildMap<String, String> {
+                var entry = zip.nextEntry
+                while (entry != null) {
+                    if (!entry.isDirectory && entry.name in NEEDED_FILES) {
+                        put(entry.name, zip.readBytes().toString(Charsets.UTF_8))
+                    }
+                    entry = zip.nextEntry
+                }
+            }
+        }
+
+    private fun extractTar(inputStream: InputStream): Map<String, String> =
+        TarArchiveInputStream(inputStream).use { tar ->
+            buildMap<String, String> {
+                var entry = tar.nextEntry
+                while (entry != null) {
+                    val name = entry.name.substringAfterLast('/')
+                    if (!entry.isDirectory && name in NEEDED_FILES) {
+                        put(name, tar.readBytes().toString(Charsets.UTF_8))
+                    }
+                    entry = tar.nextEntry
+                }
+            }
+        }
 
     companion object {
         private const val WORK_NAME = "gtfs_import"

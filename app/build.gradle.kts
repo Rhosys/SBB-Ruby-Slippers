@@ -104,6 +104,10 @@ dependencies {
     // Image loading — place tile photos
     implementation(libs.coil.compose)
 
+    // Archive extraction — GTFS feed may arrive as zip, tar, tar.gz, or tar.xz
+    implementation(libs.commons.compress)
+    implementation(libs.xz.java)
+
     // Networking — direct calls to transport.opendata.ch (public, no auth)
     implementation(libs.retrofit)
     implementation(libs.retrofit.serialization)
