@@ -12,6 +12,7 @@ import ch.rhosys.sbb.domain.model.RecurringRoute
 import ch.rhosys.sbb.domain.model.SavedRoute
 import ch.rhosys.sbb.domain.model.SearchEndpoint
 import ch.rhosys.sbb.ui.journey.JourneyStateHolder
+import ch.rhosys.sbb.ui.widget.JourneyWidgetSyncer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,6 +53,7 @@ class HomeViewModel @Inject constructor(
     private val routeRepository: RouteRepository,
     private val transportRepository: TransportRepository,
     private val journeyStateHolder: JourneyStateHolder,
+    private val widgetSyncer: JourneyWidgetSyncer,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -84,6 +86,7 @@ class HomeViewModel @Inject constructor(
 
     fun dismissScorer() {
         _uiState.value = _uiState.value.copy(scorerResult = null)
+        // Widget keeps showing the last scorer result as sticky glanceable info.
     }
 
     fun abandonActiveJourney() {
@@ -103,17 +106,16 @@ class HomeViewModel @Inject constructor(
                 transportRepository.getConnections(from, place.toSearchEndpoint())
             }.getOrNull() ?: emptyList()
 
-            _uiState.value = _uiState.value.copy(
-                isLoading = false,
-                scorerResult = if (connections.isNotEmpty()) {
-                    ScorerResult(
-                        destination = place.name,
-                        connections = connections,
-                        from = from,
-                        to = place.toSearchEndpoint(),
-                    )
-                } else null,
-            )
+            val result = if (connections.isNotEmpty()) {
+                ScorerResult(
+                    destination = place.name,
+                    connections = connections,
+                    from = from,
+                    to = place.toSearchEndpoint(),
+                )
+            } else null
+            _uiState.value = _uiState.value.copy(isLoading = false, scorerResult = result)
+            if (result != null) notifyWidget(result) else widgetSyncer.clearScorerResult()
         }
     }
 
@@ -134,21 +136,34 @@ class HomeViewModel @Inject constructor(
             }.getOrNull() ?: emptyList()
 
             if (connections.isNotEmpty()) {
+                val result = ScorerResult(
+                    destination = candidate.destinationName,
+                    connections = connections,
+                    from = from,
+                    to = candidate.toDestinationEndpoint(),
+                )
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     places = places,
-                    scorerResult = ScorerResult(
-                        destination = candidate.destinationName,
-                        connections = connections,
-                        from = from,
-                        to = candidate.toDestinationEndpoint(),
-                    ),
+                    scorerResult = result,
                 )
+                notifyWidget(result)
                 return
             }
         }
 
         _uiState.value = _uiState.value.copy(isLoading = false, places = places)
+        widgetSyncer.clearScorerResult()
+    }
+
+    private fun notifyWidget(result: ScorerResult) {
+        val best = result.connections.first()
+        widgetSyncer.onScorerResult(
+            to = result.destination,
+            departTime = best.departure.displayTime(),
+            arriveTime = best.arrival.displayTime(),
+            lines = best.lineNames.joinToString(" · "),
+        )
     }
 
     private suspend fun scoreBestCandidate(): SavedRoute? {
