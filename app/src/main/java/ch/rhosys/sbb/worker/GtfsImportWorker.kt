@@ -137,7 +137,7 @@ class GtfsImportWorker @AssistedInject constructor(
             val daysFromSwitch = ChronoUnit.DAYS.between(mostRecentSwitch, today)
             if (daysFromSwitch !in 0..3) return
 
-            val switchEpochMs = mostRecentSwitch.atStartOfDay(SWISS_ZONE).toInstant().toEpochMilli()
+            val switchEpochMs = mostRecentSwitch.atTime(4, 0).atZone(SWISS_ZONE).toInstant().toEpochMilli()
             val lastImportMs = File(context.filesDir, "gtfs/meta.txt")
                 .runCatching { readText().trim().toLong() }.getOrDefault(0L)
             if (lastImportMs >= switchEpochMs) return
