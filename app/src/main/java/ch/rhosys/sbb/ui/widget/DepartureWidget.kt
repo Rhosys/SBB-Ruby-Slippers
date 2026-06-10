@@ -74,12 +74,12 @@ private fun ActiveJourneyContent(from: String, to: String, departTime: String, a
     )
     Spacer(GlanceModifier.height(4.dp))
     Row(modifier = GlanceModifier.fillMaxWidth()) {
-        Column(modifier = defaultWeight()) {
+        Column(modifier = GlanceModifier.defaultWeight()) {
             Text(from, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 14.sp))
             Text(departTime, style = TextStyle(fontSize = 13.sp))
         }
         Column(
-            modifier = defaultWeight(),
+            modifier = GlanceModifier.defaultWeight(),
             horizontalAlignment = Alignment.Horizontal.End,
         ) {
             Text(to, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 14.sp))
