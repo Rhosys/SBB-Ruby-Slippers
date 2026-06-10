@@ -20,6 +20,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import ch.rhosys.sbb.data.local.preferences.UserPreferencesRepository
 import ch.rhosys.sbb.ui.error.StartupErrorScreen
+import ch.rhosys.sbb.ui.journey.JourneyStateHolder
+import ch.rhosys.sbb.ui.journey.MissedBoardingDialog
 import ch.rhosys.sbb.ui.navigation.AppNavHost
 import ch.rhosys.sbb.ui.navigation.Screen
 import ch.rhosys.sbb.ui.theme.SbbRubySlippersTheme
@@ -31,6 +33,7 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var prefs: UserPreferencesRepository
+    @Inject lateinit var journeyStateHolder: JourneyStateHolder
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,6 +69,20 @@ class MainActivity : ComponentActivity() {
                             navController.navigate(Screen.Journeys.route)
                         }
                     }
+                }
+
+                val missedBoardingPrompt by journeyStateHolder.missedBoardingPrompt
+                    .collectAsStateWithLifecycle(initialValue = false)
+                val activeJourney by journeyStateHolder.activeJourney
+                    .collectAsStateWithLifecycle(initialValue = null)
+
+                if (missedBoardingPrompt && activeJourney != null) {
+                    MissedBoardingDialog(
+                        fromName = activeJourney!!.from.displayName(),
+                        onMissedIt = { journeyStateHolder.clear() },
+                        onDifferentRoute = { journeyStateHolder.clear() },
+                        onStillOnIt = { journeyStateHolder.dismissMissedBoardingPrompt() },
+                    )
                 }
 
                 val tabScreens = listOf(

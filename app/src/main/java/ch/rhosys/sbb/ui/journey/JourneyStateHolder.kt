@@ -23,6 +23,9 @@ class JourneyStateHolder @Inject constructor(
     private val _activeJourney = MutableStateFlow<ActiveJourney?>(null)
     val activeJourney: StateFlow<ActiveJourney?> = _activeJourney
 
+    private val _missedBoardingPrompt = MutableStateFlow(false)
+    val missedBoardingPrompt: StateFlow<Boolean> = _missedBoardingPrompt
+
     fun lockIn(connection: Connection, from: SearchEndpoint, to: SearchEndpoint) {
         _activeJourney.value = ActiveJourney(connection, from, to)
         val departureEpoch = connection.departure.effectiveTime?.epochSecond
@@ -42,8 +45,17 @@ class JourneyStateHolder @Inject constructor(
         )
     }
 
+    fun promptMissedBoarding() {
+        if (_activeJourney.value != null) _missedBoardingPrompt.value = true
+    }
+
+    fun dismissMissedBoardingPrompt() {
+        _missedBoardingPrompt.value = false
+    }
+
     fun clear() {
         _activeJourney.value = null
+        _missedBoardingPrompt.value = false
         autoClearManager.cancel()
         scope.launch { prefs.clearActiveJourney() }
     }
