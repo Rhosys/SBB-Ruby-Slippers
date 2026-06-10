@@ -1,6 +1,6 @@
 package ch.rhosys.sbb.ui.search
 
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,28 +17,31 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.MonetizationOn
 import ch.rhosys.sbb.R
 import ch.rhosys.sbb.domain.model.Connection
-import kotlin.math.abs
 
 @Composable
 fun ConnectionSearchScreen(
-    onNavigateToJourney: () -> Unit,
+    onNavigateToReview: () -> Unit,
+    onNavigateToFares: () -> Unit,
     viewModel: ConnectionSearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -49,20 +52,20 @@ fun ConnectionSearchScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        OutlinedTextField(
+        AutocompleteField(
             value = state.fromText,
             onValueChange = viewModel::onFromChanged,
-            label = { Text(stringResource(R.string.search_from_hint)) },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
+            label = stringResource(R.string.search_from_hint),
+            suggestions = state.fromSuggestions,
+            onSuggestionSelected = viewModel::selectFromSuggestion,
         )
 
-        OutlinedTextField(
+        AutocompleteField(
             value = state.toText,
             onValueChange = viewModel::onToChanged,
-            label = { Text(stringResource(R.string.search_to_hint)) },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
+            label = stringResource(R.string.search_to_hint),
+            suggestions = state.toSuggestions,
+            onSuggestionSelected = viewModel::selectToSuggestion,
         )
 
         Button(
@@ -96,11 +99,42 @@ fun ConnectionSearchScreen(
                     ConnectionCard(
                         connection = connection,
                         isHero = connection == state.connections.firstOrNull(),
-                        onLockIn = {
-                            viewModel.lockIn(connection)
-                            onNavigateToJourney()
+                        onClick = {
+                            viewModel.openTripReview(connection)
+                            onNavigateToReview()
                         },
+                        onFaresTap = onNavigateToFares,
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AutocompleteField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    suggestions: List<String>,
+    onSuggestionSelected: (String) -> Unit,
+) {
+    Column {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = { Text(label) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        if (suggestions.isNotEmpty()) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                suggestions.forEachIndexed { index, suggestion ->
+                    DropdownMenuItem(
+                        text = { Text(suggestion, style = MaterialTheme.typography.bodyMedium) },
+                        onClick = { onSuggestionSelected(suggestion) },
+                    )
+                    if (index < suggestions.lastIndex) HorizontalDivider()
                 }
             }
         }
@@ -111,57 +145,75 @@ fun ConnectionSearchScreen(
 private fun ConnectionCard(
     connection: Connection,
     isHero: Boolean,
-    onLockIn: () -> Unit,
+    onClick: () -> Unit,
+    onFaresTap: () -> Unit,
 ) {
-    var offsetX by remember { mutableStateOf(0f) }
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragEnd = {
-                        if (abs(offsetX) > 120f) onLockIn()
-                        offsetX = 0f
-                    },
-                    onDragCancel = { offsetX = 0f },
-                ) { _, dragAmount -> offsetX += dragAmount }
-            },
+            .clickable(onClick = onClick),
         colors = if (isHero) CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer,
         ) else CardDefaults.cardColors(),
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(connection.departure.displayTime(), style = MaterialTheme.typography.titleMedium)
-                Text(connection.arrival.displayTime(), style = MaterialTheme.typography.titleMedium)
-            }
-            val lines = connection.lineNames.joinToString(" → ")
-            val transfers = connection.transfers
-            Text(
-                text = buildString {
-                    if (lines.isNotBlank()) append(lines)
-                    if (transfers > 0) append(" · $transfers transfer${if (transfers > 1) "s" else ""}")
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (connection.departure.isDelayed) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(connection.departure.displayTime(),
+                        style = MaterialTheme.typography.titleMedium)
+                    Text(connection.arrival.displayTime(),
+                        style = MaterialTheme.typography.titleMedium)
+                }
+                val lines = connection.lineNames.joinToString(" → ")
+                val transfers = connection.transfers
                 Text(
-                    "+${connection.departure.delayMinutes} min",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error,
+                    text = buildString {
+                        if (lines.isNotBlank()) append(lines)
+                        if (transfers > 0) append(" · $transfers transfer${if (transfers > 1) "s" else ""}")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (connection.departure.isDelayed) {
+                    Text(
+                        "+${connection.departure.delayMinutes} min",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                if (isHero) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Tap to review →",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
             }
-            if (isHero) {
-                Spacer(Modifier.height(4.dp))
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(start = 8.dp),
+            ) {
+                IconButton(onClick = onFaresTap) {
+                    Icon(
+                        Icons.Default.MonetizationOn,
+                        contentDescription = "See fares",
+                        tint = MaterialTheme.colorScheme.tertiary,
+                    )
+                }
                 Text(
-                    "Swipe to lock in →",
+                    "CHF",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = MaterialTheme.colorScheme.tertiary,
                 )
             }
         }

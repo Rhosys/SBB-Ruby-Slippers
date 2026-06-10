@@ -21,7 +21,9 @@ data class FoundConnection(
 sealed class FoundLeg {
     data class Transit(
         val routeName: String,
+        val routeIdx: Int,
         val boardStopId: Int,
+        val boardPos: Int,
         val alightStopId: Int,
         val boardSeconds: Int,
         val alightSeconds: Int,

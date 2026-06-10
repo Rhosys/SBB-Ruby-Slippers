@@ -31,7 +31,7 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
+            // isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Sign release with the shared debug key so the minified variant is
             // installable on a local emulator (npm run start:release) to catch
@@ -70,6 +70,7 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
+    implementation(libs.compose.material.icons.extended)
 
     implementation(libs.navigation.compose)
     implementation(libs.hilt.android)
@@ -79,6 +80,7 @@ dependencies {
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
+    implementation(libs.play.services.wearable)
     implementation(libs.datastore.preferences)
     implementation(libs.posthog.android)
 
@@ -98,6 +100,13 @@ dependencies {
     // Glance — home-screen widget
     implementation(libs.glance.appwidget)
     implementation(libs.glance.material3)
+
+    // Image loading — place tile photos
+    implementation(libs.coil.compose)
+
+    // Archive extraction — GTFS feed may arrive as zip, tar, tar.gz, or tar.xz
+    implementation(libs.commons.compress)
+    implementation(libs.xz.java)
 
     // Networking — direct calls to transport.opendata.ch (public, no auth)
     implementation(libs.retrofit)

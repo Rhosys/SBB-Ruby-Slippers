@@ -7,12 +7,14 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import ch.rhosys.sbb.ui.fares.FaresTeaserScreen
 import ch.rhosys.sbb.ui.home.HomeScreen
-import ch.rhosys.sbb.ui.journey.JourneyStripScreen
+import ch.rhosys.sbb.ui.places.HomeEditScreen
+import ch.rhosys.sbb.ui.journey.JourneysScreen
+import ch.rhosys.sbb.ui.journey.TripReviewScreen
 import ch.rhosys.sbb.ui.onboarding.OnboardingScreen
 import ch.rhosys.sbb.ui.search.ConnectionSearchScreen
 import ch.rhosys.sbb.ui.settings.SettingsScreen
-import ch.rhosys.sbb.ui.stationboard.StationboardScreen
 
 @Composable
 fun AppNavHost(
@@ -40,8 +42,20 @@ fun AppNavHost(
                 onNavigateToSearch = { from, to ->
                     navController.navigate(Screen.Search.withArgs(from, to))
                 },
-                onNavigateToJourney = {
-                    navController.navigate(Screen.Journey.route)
+                onNavigateToJourneys = {
+                    navController.navigate(Screen.Journeys.route)
+                },
+                onNavigateToHomeEdit = {
+                    navController.navigate(Screen.HomeEdit.route)
+                },
+            )
+        }
+
+        composable(Screen.HomeEdit.route) {
+            HomeEditScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToSearch = { from, to ->
+                    navController.navigate(Screen.Search.withArgs(from, to))
                 },
             )
         }
@@ -54,18 +68,37 @@ fun AppNavHost(
             ),
         ) {
             ConnectionSearchScreen(
-                onNavigateToJourney = {
-                    navController.navigate(Screen.Journey.route)
+                onNavigateToReview = {
+                    navController.navigate(Screen.TripReview.route)
+                },
+                onNavigateToFares = {
+                    navController.navigate(Screen.FaresTeaser.route)
                 },
             )
         }
 
-        composable(Screen.Stationboard.route) { StationboardScreen() }
+        composable(Screen.TripReview.route) {
+            TripReviewScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onJourneyStarted = {
+                    navController.navigate(Screen.Journeys.route) {
+                        popUpTo(Screen.Home.route) { saveState = false }
+                    }
+                },
+                onNavigateToFares = {
+                    navController.navigate(Screen.FaresTeaser.route)
+                },
+            )
+        }
 
-        composable(Screen.Journey.route) {
-            JourneyStripScreen(
+        composable(Screen.FaresTeaser.route) {
+            FaresTeaserScreen(
                 onNavigateBack = { navController.popBackStack() },
             )
+        }
+
+        composable(Screen.Journeys.route) {
+            JourneysScreen()
         }
 
         composable(Screen.Settings.route) { SettingsScreen() }

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Used on API 31+. Covers both cloud backup and device-to-device transfer. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- Skip the GTFS timetable cache — up to ~300 MB, meaningless to restore. -->
+        <exclude domain="file" path="gtfs" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="gtfs" />
+    </device-transfer>
+</data-extraction-rules>

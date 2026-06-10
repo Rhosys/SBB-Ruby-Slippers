@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Used on API < 31. Mirrors the cloud-backup rules in data_extraction_rules.xml. -->
+<full-backup-content>
+    <!-- Skip the GTFS timetable cache — up to ~300 MB, meaningless to restore to a new device. -->
+    <exclude domain="file" path="gtfs" />
+</full-backup-content>

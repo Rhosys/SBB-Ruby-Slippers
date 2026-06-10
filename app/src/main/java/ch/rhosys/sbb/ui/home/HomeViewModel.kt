@@ -1,11 +1,8 @@
 package ch.rhosys.sbb.ui.home
 
-import android.Manifest
-import android.content.Context
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import ch.rhosys.sbb.data.local.location.LocationProvider
 import ch.rhosys.sbb.domain.PlaceRepository
 import ch.rhosys.sbb.domain.RouteRepository
 import ch.rhosys.sbb.domain.TransportRepository
@@ -15,60 +12,91 @@ import ch.rhosys.sbb.domain.model.RecurringRoute
 import ch.rhosys.sbb.domain.model.SavedRoute
 import ch.rhosys.sbb.domain.model.SearchEndpoint
 import ch.rhosys.sbb.ui.journey.JourneyStateHolder
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
-import com.google.android.gms.tasks.CancellationTokenSource
+import ch.rhosys.sbb.ui.widget.JourneyWidgetSyncer
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZonedDateTime
 import javax.inject.Inject
 
-sealed class HomeUiState {
-    object Loading : HomeUiState()
-    data class Hero(
-        val destination: String,
-        val connections: List<Connection>,
-        val from: SearchEndpoint,
-        val to: SearchEndpoint,
-        val places: List<Place>,
-    ) : HomeUiState()
-    data class TileGrid(val places: List<Place>) : HomeUiState()
-}
+data class ScorerResult(
+    val destination: String,
+    val connections: List<Connection>,
+    val from: SearchEndpoint,
+    val to: SearchEndpoint,
+)
+
+data class ActiveJourneyBanner(
+    val connection: Connection,
+    val from: SearchEndpoint,
+    val to: SearchEndpoint,
+)
+
+data class HomeUiState(
+    val isLoading: Boolean = true,
+    val places: List<Place> = emptyList(),
+    val scorerResult: ScorerResult? = null,
+    val activeJourney: ActiveJourneyBanner? = null,
+    val fromText: String = "",
+    val toText: String = "",
+)
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
+    private val locationProvider: LocationProvider,
     private val placeRepository: PlaceRepository,
     private val routeRepository: RouteRepository,
     private val transportRepository: TransportRepository,
     private val journeyStateHolder: JourneyStateHolder,
+    private val widgetSyncer: JourneyWidgetSyncer,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
+    private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState
 
     init {
         viewModelScope.launch { infer() }
+        viewModelScope.launch {
+            journeyStateHolder.activeJourney.collect { activeJourney ->
+                _uiState.value = _uiState.value.copy(
+                    activeJourney = if (activeJourney != null) {
+                        ActiveJourneyBanner(activeJourney.connection, activeJourney.from, activeJourney.to)
+                    } else null
+                )
+            }
+        }
     }
 
     fun refresh() {
         viewModelScope.launch { infer() }
     }
 
-    // Tap-to-route: immediately query from the user's current GPS position to the given place.
+    fun onFromTextChanged(value: String) {
+        _uiState.value = _uiState.value.copy(fromText = value)
+    }
+
+    fun onToTextChanged(value: String) {
+        _uiState.value = _uiState.value.copy(toText = value)
+    }
+
+    fun dismissScorer() {
+        _uiState.value = _uiState.value.copy(scorerResult = null)
+        // Widget keeps showing the last scorer result as sticky glanceable info.
+    }
+
+    fun abandonActiveJourney() {
+        journeyStateHolder.clear()
+    }
+
     fun routeFromCurrentLocationTo(place: Place) {
         viewModelScope.launch {
-            _uiState.value = HomeUiState.Loading
-            val places = placeRepository.getPlaces().first()
-            val location = getLocationOrNull()
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            val location = locationProvider.getLocationOrNull()
             val from = if (location != null)
                 SearchEndpoint.CurrentLocation(location.first, location.second)
             else
@@ -78,78 +106,70 @@ class HomeViewModel @Inject constructor(
                 transportRepository.getConnections(from, place.toSearchEndpoint())
             }.getOrNull() ?: emptyList()
 
-            _uiState.value = if (connections.isNotEmpty()) {
-                HomeUiState.Hero(
+            val result = if (connections.isNotEmpty()) {
+                ScorerResult(
                     destination = place.name,
                     connections = connections,
                     from = from,
                     to = place.toSearchEndpoint(),
-                    places = places,
                 )
-            } else {
-                HomeUiState.TileGrid(places)
-            }
-        }
-    }
-
-    fun lockIn(connection: Connection, from: SearchEndpoint, to: SearchEndpoint) {
-        journeyStateHolder.lockIn(connection, from, to)
-        viewModelScope.launch {
-            routeRepository.recordSearch(
-                fromName = from.displayName(),
-                toName = to.displayName(),
-                toLat = (to as? SearchEndpoint.NamedPlace)?.lat ?: 0.0,
-                toLng = (to as? SearchEndpoint.NamedPlace)?.lng ?: 0.0,
-                wasLockedIn = true,
-            )
+            } else null
+            _uiState.value = _uiState.value.copy(isLoading = false, scorerResult = result)
+            if (result != null) notifyWidget(result) else widgetSyncer.clearScorerResult()
         }
     }
 
     private suspend fun infer() {
-        _uiState.value = HomeUiState.Loading
+        _uiState.value = _uiState.value.copy(isLoading = true)
         val places = placeRepository.getPlaces().first()
-        val location = getLocationOrNull()
-
-        val nearestPlace = if (location != null) {
-            places.minByOrNull { it.distanceMetersTo(location.first, location.second) }
-        } else null
-
-        val candidate = scoreBestCandidate(location, nearestPlace, places)
+        val location = locationProvider.getLocationOrNull()
+        val candidate = scoreBestCandidate()
 
         if (candidate != null) {
             val from = if (location != null)
                 SearchEndpoint.CurrentLocation(location.first, location.second)
             else
-                SearchEndpoint.NamedPlace(nearestPlace?.name ?: "")
+                SearchEndpoint.NamedPlace("")
 
             val connections = runCatching {
                 transportRepository.getConnections(from, candidate.toDestinationEndpoint())
             }.getOrNull() ?: emptyList()
 
             if (connections.isNotEmpty()) {
-                _uiState.value = HomeUiState.Hero(
+                val result = ScorerResult(
                     destination = candidate.destinationName,
                     connections = connections,
                     from = from,
                     to = candidate.toDestinationEndpoint(),
-                    places = places,
                 )
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    places = places,
+                    scorerResult = result,
+                )
+                notifyWidget(result)
                 return
             }
         }
 
-        _uiState.value = HomeUiState.TileGrid(places)
+        _uiState.value = _uiState.value.copy(isLoading = false, places = places)
+        widgetSyncer.clearScorerResult()
     }
 
-    private suspend fun scoreBestCandidate(
-        location: Pair<Double, Double>?,
-        nearestPlace: Place?,
-        places: List<Place>,
-    ): SavedRoute? {
+    private fun notifyWidget(result: ScorerResult) {
+        val best = result.connections.first()
+        widgetSyncer.onScorerResult(
+            to = result.destination,
+            departTime = best.departure.displayTime(),
+            arriveTime = best.arrival.displayTime(),
+            lines = best.lineNames.joinToString(" · "),
+        )
+    }
+
+    private suspend fun scoreBestCandidate(): SavedRoute? {
         val now = Instant.now()
         val windowEnd = now.plusSeconds(2 * 60 * 60)
 
-        // 1. Imminent saved routes (within next 2 hours)
         val savedRoutes = routeRepository.getSavedRoutes().first()
         val imminentRoute = savedRoutes
             .filter { route ->
@@ -159,7 +179,6 @@ class HomeViewModel @Inject constructor(
             .minByOrNull { it.scheduledAt!! }
         if (imminentRoute != null) return imminentRoute
 
-        // 2. Recurring routes matching today's schedule
         val recurringRoutes = routeRepository.getRecurringRoutes().first()
         val recurringCandidate = recurringRoutes
             .filter { !it.isPaused && it.matchesToday() }
@@ -182,35 +201,7 @@ class HomeViewModel @Inject constructor(
             )
         }
 
-        // 3. If we're near a non-home place, suggest going Home
-        val home = placeRepository.getHomePlace().first()
-        if (nearestPlace != null && home != null && nearestPlace.id != home.id) {
-            return SavedRoute(
-                id = -1,
-                label = "Home",
-                destinationName = home.name,
-                destinationLat = home.lat,
-                destinationLng = home.lng,
-                scheduledAt = null,
-            )
-        }
-
         return null
-    }
-
-    private suspend fun getLocationOrNull(): Pair<Double, Double>? {
-        val hasPermission = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.ACCESS_COARSE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (!hasPermission) return null
-
-        return runCatching {
-            val client = LocationServices.getFusedLocationProviderClient(context)
-            val cts = CancellationTokenSource()
-            val loc = client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts.token).await()
-            loc?.let { Pair(it.latitude, it.longitude) }
-        }.getOrNull()
     }
 }
 

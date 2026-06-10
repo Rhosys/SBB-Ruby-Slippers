@@ -9,8 +9,10 @@ import ch.rhosys.sbb.data.local.db.entity.toEntity
 import ch.rhosys.sbb.domain.RouteRepository
 import ch.rhosys.sbb.domain.model.RecurringRoute
 import ch.rhosys.sbb.domain.model.SavedRoute
+import ch.rhosys.sbb.domain.model.TripHistoryItem
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.time.Instant
 import javax.inject.Inject
 
 class RoomRouteRepository @Inject constructor(
@@ -24,6 +26,9 @@ class RoomRouteRepository @Inject constructor(
 
     override fun getRecurringRoutes(): Flow<List<RecurringRoute>> =
         recurringRouteDao.getAllRecurringRoutes().map { list -> list.map { it.toDomain() } }
+
+    override fun getLockedInTripHistory(): Flow<List<TripHistoryItem>> =
+        tripHistoryDao.getLockedInHistory().map { list -> list.map { it.toDomain() } }
 
     override suspend fun insertSavedRoute(route: SavedRoute): Long =
         savedRouteDao.insert(route.toEntity())
@@ -77,6 +82,8 @@ class RoomRouteRepository @Inject constructor(
         toLat: Double,
         toLng: Double,
         wasLockedIn: Boolean,
+        departureEpoch: Long?,
+        arrivalEpoch: Long?,
     ) {
         tripHistoryDao.insert(
             TripHistoryEntity(
@@ -85,8 +92,26 @@ class RoomRouteRepository @Inject constructor(
                 toLat = toLat,
                 toLng = toLng,
                 wasLockedIn = wasLockedIn,
+                departureEpoch = departureEpoch,
+                arrivalEpoch = arrivalEpoch,
             )
         )
         tripHistoryDao.pruneOldEntries()
     }
+
+    override suspend fun getRecentSearches(limit: Int): List<TripHistoryItem> =
+        tripHistoryDao.getRecentHistoryOnce(limit).map { it.toDomain() }
+
+    override suspend fun pruneExpiredBrowsedTrips() {
+        tripHistoryDao.pruneExpiredBrowsed(Instant.now().epochSecond)
+    }
 }
+
+private fun TripHistoryEntity.toDomain() = TripHistoryItem(
+    id = id,
+    fromName = fromName,
+    toName = toName,
+    searchedAtMillis = searchedAtMillis,
+    wasLockedIn = wasLockedIn,
+    departureEpoch = departureEpoch,
+)

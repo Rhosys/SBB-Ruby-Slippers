@@ -9,11 +9,18 @@ class GtfsNetworkStore @Inject constructor(dir: File) {
     private val dir = dir.also { it.mkdirs() }
     private val binaryFile = File(dir, "network.bin")
     private val metaFile = File(dir, "meta.txt")
+    private val etagFile = File(dir, "etag.txt")
+    private val urlFile  = File(dir, "url.txt")
 
     fun hasData(): Boolean = binaryFile.exists()
 
-    // Millis since epoch of last successful import, or 0 if none.
     fun lastImportMillis(): Long = runCatching { metaFile.readText().trim().toLong() }.getOrDefault(0L)
+
+    fun lastEtag(): String? = runCatching { etagFile.readText().trim().takeIf { it.isNotBlank() } }.getOrNull()
+    fun lastUrl():  String? = runCatching { urlFile.readText().trim().takeIf { it.isNotBlank() } }.getOrNull()
+
+    fun writeEtag(etag: String) { etagFile.writeText(etag) }
+    fun writeUrl(url: String)   { urlFile.writeText(url) }
 
     fun write(parsed: GtfsParser.ParsedGtfs) {
         val tmp = File(dir, "network.bin.tmp")

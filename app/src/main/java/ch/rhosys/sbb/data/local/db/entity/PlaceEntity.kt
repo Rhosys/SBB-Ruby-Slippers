@@ -10,11 +10,12 @@ data class PlaceEntity(
     val name: String,
     val lat: Double,
     val lng: Double,
-    val isHome: Boolean = false,
     val sortOrder: Int = 0,
+    val label: String? = null,
+    val photoUri: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
 ) {
-    fun toDomain() = Place(id, name, lat, lng, isHome, sortOrder)
+    fun toDomain() = Place(id, name, lat, lng, sortOrder, label, photoUri)
 }
 
-fun Place.toEntity() = PlaceEntity(id, name, lat, lng, isHome, sortOrder)
+fun Place.toEntity() = PlaceEntity(id, name, lat, lng, sortOrder, label, photoUri)
