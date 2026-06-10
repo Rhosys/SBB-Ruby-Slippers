@@ -33,7 +33,7 @@ class MissedBoardingWorker @AssistedInject constructor(
 
         val distanceM = haversineMeters(location.first, location.second, originLat, originLng)
         if (distanceM <= ORIGIN_RADIUS_M) {
-            journeyStateHolder.clear()
+            journeyStateHolder.promptMissedBoarding()
         }
         return Result.success()
     }
