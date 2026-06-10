@@ -18,15 +18,15 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.File
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.ZonedDateTime
+import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
 
-private const val GTFS_FEED_URL = "https://opentransportdata.swiss/en/dataset/timetable-gtfs2020/permalink/resource/gtfs_fp.zip"
 private const val REFRESH_INTERVAL_DAYS = 1L
 
 private val NEEDED_FILES = setOf(
@@ -44,7 +44,7 @@ class GtfsImportWorker @AssistedInject constructor(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
-        val url = inputData.getString(KEY_URL) ?: GTFS_FEED_URL
+        val url = inputData.getString(KEY_URL) ?: gtfsFeedUrl()
 
         // If the URL has changed (Fahrplanwechsel), the stored ETag is for the old feed — don't send it.
         val urlChanged = store.lastUrl() != url
@@ -104,9 +104,18 @@ class GtfsImportWorker @AssistedInject constructor(
     companion object {
         private const val WORK_NAME = "gtfs_import"
         private const val FAHRPLANWECHSEL_WORK_NAME = "gtfs_import_fahrplanwechsel"
+        private const val FAHRPLANWECHSEL_STARTUP_WORK_NAME = "gtfs_import_startup_stale"
         const val KEY_URL = "gtfs_url"
 
         private val SWISS_ZONE = ZoneId.of("Europe/Zurich")
+
+        // Timetable year = year whose name matches the dataset on opentransportdata.swiss,
+        // e.g. "timetable-gtfs2026". Changes on the second Sunday of December each year.
+        fun currentTimetableYear(date: LocalDate = LocalDate.now(SWISS_ZONE)): Int =
+            if (date.isBefore(fahrplanwechselDate(date.year))) date.year else date.year + 1
+
+        fun gtfsFeedUrl(date: LocalDate = LocalDate.now(SWISS_ZONE)): String =
+            "https://opentransportdata.swiss/en/dataset/timetable-gtfs${currentTimetableYear(date)}/permalink/resource/gtfs_fp.zip"
 
         fun schedule(context: Context) {
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
@@ -122,6 +131,33 @@ class GtfsImportWorker @AssistedInject constructor(
                     .build()
             )
             scheduleFahrplanwechsel(context)
+            scheduleImmediateIfStale(context)
+        }
+
+        // On startup: if we're within the changeover window and our stored data pre-dates
+        // the most recent Fahrplanwechsel, enqueue an immediate check. The worker's ETag
+        // logic ensures we only download if the feed actually changed.
+        fun scheduleImmediateIfStale(context: Context) {
+            val today = LocalDate.now(SWISS_ZONE)
+            val thisYearSwitch = fahrplanwechselDate(today.year)
+            val mostRecentSwitch = if (!today.isBefore(thisYearSwitch)) thisYearSwitch
+                                   else fahrplanwechselDate(today.year - 1)
+
+            val daysFromSwitch = ChronoUnit.DAYS.between(mostRecentSwitch, today)
+            if (daysFromSwitch !in -2..3) return
+
+            val switchEpochMs = mostRecentSwitch.atStartOfDay(SWISS_ZONE).toInstant().toEpochMilli()
+            val lastImportMs = File(context.filesDir, "gtfs/meta.txt")
+                .runCatching { readText().trim().toLong() }.getOrDefault(0L)
+            if (lastImportMs >= switchEpochMs) return
+
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                FAHRPLANWECHSEL_STARTUP_WORK_NAME,
+                ExistingWorkPolicy.KEEP,
+                OneTimeWorkRequestBuilder<GtfsImportWorker>()
+                    .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                    .build(),
+            )
         }
 
         // Schedules a one-shot run at 04:00 Swiss time on the next Fahrplanwechsel Sunday
@@ -163,6 +199,7 @@ class GtfsImportWorker @AssistedInject constructor(
         fun cancel(context: Context) {
             WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
             WorkManager.getInstance(context).cancelUniqueWork(FAHRPLANWECHSEL_WORK_NAME)
+            WorkManager.getInstance(context).cancelUniqueWork(FAHRPLANWECHSEL_STARTUP_WORK_NAME)
         }
     }
 }
