@@ -393,6 +393,23 @@ selected `Connection` to a deep link (e.g. `sbbrs://journey?...`) or a human-
 readable plain-text summary. Receiving side: handle the deep link in `MainActivity`
 and navigate directly to `TripReviewScreen` with the pre-populated connection.
 
+### 🔲 Wear OS — Play Store listing and launcher icon
+The `:wear` module ships a standalone APK (`applicationId = "ch.rhosys.sbb.wear"`)
+paired with the phone app (`standalone = false` in the manifest, so the watch app
+installs only if the phone app is present).
+
+1. **Play Store listing** — create a separate Wear OS listing in Play Console under
+   the same developer account. Upload the first signed AAB for `ch.rhosys.sbb.wear`.
+   The Play Store pairs it automatically with the phone app when both package names
+   share the same signing key.
+2. **Launcher icon** — replace the placeholder shape drawable
+   (`wear/src/main/res/drawable/ic_launcher.xml`) with a real branded icon.
+   Wear OS launcher icons must be circular; provide `mipmap-anydpi-v26/ic_launcher.xml`
+   (adaptive) and foreground/background drawables at each density bucket.
+3. **CI signing** — add a `:wear assembleRelease` step to `.gitlab-ci.yml` after
+   the phone AAB is built; it can share the same `android-upload-signing.json`
+   keystore (different alias not required — one keystore, two APKs).
+
 ### 🔲 Re-enable R8 minification
 `isMinifyEnabled` is currently commented out in `app/build.gradle.kts`. Re-enable it
 before release and verify the proguard rules in `app/proguard-rules.pro` cover all
