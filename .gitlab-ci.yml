@@ -145,7 +145,7 @@ release:
 # ── Sync from GitHub (scheduled only) ────────────────────────────────────────
 
 sync-from-github:
-  image: alpine/git:latest
+  image: bitnami/git:latest
   stage: validate
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
