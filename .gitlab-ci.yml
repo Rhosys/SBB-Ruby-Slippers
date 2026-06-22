@@ -62,7 +62,10 @@ release:
     AWS_ROLE_ARN: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/GitLabRunnerRole"
     GOOGLE_APPLICATION_CREDENTIALS: "/tmp/gcp-workload-identity.json"
   rules:
-    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+    # Auto-deploy: only set by sync-from-github after it confirms a real diff from GitHub.
+    - if: '$CI_COMMIT_BRANCH == "main" && $AUTO_DEPLOY == "true"'
+      when: on_success
+    - if: '$CI_COMMIT_BRANCH == "main" && ($CI_PIPELINE_SOURCE == "push" || $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api")'
       when: manual
   script:
     - set -eo pipefail
@@ -143,6 +146,10 @@ release:
   timeout: 15m
 
 # ── Sync from GitHub (scheduled only) ────────────────────────────────────────
+# Only acts when GitHub main actually has new content (skips no-op runs).
+# Merges GitHub main into GitLab main (handles diverged histories), then
+# triggers a fresh pipeline with AUTO_DEPLOY=true so the release job runs
+# without a manual click.
 
 sync-from-github:
   image: bitnami/git:latest
@@ -150,11 +157,26 @@ sync-from-github:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
   script:
+    - set -eo pipefail
+    - command -v curl >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq curl)
     - git remote add github https://github.com/Rhosys/SBB-Ruby-Slippers.git
     - git fetch github main
-    - git checkout -B sync/github github/main
+    - git fetch origin main
     - git remote set-url --push origin "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
-    - git push origin sync/github --force -o merge_request.create -o merge_request.target=main -o merge_request.title="Sync from GitHub"
+    - |
+      if git diff --quiet origin/main github/main; then
+        echo "No code differences from GitHub main — nothing to sync."
+        exit 0
+      fi
+    - git checkout -B main origin/main
+    - git -c user.email="ci@rhosys.ch" -c user.name="GitLab CI" merge github/main --no-edit
+    - git push origin main
+    - |
+      curl --fail --request POST \
+        --form token="${CI_JOB_TOKEN}" \
+        --form ref=main \
+        --form "variables[AUTO_DEPLOY]=true" \
+        "https://${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/trigger/pipeline"
 
 # ── Debug APK (manual, MRs only) ─────────────────────────────────────────────
 
