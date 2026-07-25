@@ -37,7 +37,7 @@ explicit per-app binding is required.
 ### 🔲 4. GitLab mirror — create the GitLab project
 Create a GitLab project mirroring this GitHub repo so the signed-release
 deploy pipeline runs there. Set the project variable:
-- `AWS_ACCOUNT_ID` = `REDACTED`
+- `AWS_ACCOUNT_ID` = `<ACCOUNT_ID>`
 
 (AWS infra reuses existing `GitLabRunnerRole` + `alias/deployment-encryption-key` —
 no AWS changes needed beyond the keystore in Todo 1.)

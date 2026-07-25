@@ -77,14 +77,14 @@ The `build-release` job uses GitLab OIDC to assume an AWS IAM role for KMS decry
 
 | Property | Value |
 |----------|-------|
-| Account ID | `REDACTED` |
+| Account ID | `<ACCOUNT_ID>` |
 | Role | `GitLabRunnerRole` |
-| Role ARN | `arn:aws:iam::REDACTED:role/GitLabRunnerRole` |
+| Role ARN | `arn:aws:iam::<ACCOUNT_ID>:role/GitLabRunnerRole` |
 | Region | `eu-west-1` |
 | Permission | `kms:Decrypt` on `alias/deployment-encryption-key` |
 | Auth method | `GITLAB_OIDC_TOKEN` written to `$AWS_WEB_IDENTITY_TOKEN_FILE` |
 
-The only CI/CD variable needed in GitLab project settings: `AWS_ACCOUNT_ID` = `REDACTED`.
+The only CI/CD variable needed in GitLab project settings: `AWS_ACCOUNT_ID` = `<ACCOUNT_ID>`.
 
 ---
 

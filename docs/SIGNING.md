@@ -74,7 +74,7 @@ The GitLab runner assumes `GitLabRunnerRole` via OIDC federation. The role requi
 | Region | `eu-west-1` |
 | Permission | `kms:Decrypt` on `alias/deployment-encryption-key` |
 | Auth method | GitLab OIDC token → `AWS_WEB_IDENTITY_TOKEN_FILE` |
-| CI variable | `AWS_ACCOUNT_ID` = `REDACTED` (set in GitLab project settings) |
+| CI variable | `AWS_ACCOUNT_ID` = `<ACCOUNT_ID>` (set in GitLab project settings) |
 
 No other CI/CD secrets are required. The OIDC trust policy on the IAM role restricts access to the `rhosys/rapid/sbb-ruby-slippers` project path.
 
