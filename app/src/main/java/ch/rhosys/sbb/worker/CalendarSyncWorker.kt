@@ -1,9 +1,6 @@
 package ch.rhosys.sbb.worker
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
 import androidx.hilt.work.HiltWorker
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -12,55 +9,21 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import ch.rhosys.sbb.data.local.calendar.CalendarRepository
-import ch.rhosys.sbb.domain.RouteRepository
-import ch.rhosys.sbb.domain.TransportRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
-import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 
 @HiltWorker
 class CalendarSyncWorker @AssistedInject constructor(
     @Assisted context: Context,
     @Assisted params: WorkerParameters,
-    private val calendarRepository: CalendarRepository,
-    private val routeRepository: RouteRepository,
-    private val transportRepository: TransportRepository,
-    private val notificationScheduler: RouteNotificationScheduler,
+    private val calendarSyncer: CalendarSyncer,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
-        if (ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.READ_CALENDAR)
-            != PackageManager.PERMISSION_GRANTED
-        ) return Result.success()
-
-        val events = calendarRepository.getEventsWithLocations(lookaheadDays = 7)
-        val activeIds = mutableSetOf<Long>()
-
-        for (event in events) {
-            val locations = runCatching {
-                transportRepository.getLocations(event.location).stations
-            }.getOrNull() ?: continue
-
-            val resolved = locations.firstOrNull() ?: continue
-            val name = resolved.name ?: continue
-            val lat = resolved.coordinate?.y ?: continue
-            val lng = resolved.coordinate?.x ?: continue
-
-            routeRepository.upsertCalendarRoute(
-                calendarEventId = event.id,
-                destinationName = name,
-                destinationLat = lat,
-                destinationLng = lng,
-                scheduledAtMillis = event.startMillis,
-                label = event.title.takeIf { it.isNotBlank() },
-            )
-            activeIds += event.id
-        }
-
-        routeRepository.pruneStaleCalendarRoutes(activeIds)
-        notificationScheduler.schedule(routeRepository.getRecurringRoutes().first())
+        // Best-effort background sync — failures (including missing permission) are
+        // not retried here; the user sees them via the Settings screen's manual sync.
+        calendarSyncer.sync()
         return Result.success()
     }
 
