@@ -49,7 +49,6 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -80,6 +79,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.Place
+import ch.rhosys.sbb.ui.common.StationAutocompleteField
 
 @Composable
 fun HomeScreen(
@@ -158,8 +158,16 @@ fun HomeScreen(
             SearchForm(
                 fromText = state.fromText,
                 toText = state.toText,
+                fromSuggestions = state.fromSuggestions,
+                toSuggestions = state.toSuggestions,
+                isLocatingFrom = state.isLocatingFrom,
+                isLocatingTo = state.isLocatingTo,
                 onFromChanged = viewModel::onFromTextChanged,
                 onToChanged = viewModel::onToTextChanged,
+                onSelectFromSuggestion = viewModel::selectFromSuggestion,
+                onSelectToSuggestion = viewModel::selectToSuggestion,
+                onGpsFrom = viewModel::fillFromWithNearestStop,
+                onGpsTo = viewModel::fillToWithNearestStop,
                 onSearch = { onNavigateToSearch(state.fromText, state.toText) },
             )
             Spacer(Modifier.height(8.dp))
@@ -400,8 +408,16 @@ private fun ConnectionSummaryCard(
 private fun SearchForm(
     fromText: String,
     toText: String,
+    fromSuggestions: List<String>,
+    toSuggestions: List<String>,
+    isLocatingFrom: Boolean,
+    isLocatingTo: Boolean,
     onFromChanged: (String) -> Unit,
     onToChanged: (String) -> Unit,
+    onSelectFromSuggestion: (String) -> Unit,
+    onSelectToSuggestion: (String) -> Unit,
+    onGpsFrom: () -> Unit,
+    onGpsTo: () -> Unit,
     onSearch: () -> Unit,
 ) {
     Card(
@@ -414,19 +430,25 @@ private fun SearchForm(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            OutlinedTextField(
+            StationAutocompleteField(
                 value = fromText,
                 onValueChange = onFromChanged,
-                label = { Text("From") },
+                label = "From",
+                suggestions = fromSuggestions,
+                onSuggestionSelected = onSelectFromSuggestion,
+                onGpsClick = onGpsFrom,
+                isLocating = isLocatingFrom,
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
             )
-            OutlinedTextField(
+            StationAutocompleteField(
                 value = toText,
                 onValueChange = onToChanged,
-                label = { Text("To") },
+                label = "To",
+                suggestions = toSuggestions,
+                onSuggestionSelected = onSelectToSuggestion,
+                onGpsClick = onGpsTo,
+                isLocating = isLocatingTo,
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
             )
             Button(
                 onClick = onSearch,

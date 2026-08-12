@@ -33,6 +33,8 @@ data class ConnectionSearchUiState(
     val smartSuggestions: List<String> = emptyList(),
     val connections: List<Connection> = emptyList(),
     val isLoading: Boolean = false,
+    val isLocatingFrom: Boolean = false,
+    val isLocatingTo: Boolean = false,
     val error: String? = null,
 )
 
@@ -146,6 +148,37 @@ class ConnectionSearchViewModel @Inject constructor(
     fun selectToSuggestion(name: String) {
         toSuggestJob?.cancel()
         _uiState.value = _uiState.value.copy(toText = name, toSuggestions = emptyList())
+    }
+
+    fun fillFromWithNearestStop() {
+        fromSuggestJob?.cancel()
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLocatingFrom = true, fromSuggestions = emptyList())
+            val name = resolveNearestStopName()
+            _uiState.value = _uiState.value.copy(
+                isLocatingFrom = false,
+                fromText = name ?: _uiState.value.fromText,
+            )
+        }
+    }
+
+    fun fillToWithNearestStop() {
+        toSuggestJob?.cancel()
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLocatingTo = true, toSuggestions = emptyList())
+            val name = resolveNearestStopName()
+            _uiState.value = _uiState.value.copy(
+                isLocatingTo = false,
+                toText = name ?: _uiState.value.toText,
+            )
+        }
+    }
+
+    private suspend fun resolveNearestStopName(): String? {
+        val location = locationProvider.getLocationOrNull() ?: return null
+        return runCatching {
+            repository.getLocationsByCoordinate(location.first, location.second)
+        }.getOrNull()?.stations?.firstOrNull()?.name
     }
 
     fun search() {

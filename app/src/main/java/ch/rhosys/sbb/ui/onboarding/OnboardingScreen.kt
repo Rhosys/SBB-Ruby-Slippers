@@ -11,7 +11,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -22,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import ch.rhosys.sbb.ui.common.StationAutocompleteField
 
 @Composable
 fun OnboardingScreen(
@@ -66,12 +66,18 @@ fun OnboardingScreen(
 
         Spacer(Modifier.height(8.dp))
 
-        OutlinedTextField(
+        StationAutocompleteField(
             value = state.homeNameInput,
             onValueChange = viewModel::onHomeNameChanged,
-            label = { Text("Home station or address") },
+            label = "Home station or address",
+            suggestions = state.homeSuggestions.map { it.name },
+            onSuggestionSelected = { name ->
+                state.homeSuggestions.firstOrNull { it.name == name }
+                    ?.let(viewModel::selectHomeSuggestion)
+            },
+            onGpsClick = viewModel::fillHomeWithNearestStop,
+            isLocating = state.isLocatingHome,
             modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
         )
 
         Spacer(Modifier.height(24.dp))

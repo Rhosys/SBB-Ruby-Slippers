@@ -32,11 +32,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -66,6 +63,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import ch.rhosys.sbb.domain.model.Place
+import ch.rhosys.sbb.ui.common.StationAutocompleteField
 import coil.compose.AsyncImage
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -365,28 +363,16 @@ private fun AddPlaceDialog(
         title = { Text("Add place") },
         text = {
             Column {
-                OutlinedTextField(
+                StationAutocompleteField(
                     value = query,
                     onValueChange = onQueryChange,
-                    label = { Text("Station or place name") },
+                    label = "Station or place name",
+                    suggestions = suggestions.map { it.name },
+                    onSuggestionSelected = { name ->
+                        suggestions.firstOrNull { it.name == name }?.let(onSuggestionSelect)
+                    },
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
                 )
-                if (suggestions.isNotEmpty()) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
-                    ) {
-                        suggestions.forEachIndexed { index, item ->
-                            DropdownMenuItem(
-                                text = { Text(item.name, style = MaterialTheme.typography.bodyMedium) },
-                                onClick = { onSuggestionSelect(item) },
-                            )
-                            if (index < suggestions.lastIndex) HorizontalDivider()
-                        }
-                    }
-                }
 
                 Spacer(Modifier.height(8.dp))
 
