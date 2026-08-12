@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.flow.Flow
@@ -36,6 +37,9 @@ class UserPreferencesRepository @Inject constructor(
         val HAS_COMPLETED_ONBOARDING  = booleanPreferencesKey("has_completed_onboarding")
         val ACTIVE_JOURNEY            = stringPreferencesKey("active_journey")
         val RT_TOKEN                  = stringPreferencesKey("rt_token")
+        val RT_LAST_SUCCESS_EPOCH     = longPreferencesKey("rt_last_success_epoch")
+        val RT_LAST_ERROR_EPOCH       = longPreferencesKey("rt_last_error_epoch")
+        val RT_LAST_ERROR_MESSAGE     = stringPreferencesKey("rt_last_error_message")
     }
 
     val walkingPaceKmh: Flow<Float>   = dataStore.data.map { it[WALKING_PACE_KMH] ?: 6f }
@@ -45,6 +49,9 @@ class UserPreferencesRepository @Inject constructor(
     val calendarSyncIntervalHours: Flow<Int> = dataStore.data.map { it[CALENDAR_SYNC_INTERVAL_HOURS] ?: 4 }
     val hasCompletedOnboarding: Flow<Boolean> = dataStore.data.map { it[HAS_COMPLETED_ONBOARDING] ?: false }
     val rtToken: Flow<String>         = dataStore.data.map { it[RT_TOKEN] ?: "" }
+    val rtLastSuccessEpoch: Flow<Long?> = dataStore.data.map { it[RT_LAST_SUCCESS_EPOCH] }
+    val rtLastErrorEpoch: Flow<Long?> = dataStore.data.map { it[RT_LAST_ERROR_EPOCH] }
+    val rtLastErrorMessage: Flow<String?> = dataStore.data.map { it[RT_LAST_ERROR_MESSAGE] }
     val activeJourney: Flow<PersistedJourney?> = dataStore.data.map { prefs ->
         prefs[ACTIVE_JOURNEY]?.let { runCatching { Json.decodeFromString<PersistedJourney>(it) }.getOrNull() }
     }
@@ -56,6 +63,11 @@ class UserPreferencesRepository @Inject constructor(
     suspend fun setCalendarSyncIntervalHours(hours: Int) = dataStore.edit { it[CALENDAR_SYNC_INTERVAL_HOURS] = hours }
     suspend fun setHasCompletedOnboarding(done: Boolean) = dataStore.edit { it[HAS_COMPLETED_ONBOARDING] = done }
     suspend fun setRtToken(token: String) = dataStore.edit { it[RT_TOKEN] = token }
+    suspend fun recordRtSuccess(epochSecond: Long) = dataStore.edit { it[RT_LAST_SUCCESS_EPOCH] = epochSecond }
+    suspend fun recordRtError(epochSecond: Long, message: String) = dataStore.edit {
+        it[RT_LAST_ERROR_EPOCH] = epochSecond
+        it[RT_LAST_ERROR_MESSAGE] = message
+    }
 
     suspend fun persistActiveJourney(journey: PersistedJourney) = dataStore.edit { prefs ->
         prefs[ACTIVE_JOURNEY] = Json.encodeToString(journey)
