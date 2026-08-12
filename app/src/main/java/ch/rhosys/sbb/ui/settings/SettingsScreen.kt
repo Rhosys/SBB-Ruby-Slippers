@@ -174,10 +174,11 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             }
         }
 
-        if (state.calendarSyncError != null) {
+        val calendarSyncError = state.calendarSyncError
+        if (calendarSyncError != null) {
             Spacer(Modifier.height(4.dp))
             Text(
-                state.calendarSyncError,
+                calendarSyncError,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
