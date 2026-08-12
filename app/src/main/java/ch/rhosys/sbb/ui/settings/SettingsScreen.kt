@@ -59,6 +59,27 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         ActivityResultContracts.RequestPermission()
     ) { granted -> notifGranted = granted }
 
+    // Calendar sync needs READ_CALENDAR before either enabling the toggle or running a
+    // manual sync; the pending action runs only if the permission prompt is granted.
+    var pendingCalendarAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val calendarPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val action = pendingCalendarAction
+        pendingCalendarAction = null
+        if (granted) action?.invoke() else viewModel.onCalendarPermissionDenied()
+    }
+    fun requestCalendarPermissionThen(action: () -> Unit) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALENDAR)
+            == PackageManager.PERMISSION_GRANTED
+        ) {
+            action()
+        } else {
+            pendingCalendarAction = action
+            calendarPermissionLauncher.launch(Manifest.permission.READ_CALENDAR)
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -117,9 +138,22 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             Text("Sync calendar events", style = MaterialTheme.typography.bodyLarge)
             Switch(
                 checked = state.calendarSyncEnabled,
-                onCheckedChange = viewModel::setCalendarSync,
+                enabled = !state.calendarSyncing,
+                onCheckedChange = { checked ->
+                    if (checked) {
+                        requestCalendarPermissionThen { viewModel.enableCalendarSync() }
+                    } else {
+                        viewModel.disableCalendarSync()
+                    }
+                },
             )
         }
+        Text(
+            "Reads events with a location from your device's calendars (Google, Exchange, etc.) " +
+                "and turns them into saved routes — nothing is written back to your calendar.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         if (state.calendarSyncEnabled) {
             Spacer(Modifier.height(8.dp))
@@ -130,6 +164,23 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 range = 1f..12f,
                 steps = 10,
                 onValueChange = { viewModel.setCalendarSyncInterval(it.roundToInt()) },
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { requestCalendarPermissionThen { viewModel.syncCalendarNow() } },
+                enabled = !state.calendarSyncing,
+            ) {
+                Text(if (state.calendarSyncing) "Syncing…" else "Sync now")
+            }
+        }
+
+        val calendarSyncError = state.calendarSyncError
+        if (calendarSyncError != null) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                calendarSyncError,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
             )
         }
 

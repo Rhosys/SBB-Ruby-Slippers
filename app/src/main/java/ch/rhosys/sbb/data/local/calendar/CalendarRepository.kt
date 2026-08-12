@@ -2,9 +2,12 @@ package ch.rhosys.sbb.data.local.calendar
 
 import android.content.Context
 import android.provider.CalendarContract
+import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+
+private const val TAG = "CalendarRepository"
 
 @Singleton
 class CalendarRepository @Inject constructor(
@@ -52,9 +55,11 @@ class CalendarRepository @Inject constructor(
                 while (cursor.moveToNext()) {
                     val location = cursor.getString(locationCol) ?: continue
                     if (location.isBlank()) continue
+                    val title = cursor.getString(titleCol) ?: ""
+                    Log.d(TAG, "Found calendar event with location: \"$title\" @ \"$location\"")
                     events += CalendarEvent(
                         id = cursor.getLong(idCol),
-                        title = cursor.getString(titleCol) ?: "",
+                        title = title,
                         location = location,
                         startMillis = cursor.getLong(startCol),
                         calendarId = cursor.getLong(calCol),
