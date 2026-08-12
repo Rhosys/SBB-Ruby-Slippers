@@ -7,8 +7,11 @@ import ch.rhosys.sbb.data.local.preferences.UserPreferencesRepository
 import ch.rhosys.sbb.worker.CalendarSyncResult
 import ch.rhosys.sbb.worker.CalendarSyncWorker
 import ch.rhosys.sbb.worker.CalendarSyncer
+import ch.rhosys.sbb.worker.GtfsRtRefreshWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -25,8 +28,18 @@ data class SettingsUiState(
     val calendarSyncEnabled: Boolean = false,
     val calendarSyncIntervalHours: Int = 4,
     val rtToken: String = "",
+    val rtLastSuccessEpoch: Long? = null,
+    val rtLastErrorEpoch: Long? = null,
+    val rtLastErrorMessage: String? = null,
     val calendarSyncing: Boolean = false,
     val calendarSyncError: String? = null,
+)
+
+private data class RtStatus(
+    val token: String,
+    val lastSuccessEpoch: Long?,
+    val lastErrorEpoch: Long?,
+    val lastErrorMessage: String?,
 )
 
 @HiltViewModel
@@ -42,10 +55,24 @@ class SettingsViewModel @Inject constructor(
     val uiState: StateFlow<SettingsUiState> = combine(
         combine(prefs.walkingPaceKmh, prefs.runningPaceKmh, prefs.switchThresholdMinutes) { w, r, t -> Triple(w, r, t) },
         combine(prefs.calendarSyncEnabled, prefs.calendarSyncIntervalHours) { e, i -> e to i },
-        prefs.rtToken,
+        combine(
+            prefs.rtToken, prefs.rtLastSuccessEpoch, prefs.rtLastErrorEpoch, prefs.rtLastErrorMessage,
+        ) { token, successEpoch, errorEpoch, errorMsg -> RtStatus(token, successEpoch, errorEpoch, errorMsg) },
         combine(calendarSyncing, calendarSyncError) { syncing, error -> syncing to error },
-    ) { (walking, running, threshold), (calSync, calInterval), token, (syncing, error) ->
-        SettingsUiState(walking, running, threshold, calSync, calInterval, token, syncing, error)
+    ) { (walking, running, threshold), (calSync, calInterval), rt, (syncing, error) ->
+        SettingsUiState(
+            walkingPaceKmh = walking,
+            runningPaceKmh = running,
+            switchThresholdMinutes = threshold,
+            calendarSyncEnabled = calSync,
+            calendarSyncIntervalHours = calInterval,
+            rtToken = rt.token,
+            rtLastSuccessEpoch = rt.lastSuccessEpoch,
+            rtLastErrorEpoch = rt.lastErrorEpoch,
+            rtLastErrorMessage = rt.lastErrorMessage,
+            calendarSyncing = syncing,
+            calendarSyncError = error,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
     fun setWalkingPace(kmh: Float) = viewModelScope.launch { prefs.setWalkingPace(kmh) }
@@ -97,5 +124,18 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun setRtToken(token: String) = viewModelScope.launch { prefs.setRtToken(token) }
+    private var rtTriggerJob: Job? = null
+
+    fun setRtToken(token: String) {
+        viewModelScope.launch { prefs.setRtToken(token) }
+
+        // Debounced: validating on every keystroke would hammer the RT feed while typing.
+        rtTriggerJob?.cancel()
+        if (token.isNotBlank()) {
+            rtTriggerJob = viewModelScope.launch {
+                delay(800)
+                GtfsRtRefreshWorker.triggerOnce(context)
+            }
+        }
+    }
 }

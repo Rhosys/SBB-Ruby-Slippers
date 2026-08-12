@@ -2,7 +2,6 @@ package ch.rhosys.sbb.ui.places
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import ch.rhosys.sbb.data.local.location.LocationProvider
 import ch.rhosys.sbb.domain.PlaceRepository
 import ch.rhosys.sbb.domain.TransportRepository
 import ch.rhosys.sbb.domain.model.Place
@@ -14,10 +13,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-private const val PROXIMITY_METERS = 500.0
-
-data class NavigationTarget(val from: String, val to: String)
-
 data class HomeEditUiState(
     val places: List<Place> = emptyList(),
     val addQuery: String = "",
@@ -26,7 +21,9 @@ data class HomeEditUiState(
     val addSuggestions: List<SuggestionItem> = emptyList(),
     val showAddDialog: Boolean = false,
     val selectedSuggestion: SuggestionItem? = null,
-    val pendingNavigateTo: NavigationTarget? = null,
+    val editingPlace: Place? = null,
+    val editLabel: String = "",
+    val editPhotoUri: String? = null,
 )
 
 data class SuggestionItem(
@@ -37,7 +34,6 @@ data class SuggestionItem(
 
 @HiltViewModel
 class HomeEditViewModel @Inject constructor(
-    private val locationProvider: LocationProvider,
     private val placeRepository: PlaceRepository,
     private val transportRepository: TransportRepository,
 ) : ViewModel() {
@@ -56,24 +52,40 @@ class HomeEditViewModel @Inject constructor(
     }
 
     fun onTileTap(place: Place) {
-        viewModelScope.launch {
-            val location = locationProvider.getLocationOrNull()
-            val from = if (location != null) {
-                val nearest = _uiState.value.places
-                    .filter { it.id != place.id }
-                    .minByOrNull { it.distanceMetersTo(location.first, location.second) }
-                if (nearest != null && nearest.distanceMetersTo(location.first, location.second) <= PROXIMITY_METERS) {
-                    nearest.name
-                } else "Current location"
-            } else "Current location"
-            _uiState.value = _uiState.value.copy(
-                pendingNavigateTo = NavigationTarget(from = from, to = place.name)
-            )
-        }
+        _uiState.value = _uiState.value.copy(
+            editingPlace = place,
+            editLabel = place.label ?: "",
+            editPhotoUri = place.photoUri,
+        )
     }
 
-    fun onNavigationHandled() {
-        _uiState.value = _uiState.value.copy(pendingNavigateTo = null)
+    fun onEditLabelChanged(label: String) {
+        _uiState.value = _uiState.value.copy(editLabel = label)
+    }
+
+    fun onEditPhotoSelected(uri: String?) {
+        _uiState.value = _uiState.value.copy(editPhotoUri = uri)
+    }
+
+    fun confirmEdit() {
+        val place = _uiState.value.editingPlace ?: return
+        viewModelScope.launch {
+            placeRepository.updatePlace(
+                place.copy(
+                    label = _uiState.value.editLabel.takeIf { it.isNotBlank() },
+                    photoUri = _uiState.value.editPhotoUri,
+                )
+            )
+        }
+        dismissEditDialog()
+    }
+
+    fun dismissEditDialog() {
+        _uiState.value = _uiState.value.copy(
+            editingPlace = null,
+            editLabel = "",
+            editPhotoUri = null,
+        )
     }
 
     fun reorderTiles(draggedId: Long, targetId: Long) {

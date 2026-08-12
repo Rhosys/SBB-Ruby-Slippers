@@ -54,9 +54,6 @@ fun AppNavHost(
         composable(Screen.HomeEdit.route) {
             HomeEditScreen(
                 onNavigateBack = { navController.popBackStack() },
-                onNavigateToSearch = { from, to ->
-                    navController.navigate(Screen.Search.withArgs(from, to))
-                },
             )
         }
 

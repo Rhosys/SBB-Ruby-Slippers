@@ -14,6 +14,8 @@ import ch.rhosys.sbb.domain.model.SearchEndpoint
 import ch.rhosys.sbb.ui.journey.JourneyStateHolder
 import ch.rhosys.sbb.ui.widget.JourneyWidgetSyncer
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -44,6 +46,10 @@ data class HomeUiState(
     val activeJourney: ActiveJourneyBanner? = null,
     val fromText: String = "",
     val toText: String = "",
+    val fromSuggestions: List<String> = emptyList(),
+    val toSuggestions: List<String> = emptyList(),
+    val isLocatingFrom: Boolean = false,
+    val isLocatingTo: Boolean = false,
 )
 
 @HiltViewModel
@@ -59,6 +65,9 @@ class HomeViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState
 
+    private var fromSuggestJob: Job? = null
+    private var toSuggestJob: Job? = null
+
     init {
         viewModelScope.launch { infer() }
         viewModelScope.launch {
@@ -70,6 +79,11 @@ class HomeViewModel @Inject constructor(
                 )
             }
         }
+        viewModelScope.launch {
+            placeRepository.getPlaces().collect { places ->
+                _uiState.value = _uiState.value.copy(places = places)
+            }
+        }
     }
 
     fun refresh() {
@@ -77,11 +91,76 @@ class HomeViewModel @Inject constructor(
     }
 
     fun onFromTextChanged(value: String) {
-        _uiState.value = _uiState.value.copy(fromText = value)
+        _uiState.value = _uiState.value.copy(fromText = value, fromSuggestions = emptyList())
+        fromSuggestJob?.cancel()
+        if (value.length >= 2) {
+            fromSuggestJob = viewModelScope.launch {
+                delay(300)
+                runCatching { transportRepository.getLocations(value) }
+                    .onSuccess { resp ->
+                        _uiState.value = _uiState.value.copy(
+                            fromSuggestions = resp.stations.take(5).mapNotNull { it.name }
+                        )
+                    }
+            }
+        }
     }
 
     fun onToTextChanged(value: String) {
-        _uiState.value = _uiState.value.copy(toText = value)
+        _uiState.value = _uiState.value.copy(toText = value, toSuggestions = emptyList())
+        toSuggestJob?.cancel()
+        if (value.length >= 2) {
+            toSuggestJob = viewModelScope.launch {
+                delay(300)
+                runCatching { transportRepository.getLocations(value) }
+                    .onSuccess { resp ->
+                        _uiState.value = _uiState.value.copy(
+                            toSuggestions = resp.stations.take(5).mapNotNull { it.name }
+                        )
+                    }
+            }
+        }
+    }
+
+    fun selectFromSuggestion(name: String) {
+        fromSuggestJob?.cancel()
+        _uiState.value = _uiState.value.copy(fromText = name, fromSuggestions = emptyList())
+    }
+
+    fun selectToSuggestion(name: String) {
+        toSuggestJob?.cancel()
+        _uiState.value = _uiState.value.copy(toText = name, toSuggestions = emptyList())
+    }
+
+    fun fillFromWithNearestStop() {
+        fromSuggestJob?.cancel()
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLocatingFrom = true, fromSuggestions = emptyList())
+            val name = resolveNearestStopName()
+            _uiState.value = _uiState.value.copy(
+                isLocatingFrom = false,
+                fromText = name ?: _uiState.value.fromText,
+            )
+        }
+    }
+
+    fun fillToWithNearestStop() {
+        toSuggestJob?.cancel()
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLocatingTo = true, toSuggestions = emptyList())
+            val name = resolveNearestStopName()
+            _uiState.value = _uiState.value.copy(
+                isLocatingTo = false,
+                toText = name ?: _uiState.value.toText,
+            )
+        }
+    }
+
+    private suspend fun resolveNearestStopName(): String? {
+        val location = locationProvider.getLocationOrNull() ?: return null
+        return runCatching {
+            transportRepository.getLocationsByCoordinate(location.first, location.second)
+        }.getOrNull()?.stations?.firstOrNull()?.name
     }
 
     fun dismissScorer() {
@@ -121,7 +200,6 @@ class HomeViewModel @Inject constructor(
 
     private suspend fun infer() {
         _uiState.value = _uiState.value.copy(isLoading = true)
-        val places = placeRepository.getPlaces().first()
         val location = locationProvider.getLocationOrNull()
         val candidate = scoreBestCandidate()
 
@@ -144,7 +222,6 @@ class HomeViewModel @Inject constructor(
                 )
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    places = places,
                     scorerResult = result,
                 )
                 notifyWidget(result)
@@ -152,7 +229,7 @@ class HomeViewModel @Inject constructor(
             }
         }
 
-        _uiState.value = _uiState.value.copy(isLoading = false, places = places)
+        _uiState.value = _uiState.value.copy(isLoading = false)
         widgetSyncer.clearScorerResult()
     }
 

@@ -8,6 +8,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,10 +39,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import java.time.Instant
 import kotlin.math.roundToInt
+
+// Free API-token signup/management portal for opentransportdata.swiss (see todo.md, Todo 5).
+private const val RT_TOKEN_SIGNUP_URL = "https://api-manager.opentransportdata.swiss/"
 
 @Composable
 fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
@@ -200,8 +206,34 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
+
+        Spacer(Modifier.height(4.dp))
+
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RtTokenStatus(
+                token = state.rtToken,
+                lastSuccessEpoch = state.rtLastSuccessEpoch,
+                lastErrorEpoch = state.rtLastErrorEpoch,
+                lastErrorMessage = state.rtLastErrorMessage,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "Get a token →",
+                style = MaterialTheme.typography.bodySmall.copy(textDecoration = TextDecoration.Underline),
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .clickable {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(RT_TOKEN_SIGNUP_URL)))
+                    },
+            )
+        }
         Text(
-            "Required for live delays and service alerts. Get a free token at opentransportdata.swiss.",
+            "Required for live delays and service alerts.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -277,6 +309,36 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+@Composable
+private fun RtTokenStatus(
+    token: String,
+    lastSuccessEpoch: Long?,
+    lastErrorEpoch: Long?,
+    lastErrorMessage: String?,
+    modifier: Modifier = Modifier,
+) {
+    val (text, color) = when {
+        token.isBlank() -> "Not configured" to MaterialTheme.colorScheme.onSurfaceVariant
+        lastErrorEpoch != null && (lastSuccessEpoch == null || lastErrorEpoch > lastSuccessEpoch) ->
+            "Failed ${formatRelativeTime(lastErrorEpoch)} — ${lastErrorMessage ?: "unknown error"}" to
+                MaterialTheme.colorScheme.error
+        lastSuccessEpoch != null ->
+            "Live · updated ${formatRelativeTime(lastSuccessEpoch)}" to MaterialTheme.colorScheme.primary
+        else -> "Waiting for first sync…" to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Text(text, style = MaterialTheme.typography.bodySmall, color = color, modifier = modifier)
+}
+
+private fun formatRelativeTime(epochSecond: Long): String {
+    val deltaSeconds = Instant.now().epochSecond - epochSecond
+    return when {
+        deltaSeconds < 60 -> "just now"
+        deltaSeconds < 3600 -> "${deltaSeconds / 60}m ago"
+        deltaSeconds < 86400 -> "${deltaSeconds / 3600}h ago"
+        else -> "${deltaSeconds / 86400}d ago"
     }
 }
 

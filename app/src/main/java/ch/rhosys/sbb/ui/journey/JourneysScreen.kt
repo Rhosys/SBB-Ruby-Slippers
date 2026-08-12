@@ -57,6 +57,14 @@ fun JourneysScreen(
     val state by viewModel.uiState.collectAsState()
 
     Column(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f)) {
+            when (state.selectedTab) {
+                JourneysTab.ACTIVE -> ActiveTab(state, viewModel)
+                JourneysTab.PAST -> PastTab(state.lockedInHistory)
+                JourneysTab.PLANNED -> PlannedTab(state)
+            }
+        }
+
         SingleChoiceSegmentedButtonRow(
             modifier = Modifier
                 .fillMaxWidth()
@@ -70,12 +78,6 @@ fun JourneysScreen(
                     label = { Text(tab.label) },
                 )
             }
-        }
-
-        when (state.selectedTab) {
-            JourneysTab.ACTIVE -> ActiveTab(state, viewModel)
-            JourneysTab.PAST -> PastTab(state.lockedInHistory)
-            JourneysTab.PLANNED -> PlannedTab(state)
         }
     }
 

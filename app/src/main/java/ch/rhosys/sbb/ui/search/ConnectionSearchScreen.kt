@@ -17,12 +17,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -37,6 +34,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.MonetizationOn
 import ch.rhosys.sbb.R
 import ch.rhosys.sbb.domain.model.Connection
+import ch.rhosys.sbb.ui.common.StationAutocompleteField
 
 @Composable
 fun ConnectionSearchScreen(
@@ -52,20 +50,26 @@ fun ConnectionSearchScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        AutocompleteField(
+        StationAutocompleteField(
             value = state.fromText,
             onValueChange = viewModel::onFromChanged,
             label = stringResource(R.string.search_from_hint),
             suggestions = state.fromSuggestions,
             onSuggestionSelected = viewModel::selectFromSuggestion,
+            onGpsClick = viewModel::fillFromWithNearestStop,
+            isLocating = state.isLocatingFrom,
+            modifier = Modifier.fillMaxWidth(),
         )
 
-        AutocompleteField(
+        StationAutocompleteField(
             value = state.toText,
             onValueChange = viewModel::onToChanged,
             label = stringResource(R.string.search_to_hint),
             suggestions = state.toSuggestions,
             onSuggestionSelected = viewModel::selectToSuggestion,
+            onGpsClick = viewModel::fillToWithNearestStop,
+            isLocating = state.isLocatingTo,
+            modifier = Modifier.fillMaxWidth(),
         )
 
         Button(
@@ -105,36 +109,6 @@ fun ConnectionSearchScreen(
                         },
                         onFaresTap = onNavigateToFares,
                     )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AutocompleteField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    suggestions: List<String>,
-    onSuggestionSelected: (String) -> Unit,
-) {
-    Column {
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            label = { Text(label) },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-        )
-        if (suggestions.isNotEmpty()) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                suggestions.forEachIndexed { index, suggestion ->
-                    DropdownMenuItem(
-                        text = { Text(suggestion, style = MaterialTheme.typography.bodyMedium) },
-                        onClick = { onSuggestionSelected(suggestion) },
-                    )
-                    if (index < suggestions.lastIndex) HorizontalDivider()
                 }
             }
         }

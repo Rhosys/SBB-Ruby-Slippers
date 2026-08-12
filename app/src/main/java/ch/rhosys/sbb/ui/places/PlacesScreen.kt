@@ -32,11 +32,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -47,7 +44,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -67,13 +63,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import ch.rhosys.sbb.domain.model.Place
+import ch.rhosys.sbb.ui.common.StationAutocompleteField
 import coil.compose.AsyncImage
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun HomeEditScreen(
     onNavigateBack: () -> Unit,
-    onNavigateToSearch: (from: String, to: String) -> Unit,
     viewModel: HomeEditViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -86,12 +82,6 @@ fun HomeEditScreen(
     val tileWindowBounds = remember { mutableStateMapOf<Long, Rect>() }
     var boxWindowOrigin by remember { mutableStateOf(Offset.Zero) }
 
-    LaunchedEffect(state.pendingNavigateTo) {
-        val nav = state.pendingNavigateTo ?: return@LaunchedEffect
-        onNavigateToSearch(nav.from, nav.to)
-        viewModel.onNavigationHandled()
-    }
-
     val photoPickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
@@ -102,6 +92,19 @@ fun HomeEditScreen(
                 )
             }
             viewModel.onPhotoSelected(uri.toString())
+        }
+    }
+
+    val editPhotoPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            viewModel.onEditPhotoSelected(uri.toString())
         }
     }
 
@@ -263,6 +266,24 @@ fun HomeEditScreen(
             canConfirm = state.addQuery.isNotBlank(),
         )
     }
+
+    val editingPlace = state.editingPlace
+    if (editingPlace != null) {
+        EditPlaceDialog(
+            placeName = editingPlace.name,
+            label = state.editLabel,
+            photoUri = state.editPhotoUri,
+            onLabelChange = viewModel::onEditLabelChanged,
+            onPickPhoto = {
+                editPhotoPickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            },
+            onRemovePhoto = { viewModel.onEditPhotoSelected(null) },
+            onConfirm = viewModel::confirmEdit,
+            onDismiss = viewModel::dismissEditDialog,
+        )
+    }
 }
 
 @Composable
@@ -342,28 +363,16 @@ private fun AddPlaceDialog(
         title = { Text("Add place") },
         text = {
             Column {
-                OutlinedTextField(
+                StationAutocompleteField(
                     value = query,
                     onValueChange = onQueryChange,
-                    label = { Text("Station or place name") },
+                    label = "Station or place name",
+                    suggestions = suggestions.map { it.name },
+                    onSuggestionSelected = { name ->
+                        suggestions.firstOrNull { it.name == name }?.let(onSuggestionSelect)
+                    },
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
                 )
-                if (suggestions.isNotEmpty()) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
-                    ) {
-                        suggestions.forEachIndexed { index, item ->
-                            DropdownMenuItem(
-                                text = { Text(item.name, style = MaterialTheme.typography.bodyMedium) },
-                                onClick = { onSuggestionSelect(item) },
-                            )
-                            if (index < suggestions.lastIndex) HorizontalDivider()
-                        }
-                    }
-                }
 
                 Spacer(Modifier.height(8.dp))
 
@@ -400,6 +409,62 @@ private fun AddPlaceDialog(
         },
         confirmButton = {
             TextButton(onClick = onConfirm, enabled = canConfirm) { Text("Add") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+private fun EditPlaceDialog(
+    placeName: String,
+    label: String,
+    photoUri: String?,
+    onLabelChange: (String) -> Unit,
+    onPickPhoto: () -> Unit,
+    onRemovePhoto: () -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit place") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = label,
+                    onValueChange = onLabelChange,
+                    label = { Text("Label (optional)") },
+                    placeholder = { Text(placeName) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                if (photoUri != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        AsyncImage(
+                            model = photoUri,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(MaterialTheme.shapes.small),
+                            contentScale = ContentScale.Crop,
+                        )
+                        TextButton(onClick = onRemovePhoto) { Text("Remove photo") }
+                    }
+                } else {
+                    TextButton(onClick = onPickPhoto) { Text("Add photo") }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("Save") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }

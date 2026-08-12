@@ -6,6 +6,7 @@ import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -17,6 +18,7 @@ import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 
 // GTFS-RT feed from opentransportdata.swiss — requires a free API token.
@@ -43,14 +45,18 @@ class GtfsRtRefreshWorker @AssistedInject constructor(
         val bytes = try {
             fetchFeed(url, token)
         } catch (e: Exception) {
-            return if (runAttemptCount < 3) Result.retry() else Result.failure()
+            if (runAttemptCount < 3) return Result.retry()
+            prefs.recordRtError(Instant.now().epochSecond, e.message ?: "Feed download failed")
+            return Result.failure()
         }
 
         return try {
             val (updates, alerts) = GtfsRtDecoder().decode(bytes)
             rtStore.update(updates, alerts)
+            prefs.recordRtSuccess(Instant.now().epochSecond)
             Result.success()
         } catch (e: Exception) {
+            prefs.recordRtError(Instant.now().epochSecond, e.message ?: "Failed to decode feed")
             Result.failure()
         }
     }
@@ -89,6 +95,19 @@ class GtfsRtRefreshWorker @AssistedInject constructor(
 
         fun cancel(context: Context) {
             WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
+        }
+
+        // Runs an immediate one-off refresh, e.g. right after the user saves a new token,
+        // so the Settings status line doesn't sit on stale state until the next periodic tick.
+        fun triggerOnce(context: Context) {
+            val request = OneTimeWorkRequestBuilder<GtfsRtRefreshWorker>()
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
+                )
+                .build()
+            WorkManager.getInstance(context).enqueue(request)
         }
     }
 }
