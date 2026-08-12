@@ -70,6 +70,11 @@ class HomeViewModel @Inject constructor(
                 )
             }
         }
+        viewModelScope.launch {
+            placeRepository.getPlaces().collect { places ->
+                _uiState.value = _uiState.value.copy(places = places)
+            }
+        }
     }
 
     fun refresh() {
@@ -121,7 +126,6 @@ class HomeViewModel @Inject constructor(
 
     private suspend fun infer() {
         _uiState.value = _uiState.value.copy(isLoading = true)
-        val places = placeRepository.getPlaces().first()
         val location = locationProvider.getLocationOrNull()
         val candidate = scoreBestCandidate()
 
@@ -144,7 +148,6 @@ class HomeViewModel @Inject constructor(
                 )
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    places = places,
                     scorerResult = result,
                 )
                 notifyWidget(result)
@@ -152,7 +155,7 @@ class HomeViewModel @Inject constructor(
             }
         }
 
-        _uiState.value = _uiState.value.copy(isLoading = false, places = places)
+        _uiState.value = _uiState.value.copy(isLoading = false)
         widgetSyncer.clearScorerResult()
     }
 

@@ -47,7 +47,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -73,7 +72,6 @@ import coil.compose.AsyncImage
 @Composable
 fun HomeEditScreen(
     onNavigateBack: () -> Unit,
-    onNavigateToSearch: (from: String, to: String) -> Unit,
     viewModel: HomeEditViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -86,12 +84,6 @@ fun HomeEditScreen(
     val tileWindowBounds = remember { mutableStateMapOf<Long, Rect>() }
     var boxWindowOrigin by remember { mutableStateOf(Offset.Zero) }
 
-    LaunchedEffect(state.pendingNavigateTo) {
-        val nav = state.pendingNavigateTo ?: return@LaunchedEffect
-        onNavigateToSearch(nav.from, nav.to)
-        viewModel.onNavigationHandled()
-    }
-
     val photoPickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
@@ -102,6 +94,19 @@ fun HomeEditScreen(
                 )
             }
             viewModel.onPhotoSelected(uri.toString())
+        }
+    }
+
+    val editPhotoPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            viewModel.onEditPhotoSelected(uri.toString())
         }
     }
 
@@ -263,6 +268,24 @@ fun HomeEditScreen(
             canConfirm = state.addQuery.isNotBlank(),
         )
     }
+
+    val editingPlace = state.editingPlace
+    if (editingPlace != null) {
+        EditPlaceDialog(
+            placeName = editingPlace.name,
+            label = state.editLabel,
+            photoUri = state.editPhotoUri,
+            onLabelChange = viewModel::onEditLabelChanged,
+            onPickPhoto = {
+                editPhotoPickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            },
+            onRemovePhoto = { viewModel.onEditPhotoSelected(null) },
+            onConfirm = viewModel::confirmEdit,
+            onDismiss = viewModel::dismissEditDialog,
+        )
+    }
 }
 
 @Composable
@@ -400,6 +423,62 @@ private fun AddPlaceDialog(
         },
         confirmButton = {
             TextButton(onClick = onConfirm, enabled = canConfirm) { Text("Add") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+@Composable
+private fun EditPlaceDialog(
+    placeName: String,
+    label: String,
+    photoUri: String?,
+    onLabelChange: (String) -> Unit,
+    onPickPhoto: () -> Unit,
+    onRemovePhoto: () -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit place") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = label,
+                    onValueChange = onLabelChange,
+                    label = { Text("Label (optional)") },
+                    placeholder = { Text(placeName) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                if (photoUri != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        AsyncImage(
+                            model = photoUri,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(MaterialTheme.shapes.small),
+                            contentScale = ContentScale.Crop,
+                        )
+                        TextButton(onClick = onRemovePhoto) { Text("Remove photo") }
+                    }
+                } else {
+                    TextButton(onClick = onPickPhoto) { Text("Add photo") }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("Save") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
