@@ -19,7 +19,10 @@ interface TripHistoryDao {
     suspend fun getRecentHistoryOnce(limit: Int = 20): List<TripHistoryEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(entry: TripHistoryEntity)
+    suspend fun insert(entry: TripHistoryEntity): Long
+
+    @Query("UPDATE trip_history SET wasCancelled = 1 WHERE id = :id")
+    suspend fun markCancelled(id: Long)
 
     @Query("DELETE FROM trip_history WHERE id NOT IN (SELECT id FROM trip_history ORDER BY searchedAtMillis DESC LIMIT 200)")
     suspend fun pruneOldEntries()

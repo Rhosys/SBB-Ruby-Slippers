@@ -6,5 +6,6 @@ data class TripHistoryItem(
     val toName: String,
     val searchedAtMillis: Long,
     val wasLockedIn: Boolean,
+    val wasCancelled: Boolean,
     val departureEpoch: Long?,
 )

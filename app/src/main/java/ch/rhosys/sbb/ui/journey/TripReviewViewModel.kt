@@ -55,9 +55,8 @@ class TripReviewViewModel @Inject constructor(
 
     fun lockIn(): Boolean {
         val candidate = holder.candidate.value ?: return false
-        journeyStateHolder.lockIn(candidate.connection, candidate.from, candidate.to)
         viewModelScope.launch {
-            routeRepository.recordSearch(
+            val tripHistoryId = routeRepository.recordSearch(
                 fromName = candidate.from.displayName(),
                 toName = candidate.to.displayName(),
                 toLat = candidate.to.latOrNull() ?: 0.0,
@@ -66,6 +65,7 @@ class TripReviewViewModel @Inject constructor(
                 departureEpoch = candidate.connection.departure.effectiveTime?.epochSecond,
                 arrivalEpoch = candidate.connection.arrival.effectiveTime?.epochSecond,
             )
+            journeyStateHolder.lockIn(candidate.connection, candidate.from, candidate.to, tripHistoryId)
         }
         holder.clear()
         return true

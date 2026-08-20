@@ -84,8 +84,8 @@ class RoomRouteRepository @Inject constructor(
         wasLockedIn: Boolean,
         departureEpoch: Long?,
         arrivalEpoch: Long?,
-    ) {
-        tripHistoryDao.insert(
+    ): Long {
+        val id = tripHistoryDao.insert(
             TripHistoryEntity(
                 fromName = fromName,
                 toName = toName,
@@ -97,7 +97,11 @@ class RoomRouteRepository @Inject constructor(
             )
         )
         tripHistoryDao.pruneOldEntries()
+        return id
     }
+
+    override suspend fun markTripCancelled(id: Long) =
+        tripHistoryDao.markCancelled(id)
 
     override suspend fun getRecentSearches(limit: Int): List<TripHistoryItem> =
         tripHistoryDao.getRecentHistoryOnce(limit).map { it.toDomain() }
@@ -113,5 +117,6 @@ private fun TripHistoryEntity.toDomain() = TripHistoryItem(
     toName = toName,
     searchedAtMillis = searchedAtMillis,
     wasLockedIn = wasLockedIn,
+    wasCancelled = wasCancelled,
     departureEpoch = departureEpoch,
 )

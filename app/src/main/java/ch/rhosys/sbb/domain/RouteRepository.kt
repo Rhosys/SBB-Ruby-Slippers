@@ -24,6 +24,7 @@ interface RouteRepository {
         label: String?,
     )
     suspend fun pruneStaleCalendarRoutes(activeEventIds: Set<Long>)
+    // Returns the inserted trip_history row id.
     suspend fun recordSearch(
         fromName: String,
         toName: String,
@@ -32,7 +33,8 @@ interface RouteRepository {
         wasLockedIn: Boolean,
         departureEpoch: Long? = null,
         arrivalEpoch: Long? = null,
-    )
+    ): Long
+    suspend fun markTripCancelled(id: Long)
     suspend fun getRecentSearches(limit: Int = 20): List<TripHistoryItem>
     suspend fun pruneExpiredBrowsedTrips()
 }
