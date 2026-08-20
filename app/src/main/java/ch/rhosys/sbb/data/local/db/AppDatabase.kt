@@ -18,7 +18,7 @@ import ch.rhosys.sbb.data.local.db.entity.TripHistoryEntity
         RecurringRouteEntity::class,
         TripHistoryEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {

@@ -107,7 +107,9 @@ fun HomeScreen(
     }
 
     // Active journey top sheet takes precedence over scorer
-    val topSheetVisible = state.activeJourney != null || state.scorerResult != null
+    val hasOverlayContent = state.activeJourney != null || state.scorerResult != null
+    val topSheetVisible = hasOverlayContent && !state.overlayHidden
+    val peekHandleVisible = hasOverlayContent && state.overlayHidden
 
     Box(Modifier.fillMaxSize()) {
         // Main content: tiles / empty state
@@ -191,7 +193,7 @@ fun HomeScreen(
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.4f))
                     .clickable {
-                        viewModel.dismissScorer()
+                        viewModel.hideOverlay()
                     },
             )
         }
@@ -214,11 +216,7 @@ fun HomeScreen(
                         detectVerticalDragGestures(
                             onDragEnd = {
                                 if (dragOffsetY < swipeUpThreshold) {
-                                    if (state.activeJourney != null) {
-                                        viewModel.abandonActiveJourney()
-                                    } else {
-                                        viewModel.dismissScorer()
-                                    }
+                                    viewModel.hideOverlay()
                                 }
                                 dragOffsetY = 0f
                             },
@@ -268,10 +266,53 @@ fun HomeScreen(
 
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Swipe up to dismiss",
+                        "Swipe up to hide",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.align(Alignment.CenterHorizontally),
+                    )
+                }
+            }
+        }
+
+        // Peek handle: reappears when the overlay was hidden but there's still content to show.
+        // Pulling down on it restores the full sheet.
+        if (peekHandleVisible) {
+            var pullDownOffsetY by remember { mutableStateOf(0f) }
+            val pullDownThreshold = 40f
+
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 8.dp)
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onDragEnd = {
+                                if (pullDownOffsetY > pullDownThreshold) {
+                                    viewModel.showOverlay()
+                                }
+                                pullDownOffsetY = 0f
+                            },
+                            onDragCancel = { pullDownOffsetY = 0f },
+                        ) { _, dragAmount -> pullDownOffsetY += dragAmount }
+                    }
+                    .clickable { viewModel.showOverlay() },
+                tonalElevation = 4.dp,
+                shadowElevation = 4.dp,
+                shape = MaterialTheme.shapes.extraLarge,
+            ) {
+                Box(
+                    Modifier
+                        .size(width = 56.dp, height = 20.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        Modifier
+                            .size(width = 40.dp, height = 4.dp)
+                            .background(
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                MaterialTheme.shapes.small,
+                            ),
                     )
                 }
             }

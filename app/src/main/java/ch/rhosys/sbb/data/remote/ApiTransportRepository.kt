@@ -13,7 +13,12 @@ import ch.rhosys.sbb.domain.model.SearchEndpoint
 import ch.rhosys.sbb.domain.model.Stop
 import java.time.Instant
 import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
+
+// transport.opendata.ch returns offsets without a colon (e.g. "+0100"), which
+// DateTimeFormatter.ISO_OFFSET_DATE_TIME / OffsetDateTime.parse(CharSequence) rejects.
+private val API_OFFSET_TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXX")
 
 class ApiTransportRepository @Inject constructor(
     private val api: TransportApi,
@@ -101,7 +106,8 @@ class ApiTransportRepository @Inject constructor(
         operator = operator,
     )
 
-    private fun String.toInstantOrNull(): Instant? = runCatching {
-        OffsetDateTime.parse(this).toInstant()
-    }.getOrNull()
+    private fun String.toInstantOrNull(): Instant? =
+        runCatching { OffsetDateTime.parse(this).toInstant() }
+            .recoverCatching { OffsetDateTime.parse(this, API_OFFSET_TIME_FMT).toInstant() }
+            .getOrNull()
 }

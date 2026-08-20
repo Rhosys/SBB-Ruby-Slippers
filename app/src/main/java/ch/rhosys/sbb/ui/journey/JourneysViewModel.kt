@@ -193,7 +193,7 @@ class JourneysViewModel @Inject constructor(
     fun confirmSwitch() {
         val prompt = _uiState.value.switchPrompt ?: return
         val journey = journeyStateHolder.activeJourney.value ?: return
-        journeyStateHolder.lockIn(prompt.betterConnection, journey.from, journey.to)
+        journeyStateHolder.lockIn(prompt.betterConnection, journey.from, journey.to, journey.tripHistoryId)
         _uiState.value = _uiState.value.copy(
             activeConnection = prompt.betterConnection,
             switchPrompt = null,
@@ -202,6 +202,11 @@ class JourneysViewModel @Inject constructor(
 
     fun dismissSwitch() {
         _uiState.value = _uiState.value.copy(switchPrompt = null)
+    }
+
+    fun cancelActiveJourney() {
+        journeyStateHolder.cancel()
+        _uiState.value = _uiState.value.copy(activeConnection = null, switchPrompt = null)
     }
 
     private fun buildReason(active: Connection, better: Connection): String {

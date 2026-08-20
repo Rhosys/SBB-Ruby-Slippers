@@ -10,7 +10,6 @@
     <!-- Connection search -->
     <string name="search_from_hint">From</string>
     <string name="search_to_hint">To</string>
-    <string name="search_action">Search connections</string>
     <string name="search_empty">Enter a start and destination to find connections.</string>
 
     <!-- Stationboard -->
