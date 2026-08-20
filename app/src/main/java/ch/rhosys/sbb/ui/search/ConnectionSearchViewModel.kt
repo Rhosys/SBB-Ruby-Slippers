@@ -62,9 +62,11 @@ class ConnectionSearchViewModel @Inject constructor(
 
     private var fromSuggestJob: Job? = null
     private var toSuggestJob: Job? = null
+    private var autoSearchJob: Job? = null
 
     init {
         viewModelScope.launch { loadSmartSuggestions() }
+        if (initialFrom.isNotBlank() && initialTo.isNotBlank()) search()
     }
 
     private suspend fun loadSmartSuggestions() {
@@ -118,6 +120,7 @@ class ConnectionSearchViewModel @Inject constructor(
                     }
             }
         }
+        scheduleAutoSearch()
     }
 
     fun onToChanged(value: String) {
@@ -138,16 +141,19 @@ class ConnectionSearchViewModel @Inject constructor(
                     }
             }
         }
+        scheduleAutoSearch()
     }
 
     fun selectFromSuggestion(name: String) {
         fromSuggestJob?.cancel()
         _uiState.value = _uiState.value.copy(fromText = name, fromSuggestions = emptyList())
+        scheduleAutoSearch(immediate = true)
     }
 
     fun selectToSuggestion(name: String) {
         toSuggestJob?.cancel()
         _uiState.value = _uiState.value.copy(toText = name, toSuggestions = emptyList())
+        scheduleAutoSearch(immediate = true)
     }
 
     fun fillFromWithNearestStop() {
@@ -159,6 +165,7 @@ class ConnectionSearchViewModel @Inject constructor(
                 isLocatingFrom = false,
                 fromText = name ?: _uiState.value.fromText,
             )
+            scheduleAutoSearch(immediate = true)
         }
     }
 
@@ -171,6 +178,17 @@ class ConnectionSearchViewModel @Inject constructor(
                 isLocatingTo = false,
                 toText = name ?: _uiState.value.toText,
             )
+            scheduleAutoSearch(immediate = true)
+        }
+    }
+
+    // Debounced while typing; immediate right after a discrete selection (suggestion tap, GPS fill).
+    private fun scheduleAutoSearch(immediate: Boolean = false) {
+        autoSearchJob?.cancel()
+        if (_uiState.value.fromText.isBlank() || _uiState.value.toText.isBlank()) return
+        autoSearchJob = viewModelScope.launch {
+            if (!immediate) delay(500)
+            search()
         }
     }
 

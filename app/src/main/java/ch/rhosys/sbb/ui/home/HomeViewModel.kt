@@ -44,6 +44,7 @@ data class HomeUiState(
     val places: List<Place> = emptyList(),
     val scorerResult: ScorerResult? = null,
     val activeJourney: ActiveJourneyBanner? = null,
+    val overlayHidden: Boolean = false,
     val fromText: String = "",
     val toText: String = "",
     val fromSuggestions: List<String> = emptyList(),
@@ -75,7 +76,9 @@ class HomeViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(
                     activeJourney = if (activeJourney != null) {
                         ActiveJourneyBanner(activeJourney.connection, activeJourney.from, activeJourney.to)
-                    } else null
+                    } else null,
+                    // A newly locked-in journey should always surface, even if a previous one was hidden.
+                    overlayHidden = if (activeJourney != null) false else _uiState.value.overlayHidden,
                 )
             }
         }
@@ -163,13 +166,12 @@ class HomeViewModel @Inject constructor(
         }.getOrNull()?.stations?.firstOrNull()?.name
     }
 
-    fun dismissScorer() {
-        _uiState.value = _uiState.value.copy(scorerResult = null)
-        // Widget keeps showing the last scorer result as sticky glanceable info.
+    fun hideOverlay() {
+        _uiState.value = _uiState.value.copy(overlayHidden = true)
     }
 
-    fun abandonActiveJourney() {
-        journeyStateHolder.clear()
+    fun showOverlay() {
+        _uiState.value = _uiState.value.copy(overlayHidden = false)
     }
 
     fun routeFromCurrentLocationTo(place: Place) {
