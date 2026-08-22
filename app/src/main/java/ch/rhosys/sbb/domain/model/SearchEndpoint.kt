@@ -9,7 +9,7 @@ sealed class SearchEndpoint {
     ) : SearchEndpoint()
 
     fun displayName(): String = when (this) {
-        is CurrentLocation -> "Current location"
+        is CurrentLocation -> CURRENT_LOCATION_LABEL
         is NamedPlace -> name
     }
 
@@ -21,5 +21,11 @@ sealed class SearchEndpoint {
     fun lngOrNull(): Double? = when (this) {
         is CurrentLocation -> lng
         is NamedPlace -> lng
+    }
+
+    companion object {
+        // Text-field placeholder for an unresolved GPS pick — recognized by search
+        // flows so it can be swapped for an actual CurrentLocation(lat, lng).
+        const val CURRENT_LOCATION_LABEL = "Current location"
     }
 }

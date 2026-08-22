@@ -3,6 +3,7 @@ package ch.rhosys.sbb
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
@@ -98,6 +99,10 @@ class MainActivity : ComponentActivity() {
                 )
 
                 Scaffold(
+                    // targetSdk 35 enforces edge-to-edge, so windowSoftInputMode="adjustResize"
+                    // alone no longer shrinks the window for the keyboard — pad for it here so
+                    // the whole screen (bottom nav included) compresses upward instead.
+                    modifier = Modifier.imePadding(),
                     bottomBar = {
                         if (!hideBottomNav) {
                             NavigationBar {

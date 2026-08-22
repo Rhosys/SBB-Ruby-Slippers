@@ -49,8 +49,6 @@ data class HomeUiState(
     val toText: String = "",
     val fromSuggestions: List<String> = emptyList(),
     val toSuggestions: List<String> = emptyList(),
-    val isLocatingFrom: Boolean = false,
-    val isLocatingTo: Boolean = false,
 )
 
 @HiltViewModel
@@ -91,6 +89,11 @@ class HomeViewModel @Inject constructor(
 
     fun refresh() {
         viewModelScope.launch { infer() }
+    }
+
+    fun onLocationPermissionGranted() {
+        locationProvider.start()
+        refresh()
     }
 
     fun onFromTextChanged(value: String) {
@@ -135,35 +138,28 @@ class HomeViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(toText = name, toSuggestions = emptyList())
     }
 
+    // We're already continuously tracking location (see LocationProvider), so this is
+    // instant off the cached value — no spinner, no wait. A missing fix leaves the
+    // field untouched rather than clearing it. A background refresh is kicked off
+    // for next time.
     fun fillFromWithNearestStop() {
         fromSuggestJob?.cancel()
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLocatingFrom = true, fromSuggestions = emptyList())
-            val name = resolveNearestStopName()
-            _uiState.value = _uiState.value.copy(
-                isLocatingFrom = false,
-                fromText = name ?: _uiState.value.fromText,
-            )
-        }
+        locationProvider.refreshNow()
+        if (locationProvider.currentLocation.value == null) return
+        _uiState.value = _uiState.value.copy(
+            fromText = SearchEndpoint.CURRENT_LOCATION_LABEL,
+            fromSuggestions = emptyList(),
+        )
     }
 
     fun fillToWithNearestStop() {
         toSuggestJob?.cancel()
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLocatingTo = true, toSuggestions = emptyList())
-            val name = resolveNearestStopName()
-            _uiState.value = _uiState.value.copy(
-                isLocatingTo = false,
-                toText = name ?: _uiState.value.toText,
-            )
-        }
-    }
-
-    private suspend fun resolveNearestStopName(): String? {
-        val location = locationProvider.getLocationOrNull() ?: return null
-        return runCatching {
-            transportRepository.getLocationsByCoordinate(location.first, location.second)
-        }.getOrNull()?.stations?.firstOrNull()?.name
+        locationProvider.refreshNow()
+        if (locationProvider.currentLocation.value == null) return
+        _uiState.value = _uiState.value.copy(
+            toText = SearchEndpoint.CURRENT_LOCATION_LABEL,
+            toSuggestions = emptyList(),
+        )
     }
 
     fun hideOverlay() {

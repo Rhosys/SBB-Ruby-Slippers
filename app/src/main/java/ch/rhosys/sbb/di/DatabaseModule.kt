@@ -2,6 +2,7 @@ package ch.rhosys.sbb.di
 
 import android.content.Context
 import androidx.room.Room
+import ch.rhosys.sbb.data.local.db.ALL_MIGRATIONS
 import ch.rhosys.sbb.data.local.db.AppDatabase
 import ch.rhosys.sbb.data.local.db.dao.PlaceDao
 import ch.rhosys.sbb.data.local.db.dao.RecurringRouteDao
@@ -27,7 +28,10 @@ object DatabaseModule {
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, "sbb_ruby_slippers.db")
-            .fallbackToDestructiveMigration()
+            .addMigrations(*ALL_MIGRATIONS)
+            // Only wipe on a downgrade (e.g. switching branches locally) — a missing
+            // upgrade migration should fail loudly, never silently delete user data.
+            .fallbackToDestructiveMigrationOnDowngrade()
             .build()
 
     @Provides fun providePlaceDao(db: AppDatabase): PlaceDao = db.placeDao()

@@ -33,8 +33,6 @@ data class ConnectionSearchUiState(
     val smartSuggestions: List<String> = emptyList(),
     val connections: List<Connection> = emptyList(),
     val isLoading: Boolean = false,
-    val isLocatingFrom: Boolean = false,
-    val isLocatingTo: Boolean = false,
     val error: String? = null,
 )
 
@@ -156,30 +154,29 @@ class ConnectionSearchViewModel @Inject constructor(
         scheduleAutoSearch(immediate = true)
     }
 
+    // Already tracked continuously (see LocationProvider), so this is instant off the
+    // cached value — no spinner, no wait. No fix yet → leave the field untouched
+    // rather than clearing it. A background refresh is kicked off for next time.
     fun fillFromWithNearestStop() {
         fromSuggestJob?.cancel()
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLocatingFrom = true, fromSuggestions = emptyList())
-            val name = resolveNearestStopName()
-            _uiState.value = _uiState.value.copy(
-                isLocatingFrom = false,
-                fromText = name ?: _uiState.value.fromText,
-            )
-            scheduleAutoSearch(immediate = true)
-        }
+        locationProvider.refreshNow()
+        if (locationProvider.currentLocation.value == null) return
+        _uiState.value = _uiState.value.copy(
+            fromText = SearchEndpoint.CURRENT_LOCATION_LABEL,
+            fromSuggestions = emptyList(),
+        )
+        scheduleAutoSearch(immediate = true)
     }
 
     fun fillToWithNearestStop() {
         toSuggestJob?.cancel()
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLocatingTo = true, toSuggestions = emptyList())
-            val name = resolveNearestStopName()
-            _uiState.value = _uiState.value.copy(
-                isLocatingTo = false,
-                toText = name ?: _uiState.value.toText,
-            )
-            scheduleAutoSearch(immediate = true)
-        }
+        locationProvider.refreshNow()
+        if (locationProvider.currentLocation.value == null) return
+        _uiState.value = _uiState.value.copy(
+            toText = SearchEndpoint.CURRENT_LOCATION_LABEL,
+            toSuggestions = emptyList(),
+        )
+        scheduleAutoSearch(immediate = true)
     }
 
     // Debounced while typing; immediate right after a discrete selection (suggestion tap, GPS fill).
@@ -192,11 +189,16 @@ class ConnectionSearchViewModel @Inject constructor(
         }
     }
 
-    private suspend fun resolveNearestStopName(): String? {
-        val location = locationProvider.getLocationOrNull() ?: return null
-        return runCatching {
-            repository.getLocationsByCoordinate(location.first, location.second)
-        }.getOrNull()?.stations?.firstOrNull()?.name
+    // Resolves the "Current location" placeholder text (typed, tapped, or dragged in)
+    // into an actual coordinate-bearing endpoint using the continuously-tracked
+    // location; falls back to a plain named lookup for everything else.
+    private fun endpointFor(text: String): SearchEndpoint {
+        if (text == SearchEndpoint.CURRENT_LOCATION_LABEL) {
+            locationProvider.currentLocation.value?.let { (lat, lng) ->
+                return SearchEndpoint.CurrentLocation(lat, lng)
+            }
+        }
+        return SearchEndpoint.NamedPlace(text)
     }
 
     fun search() {
@@ -204,8 +206,8 @@ class ConnectionSearchViewModel @Inject constructor(
         val to   = _uiState.value.toText.trim()
         if (to.isBlank()) return
 
-        val fromEndpoint = if (from.isBlank()) SearchEndpoint.NamedPlace(to) else SearchEndpoint.NamedPlace(from)
-        val toEndpoint = SearchEndpoint.NamedPlace(to)
+        val fromEndpoint = endpointFor(from.ifBlank { to })
+        val toEndpoint = endpointFor(to)
 
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
@@ -262,8 +264,8 @@ class ConnectionSearchViewModel @Inject constructor(
         val toText   = _uiState.value.toText.trim()
         tripReviewHolder.set(
             connection = connection,
-            from = SearchEndpoint.NamedPlace(fromText.ifBlank { toText }),
-            to   = SearchEndpoint.NamedPlace(toText),
+            from = endpointFor(fromText.ifBlank { toText }),
+            to   = endpointFor(toText),
         )
     }
 }

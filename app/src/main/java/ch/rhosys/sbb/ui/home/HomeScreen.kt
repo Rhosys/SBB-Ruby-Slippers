@@ -38,6 +38,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.Button
@@ -79,6 +80,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.Place
+import ch.rhosys.sbb.domain.model.SearchEndpoint
 import ch.rhosys.sbb.ui.common.StationAutocompleteField
 
 @Composable
@@ -94,7 +96,7 @@ fun HomeScreen(
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        if (permissions.values.any { it }) viewModel.refresh()
+        if (permissions.values.any { it }) viewModel.onLocationPermissionGranted()
     }
     LaunchedEffect(Unit) {
         val missing = listOf(
@@ -152,6 +154,8 @@ fun HomeScreen(
                         places = state.places,
                         onTileClick = { place -> viewModel.routeFromCurrentLocationTo(place) },
                         onDragRoute = { from, to -> onNavigateToSearch(from, to) },
+                        onCurrentLocationFromClick = viewModel::fillFromWithNearestStop,
+                        onCurrentLocationToClick = viewModel::fillToWithNearestStop,
                     )
                 }
             }
@@ -162,14 +166,10 @@ fun HomeScreen(
                 toText = state.toText,
                 fromSuggestions = state.fromSuggestions,
                 toSuggestions = state.toSuggestions,
-                isLocatingFrom = state.isLocatingFrom,
-                isLocatingTo = state.isLocatingTo,
                 onFromChanged = viewModel::onFromTextChanged,
                 onToChanged = viewModel::onToTextChanged,
                 onSelectFromSuggestion = viewModel::selectFromSuggestion,
                 onSelectToSuggestion = viewModel::selectToSuggestion,
-                onGpsFrom = viewModel::fillFromWithNearestStop,
-                onGpsTo = viewModel::fillToWithNearestStop,
                 onSearch = { onNavigateToSearch(state.fromText, state.toText) },
             )
             Spacer(Modifier.height(8.dp))
@@ -451,14 +451,10 @@ private fun SearchForm(
     toText: String,
     fromSuggestions: List<String>,
     toSuggestions: List<String>,
-    isLocatingFrom: Boolean,
-    isLocatingTo: Boolean,
     onFromChanged: (String) -> Unit,
     onToChanged: (String) -> Unit,
     onSelectFromSuggestion: (String) -> Unit,
     onSelectToSuggestion: (String) -> Unit,
-    onGpsFrom: () -> Unit,
-    onGpsTo: () -> Unit,
     onSearch: () -> Unit,
 ) {
     Card(
@@ -477,8 +473,6 @@ private fun SearchForm(
                 label = "From",
                 suggestions = fromSuggestions,
                 onSuggestionSelected = onSelectFromSuggestion,
-                onGpsClick = onGpsFrom,
-                isLocating = isLocatingFrom,
                 modifier = Modifier.fillMaxWidth(),
             )
             StationAutocompleteField(
@@ -487,8 +481,6 @@ private fun SearchForm(
                 label = "To",
                 suggestions = toSuggestions,
                 onSuggestionSelected = onSelectToSuggestion,
-                onGpsClick = onGpsTo,
-                isLocating = isLocatingTo,
                 modifier = Modifier.fillMaxWidth(),
             )
             Button(
@@ -502,8 +494,16 @@ private fun SearchForm(
     }
 }
 
+// Sentinel indices for the two pinned "current location" tiles, sharing the same
+// tap/drag machinery as the saved-place tiles below (tileWindowBounds is keyed by
+// these same ints). NO_TILE marks "nothing under the pointer" — distinct from both,
+// since -1/-2 are now real tiles.
+private const val NO_TILE = Int.MIN_VALUE
+private const val CURRENT_LOCATION_FROM = -1
+private const val CURRENT_LOCATION_TO = -2
+
 // Tile grid with two gestures:
-//   Tap  → onTileClick(place)
+//   Tap  → onTileClick(place) / onCurrentLocationFromClick() / onCurrentLocationToClick()
 //   Drag → draws a directed line between tiles; on release triggers onDragRoute(from, to)
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -511,12 +511,19 @@ fun PlaceTileGrid(
     places: List<Place>,
     onTileClick: (Place) -> Unit,
     onDragRoute: (from: String, to: String) -> Unit,
+    onCurrentLocationFromClick: () -> Unit,
+    onCurrentLocationToClick: () -> Unit,
 ) {
     val tileWindowBounds = remember(places) { mutableStateMapOf<Int, Rect>() }
     var boxWindowOrigin by remember { mutableStateOf(Offset.Zero) }
-    var dragSourceIdx by remember { mutableStateOf(-1) }
-    var dragTargetIdx by remember { mutableStateOf(-1) }
+    var dragSourceIdx by remember { mutableStateOf(NO_TILE) }
+    var dragTargetIdx by remember { mutableStateOf(NO_TILE) }
     var dragCurrentWindowPos by remember { mutableStateOf(Offset.Zero) }
+
+    fun labelFor(idx: Int): String = when (idx) {
+        CURRENT_LOCATION_FROM, CURRENT_LOCATION_TO -> SearchEndpoint.CURRENT_LOCATION_LABEL
+        else -> places.getOrNull(idx)?.name ?: ""
+    }
 
     val lineColor = MaterialTheme.colorScheme.primary
     val targetColor = MaterialTheme.colorScheme.secondary
@@ -545,54 +552,90 @@ fun PlaceTileGrid(
                         val wp = localOffset + boxWindowOrigin
                         dragCurrentWindowPos = wp
                         dragSourceIdx = tileWindowBounds.entries
-                            .firstOrNull { (_, rect) -> rect.contains(wp) }?.key ?: -1
-                        dragTargetIdx = -1
+                            .firstOrNull { (_, rect) -> rect.contains(wp) }?.key ?: NO_TILE
+                        dragTargetIdx = NO_TILE
                     },
                     onDragEnd = {
-                        if (dragSourceIdx >= 0 && dragTargetIdx >= 0) {
-                            onDragRoute(
-                                places.getOrNull(dragSourceIdx)?.name ?: "",
-                                places.getOrNull(dragTargetIdx)?.name ?: "",
-                            )
+                        if (dragSourceIdx != NO_TILE && dragTargetIdx != NO_TILE) {
+                            onDragRoute(labelFor(dragSourceIdx), labelFor(dragTargetIdx))
                         }
-                        dragSourceIdx = -1
-                        dragTargetIdx = -1
+                        dragSourceIdx = NO_TILE
+                        dragTargetIdx = NO_TILE
                     },
                     onDragCancel = {
-                        dragSourceIdx = -1
-                        dragTargetIdx = -1
+                        dragSourceIdx = NO_TILE
+                        dragTargetIdx = NO_TILE
                     },
                 ) { change, _ ->
                     dragCurrentWindowPos = change.position + boxWindowOrigin
                     dragTargetIdx = tileWindowBounds.entries
                         .firstOrNull { (k, rect) ->
                             k != dragSourceIdx && rect.contains(dragCurrentWindowPos)
-                        }?.key ?: -1
+                        }?.key ?: NO_TILE
                 }
             },
     ) {
-        FlowRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            places.forEachIndexed { idx, place ->
+        Column(Modifier.fillMaxSize()) {
+            FlowRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                places.forEachIndexed { idx, place ->
+                    PlaceTile(
+                        label = place.name,
+                        icon = Icons.Default.LocationOn,
+                        onClick = { onTileClick(place) },
+                        isSource = dragSourceIdx == idx,
+                        isTarget = dragTargetIdx == idx,
+                        modifier = Modifier.onGloballyPositioned { coords ->
+                            tileWindowBounds[idx] = coords.boundsInWindow()
+                        },
+                    )
+                }
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            // Pinned "current location" tiles, right above the search form below —
+            // tap fills that field instantly (already tracked continuously), drag
+            // routes just like any saved-place tile.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 PlaceTile(
-                    label = place.name,
-                    icon = Icons.Default.LocationOn,
-                    onClick = { onTileClick(place) },
-                    isSource = dragSourceIdx == idx,
-                    isTarget = dragTargetIdx == idx,
-                    modifier = Modifier.onGloballyPositioned { coords ->
-                        tileWindowBounds[idx] = coords.boundsInWindow()
-                    },
+                    label = "From here",
+                    icon = Icons.Default.GpsFixed,
+                    onClick = onCurrentLocationFromClick,
+                    isSource = dragSourceIdx == CURRENT_LOCATION_FROM,
+                    isTarget = dragTargetIdx == CURRENT_LOCATION_FROM,
+                    modifier = Modifier
+                        .weight(1f)
+                        .onGloballyPositioned { coords ->
+                            tileWindowBounds[CURRENT_LOCATION_FROM] = coords.boundsInWindow()
+                        },
+                )
+                PlaceTile(
+                    label = "To here",
+                    icon = Icons.Default.GpsFixed,
+                    onClick = onCurrentLocationToClick,
+                    isSource = dragSourceIdx == CURRENT_LOCATION_TO,
+                    isTarget = dragTargetIdx == CURRENT_LOCATION_TO,
+                    modifier = Modifier
+                        .weight(1f)
+                        .onGloballyPositioned { coords ->
+                            tileWindowBounds[CURRENT_LOCATION_TO] = coords.boundsInWindow()
+                        },
                 )
             }
         }
 
-        if (dragSourceIdx >= 0) {
+        if (dragSourceIdx != NO_TILE) {
             val sourceBounds = tileWindowBounds[dragSourceIdx]
             if (sourceBounds != null) {
                 Canvas(modifier = Modifier.matchParentSize()) {
@@ -600,7 +643,7 @@ fun PlaceTileGrid(
                         sourceBounds.center.x - boxWindowOrigin.x,
                         sourceBounds.center.y - boxWindowOrigin.y,
                     )
-                    val snapTarget = if (dragTargetIdx >= 0) {
+                    val snapTarget = if (dragTargetIdx != NO_TILE) {
                         tileWindowBounds[dragTargetIdx]?.let { tb ->
                             Offset(tb.center.x - boxWindowOrigin.x, tb.center.y - boxWindowOrigin.y)
                         }
