@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.util.Log
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import ch.rhosys.sbb.data.local.location.LocationProvider
 import ch.rhosys.sbb.domain.RouteRepository
 import ch.rhosys.sbb.ui.widget.JourneyWidgetSyncer
 import ch.rhosys.sbb.wear.PhoneWearDataPusher
@@ -32,6 +33,7 @@ class SbbRubySlippersApp : Application(), Configuration.Provider {
     @Inject lateinit var notificationScheduler: RouteNotificationScheduler
     @Inject lateinit var routeRepository: RouteRepository
     @Inject lateinit var phoneWearDataPusher: PhoneWearDataPusher
+    @Inject lateinit var locationProvider: LocationProvider
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -47,6 +49,9 @@ class SbbRubySlippersApp : Application(), Configuration.Provider {
         super.onCreate()
         journeyWidgetSyncer.start()
         phoneWearDataPusher.start()
+        // Track location for the whole app lifetime, not just while a screen asks for it —
+        // a no-op if permission isn't granted yet; retried once it is (see HomeScreen).
+        locationProvider.start()
         GtfsImportWorker.schedule(this)
         GtfsRtRefreshWorker.schedule(this)
         createNotificationChannel()

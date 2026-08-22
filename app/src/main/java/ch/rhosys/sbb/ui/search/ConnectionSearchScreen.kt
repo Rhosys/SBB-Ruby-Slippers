@@ -56,7 +56,6 @@ fun ConnectionSearchScreen(
             suggestions = state.fromSuggestions,
             onSuggestionSelected = viewModel::selectFromSuggestion,
             onGpsClick = viewModel::fillFromWithNearestStop,
-            isLocating = state.isLocatingFrom,
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -67,7 +66,6 @@ fun ConnectionSearchScreen(
             suggestions = state.toSuggestions,
             onSuggestionSelected = viewModel::selectToSuggestion,
             onGpsClick = viewModel::fillToWithNearestStop,
-            isLocating = state.isLocatingTo,
             modifier = Modifier.fillMaxWidth(),
         )
 
