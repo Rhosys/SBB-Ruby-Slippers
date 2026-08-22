@@ -46,7 +46,10 @@ class LocationProvider @Inject constructor(
 
     /** Begin continuous updates. Safe to call repeatedly (e.g. after a permission grant). */
     fun start() {
-        if (updatesRequested || !hasPermission()) return
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_COARSE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (updatesRequested || !hasPermission) return
         val request = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 30_000L)
             .setMinUpdateIntervalMillis(15_000L)
             .build()
@@ -59,7 +62,10 @@ class LocationProvider @Inject constructor(
 
     /** Fire-and-forget request for a fresh fix right now, outside the regular update cadence. */
     fun refreshNow() {
-        if (!hasPermission()) return
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_COARSE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasPermission) return
         val cts = CancellationTokenSource()
         runCatching {
             fusedClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts.token)
@@ -72,19 +78,14 @@ class LocationProvider @Inject constructor(
     /** Cached value if we have one; otherwise a one-off suspend fetch. Never throws. */
     suspend fun getLocationOrNull(): Pair<Double, Double>? {
         _currentLocation.value?.let { return it }
-        if (!hasPermission()) return null
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_COARSE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasPermission) return null
         return runCatching {
             val cts = CancellationTokenSource()
             val loc = fusedClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts.token).await()
             loc?.let { it.latitude to it.longitude }
         }.getOrNull()?.also { _currentLocation.value = it }
     }
-
-    private fun hasPermission(): Boolean =
-        ContextCompat.checkSelfPermission(
-            context, Manifest.permission.ACCESS_COARSE_LOCATION,
-        ) == PackageManager.PERMISSION_GRANTED ||
-            ContextCompat.checkSelfPermission(
-                context, Manifest.permission.ACCESS_FINE_LOCATION,
-            ) == PackageManager.PERMISSION_GRANTED
 }
