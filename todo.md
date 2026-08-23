@@ -44,6 +44,12 @@ no AWS changes needed beyond the keystore in Todo 1.)
 
 ### 🔲 5. Register at opentransportdata.swiss and wire the API token
 Free registration at `opentransportdata.swiss` → `api-manager.opentransportdata.swiss`.
+The portal hosts many unrelated products (OJP, SIRI-PT/ET/SX, Train Formation Service,
+road-traffic counters/lights, CKAN, ...) — after logging in, create an app profile and
+subscribe it to the **`GTFS-RT`** API specifically; that's the product whose key
+authenticates `GtfsRtRefreshWorker`'s requests. (`OJP 2.0` / `OJP Fare` is the separate
+product needed for Todo item below and for fares in `TripReviewScreen` later — subscribe
+to that too if working on that piece now.)
 Two things unlock immediately with the token:
 
 - **GTFS-RT** — `GtfsRtRefreshWorker` already fetches from `opentransportdata.swiss`
