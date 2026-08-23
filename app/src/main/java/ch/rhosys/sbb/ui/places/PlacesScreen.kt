@@ -1,6 +1,5 @@
 package ch.rhosys.sbb.ui.places
 
-import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -62,7 +61,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -86,7 +84,6 @@ fun HomeEditScreen(
     viewModel: HomeEditViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
-    val context = LocalContext.current
     val density = LocalDensity.current
 
     // Drag state for the grid: which place is being dragged, in which mode, and the
@@ -103,31 +100,16 @@ fun HomeEditScreen(
     val handleWindowBounds = remember { mutableStateMapOf<Long, Rect>() }
     var boxWindowOrigin by remember { mutableStateOf(Offset.Zero) }
 
+    // The photo picker's own grant is enough to read the image once here — the
+    // ViewModel immediately copies the bytes into app storage (PlacePhotoStore) so
+    // there's no need to retain a persistable permission on the picker's Uri.
     val photoPickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            }
-            viewModel.onPhotoSelected(uri.toString())
-        }
-    }
+    ) { uri -> if (uri != null) viewModel.onPhotoSelected(uri) }
 
     val editPhotoPickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            }
-            viewModel.onEditPhotoSelected(uri.toString())
-        }
-    }
+    ) { uri -> if (uri != null) viewModel.onEditPhotoSelected(uri) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(

@@ -50,6 +50,7 @@ app/src/main/java/ch/rhosys/sbb/
   data/
     local/
       calendar/CalendarRepository.kt   ← reads CalendarContract for 7-day events
+      photo/PlacePhotoStore.kt         ← copies picked place photos into filesDir (Auto Backup-safe)
       db/
         AppDatabase.kt                 ← Room: places, saved_routes, recurring_routes, trip_history
         dao/{Place,SavedRoute,RecurringRoute,TripHistory}Dao.kt
@@ -133,8 +134,15 @@ Places (edit) screen.
   objects from local GTFS routing (already set) and from the remote API (TODO).
 - **Widget geofence**: DepartureWidget reads from JourneyStateHolder; geofence-driven
   auto-clear is a v2 enhancement.
-- **Wear OS companion**, **Fares**, **Sector recommendations**, **Journey sharing**,
-  **Android Auto Backup** — all v2.
+- **Wear OS companion**, **Fares**, **Sector recommendations**, **Journey sharing** — v2.
+- **Android Auto Backup**: already wired up (`AndroidManifest.xml` → `backup_rules.xml` /
+  `data_extraction_rules.xml`, excluding only the GTFS cache), covering the Room DB
+  (places, saved/recurring routes, trip history) and DataStore preferences. Room uses
+  `JournalMode.TRUNCATE` (`di/DatabaseModule.kt`) specifically so Auto Backup's plain
+  file copy of the `.db` never misses writes still sitting in a WAL sidecar file. Place
+  photos are copied into `filesDir/place_photos/` at pick time (`PlacePhotoStore`) since
+  the photo picker's own `content://` Uri isn't a file backup can capture and stops
+  resolving after a restore anyway.
 
 ## Data source
 
