@@ -74,10 +74,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import ch.rhosys.sbb.R
 import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.Place
 import ch.rhosys.sbb.domain.model.SearchEndpoint
@@ -115,65 +117,77 @@ fun HomeScreen(
     val peekHandleVisible = hasOverlayContent && state.overlayHidden
 
     Box(Modifier.fillMaxSize()) {
-        // Main content: tiles / empty state
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp),
-        ) {
-            // Edit icon pinned to top-right
+        Column(Modifier.fillMaxSize()) {
+            // Title header — full-width, primary theme color, with the edit pencil at the end.
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.primary)
+                    .padding(start = 16.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
+                Text(
+                    stringResource(R.string.app_name),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
                 IconButton(onClick = onNavigateToHomeEdit) {
                     Icon(
                         Icons.Default.Edit,
                         contentDescription = "Manage places",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = MaterialTheme.colorScheme.onPrimary,
                     )
                 }
             }
 
-            // Place tiles or giant + button — fills available space
-            Box(Modifier.weight(1f)) {
-                if (state.places.isEmpty() && !state.isLoading) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        FloatingActionButton(
-                            onClick = onNavigateToHomeEdit,
-                            modifier = Modifier.size(120.dp),
-                        ) {
-                            Icon(
-                                Icons.Default.Add,
-                                contentDescription = "Add place",
-                                modifier = Modifier.size(56.dp),
-                            )
+            // Main content: tiles / empty state
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp),
+            ) {
+                // Place tiles or giant + button — fills available space
+                Box(Modifier.weight(1f)) {
+                    if (state.places.isEmpty() && !state.isLoading) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            FloatingActionButton(
+                                onClick = onNavigateToHomeEdit,
+                                modifier = Modifier.size(120.dp),
+                            ) {
+                                Icon(
+                                    Icons.Default.Add,
+                                    contentDescription = "Add place",
+                                    modifier = Modifier.size(56.dp),
+                                )
+                            }
                         }
+                    } else {
+                        PlaceTileGrid(
+                            places = state.places,
+                            onTileClick = { place -> viewModel.routeFromCurrentLocationTo(place) },
+                            onDragRoute = { from, to -> onNavigateToSearch(from, to) },
+                            onCurrentLocationFromClick = viewModel::fillFromWithNearestStop,
+                            onCurrentLocationToClick = viewModel::fillToWithNearestStop,
+                        )
                     }
-                } else {
-                    PlaceTileGrid(
-                        places = state.places,
-                        onTileClick = { place -> viewModel.routeFromCurrentLocationTo(place) },
-                        onDragRoute = { from, to -> onNavigateToSearch(from, to) },
-                        onCurrentLocationFromClick = viewModel::fillFromWithNearestStop,
-                        onCurrentLocationToClick = viewModel::fillToWithNearestStop,
-                    )
                 }
-            }
 
-            // Persistent bottom search form
-            SearchForm(
-                fromText = state.fromText,
-                toText = state.toText,
-                fromSuggestions = state.fromSuggestions,
-                toSuggestions = state.toSuggestions,
-                onFromChanged = viewModel::onFromTextChanged,
-                onToChanged = viewModel::onToTextChanged,
-                onSelectFromSuggestion = viewModel::selectFromSuggestion,
-                onSelectToSuggestion = viewModel::selectToSuggestion,
-                onSearch = { onNavigateToSearch(state.fromText, state.toText) },
-            )
-            Spacer(Modifier.height(8.dp))
+                // Persistent bottom search form
+                SearchForm(
+                    fromText = state.fromText,
+                    toText = state.toText,
+                    fromSuggestions = state.fromSuggestions,
+                    toSuggestions = state.toSuggestions,
+                    onFromChanged = viewModel::onFromTextChanged,
+                    onToChanged = viewModel::onToTextChanged,
+                    onSelectFromSuggestion = viewModel::selectFromSuggestion,
+                    onSelectToSuggestion = viewModel::selectToSuggestion,
+                    onSearch = { onNavigateToSearch(state.fromText, state.toText) },
+                )
+                Spacer(Modifier.height(8.dp))
+            }
         }
 
         // Scrim behind the top sheet
