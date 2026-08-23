@@ -45,21 +45,21 @@ no AWS changes needed beyond the keystore in Todo 1.)
 ### 🔲 5. Register at opentransportdata.swiss and wire the API token
 Free registration at `opentransportdata.swiss` → `api-manager.opentransportdata.swiss`.
 The portal hosts many unrelated products (OJP, SIRI-PT/ET/SX, Train Formation Service,
-road-traffic counters/lights, CKAN, ...) — after logging in, create an app profile and
-subscribe it to the **`GTFS-RT`** API specifically; that's the product whose key
-authenticates `GtfsRtRefreshWorker`'s requests. (`OJP 2.0` / `OJP Fare` is the separate
-product needed for Todo item below and for fares in `TripReviewScreen` later — subscribe
-to that too if working on that piece now.)
-Two things unlock immediately with the token:
+road-traffic counters/lights, CKAN, ...) and you subscribe an app profile to each one
+separately, so pick the one that matches whichever of the two items below you're
+wiring up:
 
-- **GTFS-RT** — `GtfsRtRefreshWorker` already fetches from `opentransportdata.swiss`
-  but uses an empty bearer token. Wire the token through a new
-  `stringPreferencesKey("opentransport_api_token")` in `UserPreferencesRepository`,
-  expose it as a `Flow<String>`, and pass it into the worker via `WorkManager`
-  `inputData` when scheduling. Add a token-entry field to `SettingsScreen`.
-- **OJP 2.0** — `GET /ojp` XML journey planner with 50 req/min free tier.
-  The beta **OJP Fare** endpoint returns price information per connection — first
-  step toward fares in `TripReviewScreen`.
+- **GTFS-RT** — on the portal, subscribe to the **`GTFS-RT`** product; that's the one
+  whose key authenticates `GtfsRtRefreshWorker`'s requests. `GtfsRtRefreshWorker`
+  already fetches from `opentransportdata.swiss` but uses an empty bearer token. Wire
+  the token through a new `stringPreferencesKey("opentransport_api_token")` in
+  `UserPreferencesRepository`, expose it as a `Flow<String>`, and pass it into the
+  worker via `WorkManager` `inputData` when scheduling. Add a token-entry field to
+  `SettingsScreen`.
+- **OJP 2.0** — on the portal, subscribe to the separate **`OJP 2.0`** product.
+  `GET /ojp` XML journey planner with 50 req/min free tier. The beta **OJP Fare**
+  endpoint returns price information per connection — first step toward fares in
+  `TripReviewScreen`.
 
 Add the token as a secret to GitHub Actions (`OPENTRANSPORT_API_TOKEN`) and to the
 GitLab project variable of the same name once the mirror exists (Todo 4).
