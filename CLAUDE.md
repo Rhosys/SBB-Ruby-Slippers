@@ -77,7 +77,7 @@ app/src/main/java/ch/rhosys/sbb/
   ui/
     error/StartupErrorScreen.kt
     home/{HomeScreen,HomeViewModel}.kt ← scorer + pull-over sheet (active journey above next departure) + tile grid
-    homeedit/{HomeEditScreen,HomeEditViewModel}.kt ← place management: add/delete/reorder tiles
+    places/{PlacesScreen (fun HomeEditScreen),PlacesViewModel (class HomeEditViewModel)}.kt ← place management: add/delete/resize/move tiles on the grid
     journey/
       JourneyStateHolder.kt            ← @Singleton: locked-in connection + from/to
       JourneysScreen.kt                ← three-tab screen: Active / Past / Planned
@@ -106,6 +106,11 @@ deployment/
 
 ## Tile interaction model
 
+Tiles occupy a 10-column-wide grid of square cells (`ui/common/PlaceGrid.kt`); each
+`Place` stores its own `gridX/gridY/gridWidth/gridHeight`, defaulting to 2x2 for new
+places. HomeScreen only *reads* that layout — moving and resizing happens on the
+Places (edit) screen.
+
 ### HomeScreen
 - **Tap** a place tile → routes from the user's current GPS location to that place
   (HomeViewModel.routeFromCurrentLocationTo); result shown in the pull-over sheet.
@@ -113,11 +118,13 @@ deployment/
   source → target, arrowhead at tip); on release navigates to ConnectionSearchScreen
   with from/to pre-filled. Source tile highlights in primary, target in secondary.
 
-### HomeEditScreen
-- **Tap** a tile → navigates to ConnectionSearchScreen with nearest saved place or
-  current location as the from endpoint.
-- **Short-press drag** → drag to reorder; drop on another tile swaps sort order.
-  Drop on the trash zone (appears at top while dragging) deletes the tile.
+### Places screen (`ui/places/PlacesScreen.kt`, `fun HomeEditScreen`)
+- **Tap** a tile → opens the edit dialog (label / photo).
+- **Drag a tile's center** → moves it to a new grid position.
+- **Drag a tile's corner handle** → resizes it (gridWidth/gridHeight).
+- Both drags reject a drop that would overlap another tile — the tile outlines red
+  while the candidate position/size is invalid and snaps back on release.
+- Dragging a tile's center onto the trash zone (appears at top while dragging) deletes it.
 
 ## Known gaps (v2)
 

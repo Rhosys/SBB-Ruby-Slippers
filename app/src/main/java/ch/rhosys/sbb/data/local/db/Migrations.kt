@@ -55,4 +55,31 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
-val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE places ADD COLUMN gridX INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE places ADD COLUMN gridY INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE places ADD COLUMN gridWidth INTEGER NOT NULL DEFAULT 2")
+        db.execSQL("ALTER TABLE places ADD COLUMN gridHeight INTEGER NOT NULL DEFAULT 2")
+
+        // Every existing row just defaulted to (0, 0), which would stack all of a
+        // user's places on top of each other. Lay them out left-to-right, 5 per row
+        // (10-wide grid / 2-wide default tile), in their existing sort order.
+        db.query("SELECT id FROM places ORDER BY sortOrder ASC, createdAt ASC").use { cursor ->
+            var index = 0
+            val idColumn = cursor.getColumnIndexOrThrow("id")
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idColumn)
+                val gridX = (index % 5) * 2
+                val gridY = (index / 5) * 2
+                db.execSQL(
+                    "UPDATE places SET gridX = ?, gridY = ? WHERE id = ?",
+                    arrayOf(gridX, gridY, id),
+                )
+                index++
+            }
+        }
+    }
+}
+
+val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)

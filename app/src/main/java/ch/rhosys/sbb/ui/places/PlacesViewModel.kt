@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import ch.rhosys.sbb.domain.PlaceRepository
 import ch.rhosys.sbb.domain.TransportRepository
 import ch.rhosys.sbb.domain.model.Place
+import ch.rhosys.sbb.ui.common.findFreeGridSlot
+import ch.rhosys.sbb.ui.common.rectOverlapsAnyPlace
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -88,18 +90,14 @@ class HomeEditViewModel @Inject constructor(
         )
     }
 
-    fun reorderTiles(draggedId: Long, targetId: Long) {
-        val places = _uiState.value.places.toMutableList()
-        val fromIdx = places.indexOfFirst { it.id == draggedId }
-        val toIdx = places.indexOfFirst { it.id == targetId }
-        if (fromIdx < 0 || toIdx < 0 || fromIdx == toIdx) return
-        val tmp = places[fromIdx]
-        places[fromIdx] = places[toIdx]
-        places[toIdx] = tmp
+    // Commits a move or resize from the edit screen's drag gesture. The screen already
+    // validated the candidate rect live (via rectOverlapsAnyPlace) while dragging, so
+    // this is a final defensive check rather than the primary guard.
+    fun updateTileRect(id: Long, gridX: Int, gridY: Int, gridWidth: Int, gridHeight: Int) {
+        val place = _uiState.value.places.firstOrNull { it.id == id } ?: return
+        if (rectOverlapsAnyPlace(gridX, gridY, gridWidth, gridHeight, _uiState.value.places, excludingId = id)) return
         viewModelScope.launch {
-            places.forEachIndexed { idx, place ->
-                placeRepository.updatePlace(place.copy(sortOrder = idx))
-            }
+            placeRepository.updatePlace(place.copy(gridX = gridX, gridY = gridY, gridWidth = gridWidth, gridHeight = gridHeight))
         }
     }
 
@@ -174,6 +172,7 @@ class HomeEditViewModel @Inject constructor(
                 ?.let { SuggestionItem(it, 0.0, 0.0) }
             ?: return
 
+        val (gridX, gridY) = findFreeGridSlot(_uiState.value.places)
         viewModelScope.launch {
             placeRepository.upsertPlace(
                 name = item.name,
@@ -181,6 +180,8 @@ class HomeEditViewModel @Inject constructor(
                 lng = item.lng,
                 label = _uiState.value.addLabel.takeIf { it.isNotBlank() },
                 photoUri = _uiState.value.addPhotoUri,
+                gridX = gridX,
+                gridY = gridY,
             )
         }
         dismissAddDialog()

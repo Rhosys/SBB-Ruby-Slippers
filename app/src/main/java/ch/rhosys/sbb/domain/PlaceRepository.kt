@@ -12,6 +12,10 @@ interface PlaceRepository {
         sortOrder: Int = 0,
         label: String? = null,
         photoUri: String? = null,
+        gridX: Int = 0,
+        gridY: Int = 0,
+        gridWidth: Int = 2,
+        gridHeight: Int = 2,
     ): Long
     suspend fun updatePlace(place: Place)
     suspend fun deletePlace(id: Long)
