@@ -47,6 +47,8 @@ import java.time.Instant
 import kotlin.math.roundToInt
 
 // Free API-token signup/management portal for opentransportdata.swiss (see todo.md, Todo 5).
+// The portal lists many unrelated products (OJP, SIRI, road traffic, ...) — subscribe to the
+// "GTFS-RT" API specifically; that's the one GtfsRtRefreshWorker authenticates against.
 private const val RT_TOKEN_SIGNUP_URL = "https://api-manager.opentransportdata.swiss/"
 
 @Composable
@@ -233,7 +235,8 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             )
         }
         Text(
-            "Required for live delays and service alerts.",
+            "Required for live delays and service alerts. On the portal, subscribe to the " +
+                "\"GTFS-RT\" API — not OJP, SIRI, or the road-traffic APIs also listed there.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

@@ -1,10 +1,14 @@
 package ch.rhosys.sbb.ui.places
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import ch.rhosys.sbb.data.local.photo.PlacePhotoStore
 import ch.rhosys.sbb.domain.PlaceRepository
 import ch.rhosys.sbb.domain.TransportRepository
 import ch.rhosys.sbb.domain.model.Place
+import ch.rhosys.sbb.ui.common.findFreeGridSlot
+import ch.rhosys.sbb.ui.common.rectOverlapsAnyPlace
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -36,6 +40,7 @@ data class SuggestionItem(
 class HomeEditViewModel @Inject constructor(
     private val placeRepository: PlaceRepository,
     private val transportRepository: TransportRepository,
+    private val photoStore: PlacePhotoStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeEditUiState())
@@ -63,24 +68,51 @@ class HomeEditViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(editLabel = label)
     }
 
-    fun onEditPhotoSelected(uri: String?) {
-        _uiState.value = _uiState.value.copy(editPhotoUri = uri)
+    // A picked photo is copied into app storage immediately (see PlacePhotoStore) so it
+    // survives Android Auto Backup, but that means the copy sitting in editPhotoUri is
+    // only "real" once confirmEdit() actually saves it — replacing or cancelling has to
+    // clean up whichever copy never got attached to the place, without ever touching the
+    // place's still-current saved photo.
+    fun onEditPhotoSelected(uri: Uri?) {
+        val original = _uiState.value.editingPlace?.photoUri
+        val uncommittedPrevious = _uiState.value.editPhotoUri.takeIf { it != original }
+        if (uri == null) {
+            _uiState.value = _uiState.value.copy(editPhotoUri = null)
+            viewModelScope.launch { photoStore.delete(uncommittedPrevious) }
+            return
+        }
+        viewModelScope.launch {
+            val localUri = photoStore.copyToLocalStorage(uri)
+            _uiState.value = _uiState.value.copy(editPhotoUri = localUri)
+            photoStore.delete(uncommittedPrevious)
+        }
     }
 
     fun confirmEdit() {
         val place = _uiState.value.editingPlace ?: return
+        val finalPhotoUri = _uiState.value.editPhotoUri
         viewModelScope.launch {
             placeRepository.updatePlace(
                 place.copy(
                     label = _uiState.value.editLabel.takeIf { it.isNotBlank() },
-                    photoUri = _uiState.value.editPhotoUri,
+                    photoUri = finalPhotoUri,
                 )
             )
+            if (finalPhotoUri != place.photoUri) photoStore.delete(place.photoUri)
         }
-        dismissEditDialog()
+        clearEditDialogState()
     }
 
     fun dismissEditDialog() {
+        val original = _uiState.value.editingPlace?.photoUri
+        val uncommitted = _uiState.value.editPhotoUri.takeIf { it != original }
+        if (uncommitted != null) {
+            viewModelScope.launch { photoStore.delete(uncommitted) }
+        }
+        clearEditDialogState()
+    }
+
+    private fun clearEditDialogState() {
         _uiState.value = _uiState.value.copy(
             editingPlace = null,
             editLabel = "",
@@ -88,18 +120,14 @@ class HomeEditViewModel @Inject constructor(
         )
     }
 
-    fun reorderTiles(draggedId: Long, targetId: Long) {
-        val places = _uiState.value.places.toMutableList()
-        val fromIdx = places.indexOfFirst { it.id == draggedId }
-        val toIdx = places.indexOfFirst { it.id == targetId }
-        if (fromIdx < 0 || toIdx < 0 || fromIdx == toIdx) return
-        val tmp = places[fromIdx]
-        places[fromIdx] = places[toIdx]
-        places[toIdx] = tmp
+    // Commits a move or resize from the edit screen's drag gesture. The screen already
+    // validated the candidate rect live (via rectOverlapsAnyPlace) while dragging, so
+    // this is a final defensive check rather than the primary guard.
+    fun updateTileRect(id: Long, gridX: Int, gridY: Int, gridWidth: Int, gridHeight: Int) {
+        val place = _uiState.value.places.firstOrNull { it.id == id } ?: return
+        if (rectOverlapsAnyPlace(gridX, gridY, gridWidth, gridHeight, _uiState.value.places, excludingId = id)) return
         viewModelScope.launch {
-            places.forEachIndexed { idx, place ->
-                placeRepository.updatePlace(place.copy(sortOrder = idx))
-            }
+            placeRepository.updatePlace(place.copy(gridX = gridX, gridY = gridY, gridWidth = gridWidth, gridHeight = gridHeight))
         }
     }
 
@@ -116,6 +144,14 @@ class HomeEditViewModel @Inject constructor(
 
     fun dismissAddDialog() {
         suggestJob?.cancel()
+        val staged = _uiState.value.addPhotoUri
+        if (staged != null) {
+            viewModelScope.launch { photoStore.delete(staged) }
+        }
+        clearAddDialogState()
+    }
+
+    private fun clearAddDialogState() {
         _uiState.value = _uiState.value.copy(
             showAddDialog = false,
             addQuery = "",
@@ -155,8 +191,18 @@ class HomeEditViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(addLabel = label)
     }
 
-    fun onPhotoSelected(uri: String?) {
-        _uiState.value = _uiState.value.copy(addPhotoUri = uri)
+    fun onPhotoSelected(uri: Uri?) {
+        val previous = _uiState.value.addPhotoUri
+        if (uri == null) {
+            _uiState.value = _uiState.value.copy(addPhotoUri = null)
+            viewModelScope.launch { photoStore.delete(previous) }
+            return
+        }
+        viewModelScope.launch {
+            val localUri = photoStore.copyToLocalStorage(uri)
+            _uiState.value = _uiState.value.copy(addPhotoUri = localUri)
+            photoStore.delete(previous)
+        }
     }
 
     fun selectSuggestion(item: SuggestionItem) {
@@ -174,6 +220,7 @@ class HomeEditViewModel @Inject constructor(
                 ?.let { SuggestionItem(it, 0.0, 0.0) }
             ?: return
 
+        val (gridX, gridY) = findFreeGridSlot(_uiState.value.places)
         viewModelScope.launch {
             placeRepository.upsertPlace(
                 name = item.name,
@@ -181,12 +228,18 @@ class HomeEditViewModel @Inject constructor(
                 lng = item.lng,
                 label = _uiState.value.addLabel.takeIf { it.isNotBlank() },
                 photoUri = _uiState.value.addPhotoUri,
+                gridX = gridX,
+                gridY = gridY,
             )
         }
-        dismissAddDialog()
+        clearAddDialogState()
     }
 
     fun deletePlace(id: Long) {
-        viewModelScope.launch { placeRepository.deletePlace(id) }
+        val photoUri = _uiState.value.places.firstOrNull { it.id == id }?.photoUri
+        viewModelScope.launch {
+            placeRepository.deletePlace(id)
+            photoStore.delete(photoUri)
+        }
     }
 }

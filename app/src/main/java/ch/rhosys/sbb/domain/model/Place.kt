@@ -8,6 +8,12 @@ data class Place(
     val sortOrder: Int = 0,
     val label: String? = null,
     val photoUri: String? = null,
+    // Position/size on the home-screen tile grid, in grid cell units (see
+    // ui/common/PlaceGrid.kt for the shared column count and collision math).
+    val gridX: Int = 0,
+    val gridY: Int = 0,
+    val gridWidth: Int = 2,
+    val gridHeight: Int = 2,
 ) {
     val displayName: String get() = label?.takeIf { it.isNotBlank() } ?: name
 

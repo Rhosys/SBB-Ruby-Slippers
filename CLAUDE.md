@@ -50,6 +50,7 @@ app/src/main/java/ch/rhosys/sbb/
   data/
     local/
       calendar/CalendarRepository.kt   ← reads CalendarContract for 7-day events
+      photo/PlacePhotoStore.kt         ← copies picked place photos into filesDir (Auto Backup-safe)
       db/
         AppDatabase.kt                 ← Room: places, saved_routes, recurring_routes, trip_history
         dao/{Place,SavedRoute,RecurringRoute,TripHistory}Dao.kt
@@ -77,7 +78,7 @@ app/src/main/java/ch/rhosys/sbb/
   ui/
     error/StartupErrorScreen.kt
     home/{HomeScreen,HomeViewModel}.kt ← scorer + pull-over sheet (active journey above next departure) + tile grid
-    homeedit/{HomeEditScreen,HomeEditViewModel}.kt ← place management: add/delete/reorder tiles
+    places/{PlacesScreen (fun HomeEditScreen),PlacesViewModel (class HomeEditViewModel)}.kt ← place management: add/delete/resize/move tiles on the grid
     journey/
       JourneyStateHolder.kt            ← @Singleton: locked-in connection + from/to
       JourneysScreen.kt                ← three-tab screen: Active / Past / Planned
@@ -106,6 +107,11 @@ deployment/
 
 ## Tile interaction model
 
+Tiles occupy a 10-column-wide grid of square cells (`ui/common/PlaceGrid.kt`); each
+`Place` stores its own `gridX/gridY/gridWidth/gridHeight`, defaulting to 2x2 for new
+places. HomeScreen only *reads* that layout — moving and resizing happens on the
+Places (edit) screen.
+
 ### HomeScreen
 - **Tap** a place tile → routes from the user's current GPS location to that place
   (HomeViewModel.routeFromCurrentLocationTo); result shown in the pull-over sheet.
@@ -113,11 +119,13 @@ deployment/
   source → target, arrowhead at tip); on release navigates to ConnectionSearchScreen
   with from/to pre-filled. Source tile highlights in primary, target in secondary.
 
-### HomeEditScreen
-- **Tap** a tile → navigates to ConnectionSearchScreen with nearest saved place or
-  current location as the from endpoint.
-- **Short-press drag** → drag to reorder; drop on another tile swaps sort order.
-  Drop on the trash zone (appears at top while dragging) deletes the tile.
+### Places screen (`ui/places/PlacesScreen.kt`, `fun HomeEditScreen`)
+- **Tap** a tile → opens the edit dialog (label / photo).
+- **Drag a tile's center** → moves it to a new grid position.
+- **Drag a tile's corner handle** → resizes it (gridWidth/gridHeight).
+- Both drags reject a drop that would overlap another tile — the tile outlines red
+  while the candidate position/size is invalid and snaps back on release.
+- Dragging a tile's center onto the trash zone (appears at top while dragging) deletes it.
 
 ## Known gaps (v2)
 
@@ -126,8 +134,15 @@ deployment/
   objects from local GTFS routing (already set) and from the remote API (TODO).
 - **Widget geofence**: DepartureWidget reads from JourneyStateHolder; geofence-driven
   auto-clear is a v2 enhancement.
-- **Wear OS companion**, **Fares**, **Sector recommendations**, **Journey sharing**,
-  **Android Auto Backup** — all v2.
+- **Wear OS companion**, **Fares**, **Sector recommendations**, **Journey sharing** — v2.
+- **Android Auto Backup**: already wired up (`AndroidManifest.xml` → `backup_rules.xml` /
+  `data_extraction_rules.xml`, excluding only the GTFS cache), covering the Room DB
+  (places, saved/recurring routes, trip history) and DataStore preferences. Room uses
+  `JournalMode.TRUNCATE` (`di/DatabaseModule.kt`) specifically so Auto Backup's plain
+  file copy of the `.db` never misses writes still sitting in a WAL sidecar file. Place
+  photos are copied into `filesDir/place_photos/` at pick time (`PlacePhotoStore`) since
+  the photo picker's own `content://` Uri isn't a file backup can capture and stops
+  resolving after a restore anyway.
 
 ## Data source
 
@@ -138,5 +153,7 @@ no-auth Swiss transport open-data API. Main endpoints:
 - `GET v1/locations?query=` — station/stop search
 
 Rate limit: ~1 000 req/day, 3 route queries/min (per IP). Sufficient for a client
-app. For official real-time data (OJP 2.0) use `opentransportdata.swiss` — needs a
-free API token (see `todo.md`).
+app. Live delays/cancellations come from `opentransportdata.swiss`'s **GTFS-RT**
+feed instead (`GtfsRtRefreshWorker`) — needs a free API token (see `todo.md`, Todo
+5). OJP is not used for routing or real-time data in this app; the only reason to
+ever touch it is the OJP Fare endpoint, for a not-yet-built Fares feature.

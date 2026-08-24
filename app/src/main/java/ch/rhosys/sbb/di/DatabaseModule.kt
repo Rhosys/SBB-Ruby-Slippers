@@ -2,6 +2,7 @@ package ch.rhosys.sbb.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.RoomDatabase
 import ch.rhosys.sbb.data.local.db.ALL_MIGRATIONS
 import ch.rhosys.sbb.data.local.db.AppDatabase
 import ch.rhosys.sbb.data.local.db.dao.PlaceDao
@@ -32,6 +33,11 @@ object DatabaseModule {
             // Only wipe on a downgrade (e.g. switching branches locally) — a missing
             // upgrade migration should fail loudly, never silently delete user data.
             .fallbackToDestructiveMigrationOnDowngrade()
+            // Android Auto Backup snapshots this .db file as a plain file copy, with no
+            // hook to checkpoint first. Room's default WAL mode can leave recent writes
+            // sitting in a separate -wal file that a file-copy backup would miss entirely,
+            // so force the classic single-file journal instead.
+            .setJournalMode(RoomDatabase.JournalMode.TRUNCATE)
             .build()
 
     @Provides fun providePlaceDao(db: AppDatabase): PlaceDao = db.placeDao()

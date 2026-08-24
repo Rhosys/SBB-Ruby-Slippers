@@ -23,7 +23,24 @@ class RoomPlaceRepository @Inject constructor(
         sortOrder: Int,
         label: String?,
         photoUri: String?,
-    ): Long = dao.insert(PlaceEntity(name = name, lat = lat, lng = lng, sortOrder = sortOrder, label = label, photoUri = photoUri))
+        gridX: Int,
+        gridY: Int,
+        gridWidth: Int,
+        gridHeight: Int,
+    ): Long = dao.insert(
+        PlaceEntity(
+            name = name,
+            lat = lat,
+            lng = lng,
+            sortOrder = sortOrder,
+            label = label,
+            photoUri = photoUri,
+            gridX = gridX,
+            gridY = gridY,
+            gridWidth = gridWidth,
+            gridHeight = gridHeight,
+        )
+    )
 
     override suspend fun updatePlace(place: Place) = dao.update(place.toEntity())
 

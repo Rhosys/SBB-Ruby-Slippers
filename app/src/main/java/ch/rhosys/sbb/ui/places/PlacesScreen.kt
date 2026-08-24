@@ -1,18 +1,18 @@
 package ch.rhosys.sbb.ui.places
 
-import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.SouthEast
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -59,54 +61,55 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import ch.rhosys.sbb.domain.model.Place
+import ch.rhosys.sbb.ui.common.PLACE_GRID_COLUMNS
+import ch.rhosys.sbb.ui.common.rectOverlapsAnyPlace
 import ch.rhosys.sbb.ui.common.StationAutocompleteField
 import coil.compose.AsyncImage
+import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+private enum class DragMode { NONE, MOVE, RESIZE }
+
+private data class GridRect(val x: Int, val y: Int, val width: Int, val height: Int)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeEditScreen(
     onNavigateBack: () -> Unit,
     viewModel: HomeEditViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
-    val context = LocalContext.current
+    val density = LocalDensity.current
 
-    var draggingId by remember { mutableStateOf<Long?>(null) }
-    var reorderTargetId by remember { mutableStateOf<Long?>(null) }
+    // Drag state for the grid: which place is being dragged, in which mode, and the
+    // candidate rect (grid units) it would land on if released right now.
+    var dragPlaceId by remember { mutableStateOf<Long?>(null) }
+    var dragMode by remember { mutableStateOf(DragMode.NONE) }
+    var dragStartRect by remember { mutableStateOf(GridRect(0, 0, 0, 0)) }
+    var dragAccumPx by remember { mutableStateOf(Offset.Zero) }
+    var candidateRect by remember { mutableStateOf<GridRect?>(null) }
+    var candidateValid by remember { mutableStateOf(true) }
     var dragOverTrash by remember { mutableStateOf(false) }
     val trashBoundsState = remember { mutableStateOf<Rect?>(null) }
     val tileWindowBounds = remember { mutableStateMapOf<Long, Rect>() }
+    val handleWindowBounds = remember { mutableStateMapOf<Long, Rect>() }
     var boxWindowOrigin by remember { mutableStateOf(Offset.Zero) }
 
+    // The photo picker's own grant is enough to read the image once here — the
+    // ViewModel immediately copies the bytes into app storage (PlacePhotoStore) so
+    // there's no need to retain a persistable permission on the picker's Uri.
     val photoPickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            }
-            viewModel.onPhotoSelected(uri.toString())
-        }
-    }
+    ) { uri -> if (uri != null) viewModel.onPhotoSelected(uri) }
 
     val editPhotoPickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
-    ) { uri ->
-        if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            }
-            viewModel.onEditPhotoSelected(uri.toString())
-        }
-    }
+    ) { uri -> if (uri != null) viewModel.onEditPhotoSelected(uri) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
@@ -121,94 +124,160 @@ fun HomeEditScreen(
                 )
             },
         ) { innerPadding ->
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .onGloballyPositioned { coords ->
-                        val b = coords.boundsInWindow()
-                        boxWindowOrigin = Offset(b.left, b.top)
-                    }
-                    .pointerInput(state.places) {
-                        detectDragGestures(
-                            onDragStart = { localOffset ->
-                                val wp = localOffset + boxWindowOrigin
-                                draggingId = tileWindowBounds.entries
-                                    .firstOrNull { (_, rect) -> rect.contains(wp) }?.key
-                                reorderTargetId = null
-                                dragOverTrash = false
-                            },
-                            onDragEnd = {
-                                val from = draggingId
-                                if (from != null) {
-                                    if (dragOverTrash) {
-                                        viewModel.deletePlace(from)
-                                    } else {
-                                        val to = reorderTargetId
-                                        if (to != null) viewModel.reorderTiles(from, to)
-                                    }
-                                }
-                                draggingId = null
-                                reorderTargetId = null
-                                dragOverTrash = false
-                            },
-                            onDragCancel = {
-                                draggingId = null
-                                reorderTargetId = null
-                                dragOverTrash = false
-                            },
-                        ) { change, _ ->
-                            val wp = change.position + boxWindowOrigin
-                            val trashRect = trashBoundsState.value
-                            dragOverTrash = trashRect != null && trashRect.contains(wp)
-                            reorderTargetId = if (!dragOverTrash) {
-                                tileWindowBounds.entries
-                                    .firstOrNull { (id, rect) -> id != draggingId && rect.contains(wp) }?.key
-                            } else null
-                        }
-                    },
+                    .padding(horizontal = 16.dp),
             ) {
-                Column(
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    "Drag a tile's center to move it, its corner to resize it, or onto trash to remove it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                Spacer(Modifier.height(16.dp))
+
+                BoxWithConstraints(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp),
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .onGloballyPositioned { coords ->
+                            val b = coords.boundsInWindow()
+                            boxWindowOrigin = Offset(b.left, b.top)
+                        },
                 ) {
-                    Spacer(Modifier.height(8.dp))
+                    val cellSizeDp = maxWidth / PLACE_GRID_COLUMNS
+                    val cellSizePx = with(density) { cellSizeDp.toPx() }
+                    val maxRows = (maxHeight / cellSizeDp).toInt().coerceAtLeast(1)
 
-                    Text(
-                        "Drag a tile to reorder or drop on trash to remove.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(state.places, cellSizePx, maxRows) {
+                                detectDragGestures(
+                                    onDragStart = { localOffset ->
+                                        val wp = localOffset + boxWindowOrigin
+                                        val handleHit = handleWindowBounds.entries
+                                            .firstOrNull { (_, r) -> r.contains(wp) }?.key
+                                        val tileHit = tileWindowBounds.entries
+                                            .firstOrNull { (_, r) -> r.contains(wp) }?.key
+                                        val id = handleHit ?: tileHit
+                                        dragMode = when {
+                                            id == null -> DragMode.NONE
+                                            handleHit != null -> DragMode.RESIZE
+                                            else -> DragMode.MOVE
+                                        }
+                                        dragPlaceId = id
+                                        val place = state.places.firstOrNull { it.id == id }
+                                        dragStartRect = place?.let {
+                                            GridRect(it.gridX, it.gridY, it.gridWidth, it.gridHeight)
+                                        } ?: GridRect(0, 0, 0, 0)
+                                        dragAccumPx = Offset.Zero
+                                        candidateRect = if (id != null) dragStartRect else null
+                                        candidateValid = true
+                                        dragOverTrash = false
+                                    },
+                                    onDragEnd = {
+                                        val id = dragPlaceId
+                                        val rect = candidateRect
+                                        if (id != null && dragMode == DragMode.MOVE && dragOverTrash) {
+                                            viewModel.deletePlace(id)
+                                        } else if (id != null && rect != null && candidateValid) {
+                                            viewModel.updateTileRect(id, rect.x, rect.y, rect.width, rect.height)
+                                        }
+                                        dragPlaceId = null
+                                        dragMode = DragMode.NONE
+                                        candidateRect = null
+                                        dragOverTrash = false
+                                    },
+                                    onDragCancel = {
+                                        dragPlaceId = null
+                                        dragMode = DragMode.NONE
+                                        candidateRect = null
+                                        dragOverTrash = false
+                                    },
+                                ) { change, dragAmount ->
+                                    val id = dragPlaceId
+                                    if (id == null || dragMode == DragMode.NONE) return@detectDragGestures
+                                    dragAccumPx += dragAmount
+                                    val dGridX = (dragAccumPx.x / cellSizePx).roundToInt()
+                                    val dGridY = (dragAccumPx.y / cellSizePx).roundToInt()
 
-                    Spacer(Modifier.height(16.dp))
+                                    val wp = change.position + boxWindowOrigin
+                                    val trashRect = trashBoundsState.value
+                                    dragOverTrash = dragMode == DragMode.MOVE &&
+                                        trashRect != null && trashRect.contains(wp)
 
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                                    val newRect = when (dragMode) {
+                                        DragMode.MOVE -> GridRect(
+                                            x = (dragStartRect.x + dGridX)
+                                                .coerceIn(0, PLACE_GRID_COLUMNS - dragStartRect.width),
+                                            y = (dragStartRect.y + dGridY)
+                                                .coerceIn(0, maxRows - dragStartRect.height),
+                                            width = dragStartRect.width,
+                                            height = dragStartRect.height,
+                                        )
+                                        DragMode.RESIZE -> GridRect(
+                                            x = dragStartRect.x,
+                                            y = dragStartRect.y,
+                                            width = (dragStartRect.width + dGridX)
+                                                .coerceIn(1, PLACE_GRID_COLUMNS - dragStartRect.x),
+                                            height = (dragStartRect.height + dGridY)
+                                                .coerceIn(1, maxRows - dragStartRect.y),
+                                        )
+                                        DragMode.NONE -> dragStartRect
+                                    }
+                                    candidateRect = newRect
+                                    candidateValid = !dragOverTrash && !rectOverlapsAnyPlace(
+                                        newRect.x, newRect.y, newRect.width, newRect.height,
+                                        state.places, excludingId = id,
+                                    )
+                                }
+                            },
                     ) {
                         state.places.forEach { place ->
-                            PlaceEditTile(
+                            val isDragging = dragPlaceId == place.id
+                            val rect = if (isDragging && candidateRect != null) {
+                                candidateRect!!
+                            } else {
+                                GridRect(place.gridX, place.gridY, place.gridWidth, place.gridHeight)
+                            }
+                            PlaceGridTile(
                                 place = place,
-                                isDragging = draggingId == place.id,
-                                isReorderTarget = reorderTargetId == place.id,
+                                rect = rect,
+                                cellSizeDp = cellSizeDp,
+                                isDragging = isDragging,
+                                isInvalid = isDragging && !candidateValid,
                                 onTap = { viewModel.onTileTap(place) },
-                                modifier = Modifier.onGloballyPositioned { coords ->
-                                    tileWindowBounds[place.id] = coords.boundsInWindow()
-                                },
+                                onTileBoundsChanged = { tileWindowBounds[place.id] = it },
+                                onHandleBoundsChanged = { handleWindowBounds[place.id] = it },
                             )
                         }
-
-                        AddTile(onClick = viewModel::openAddDialog)
                     }
                 }
+
+                Spacer(Modifier.height(16.dp))
+
+                FilledTonalButton(
+                    onClick = viewModel::openAddDialog,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.size(4.dp))
+                    Text("Add place", style = MaterialTheme.typography.labelLarge)
+                }
+
+                Spacer(Modifier.height(8.dp))
             }
         }
 
-        // Trash drop zone — appears while any tile is being dragged
+        // Trash drop zone — appears while any tile is being dragged (moved, not resized)
         val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
         AnimatedVisibility(
-            visible = draggingId != null,
+            visible = dragPlaceId != null && dragMode == DragMode.MOVE,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .padding(top = statusBarTop + 64.dp, start = 16.dp, end = 16.dp),
@@ -287,59 +356,85 @@ fun HomeEditScreen(
 }
 
 @Composable
-private fun PlaceEditTile(
+private fun PlaceGridTile(
     place: Place,
+    rect: GridRect,
+    cellSizeDp: Dp,
     isDragging: Boolean,
-    isReorderTarget: Boolean,
+    isInvalid: Boolean,
     onTap: () -> Unit,
-    modifier: Modifier = Modifier,
+    onTileBoundsChanged: (Rect) -> Unit,
+    onHandleBoundsChanged: (Rect) -> Unit,
 ) {
-    FilledTonalButton(
-        onClick = onTap,
-        contentPadding = PaddingValues(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
-        modifier = modifier,
-        colors = when {
-            isDragging -> ButtonDefaults.filledTonalButtonColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer,
-                contentColor = MaterialTheme.colorScheme.onErrorContainer,
-            )
-            isReorderTarget -> ButtonDefaults.filledTonalButtonColors(
-                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-            else -> ButtonDefaults.filledTonalButtonColors()
-        },
+    Box(
+        modifier = Modifier
+            .offset(x = cellSizeDp * rect.x, y = cellSizeDp * rect.y)
+            .size(width = cellSizeDp * rect.width, height = cellSizeDp * rect.height)
+            .onGloballyPositioned { onTileBoundsChanged(it.boundsInWindow()) }
+            .padding(4.dp),
     ) {
-        if (place.photoUri != null) {
-            AsyncImage(
-                model = place.photoUri,
-                contentDescription = null,
-                modifier = Modifier
-                    .size(24.dp)
-                    .clip(CircleShape),
-                contentScale = ContentScale.Crop,
-            )
-        } else {
+        FilledTonalButton(
+            onClick = onTap,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(8.dp),
+            border = if (isInvalid) BorderStroke(2.dp, MaterialTheme.colorScheme.error) else null,
+            colors = when {
+                isInvalid -> ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                )
+                isDragging -> ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                else -> ButtonDefaults.filledTonalButtonColors()
+            },
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                if (place.photoUri != null) {
+                    AsyncImage(
+                        model = place.photoUri,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    Icon(
+                        Icons.Default.LocationOn,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+                Spacer(Modifier.size(4.dp))
+                Text(
+                    place.displayName,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        // Resize handle, bottom-end corner — dragging it changes gridWidth/gridHeight
+        // instead of moving the tile (see the top-level drag detector's hit-testing).
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .size(24.dp)
+                .onGloballyPositioned { onHandleBoundsChanged(it.boundsInWindow()) }
+                .background(MaterialTheme.colorScheme.primary, CircleShape),
+        ) {
             Icon(
-                Icons.Default.LocationOn,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
+                Icons.Default.SouthEast,
+                contentDescription = "Resize ${place.displayName}",
+                tint = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier
+                    .size(16.dp)
+                    .align(Alignment.Center),
             )
         }
-        Spacer(Modifier.size(6.dp))
-        Text(place.displayName, style = MaterialTheme.typography.labelLarge)
-    }
-}
-
-@Composable
-private fun AddTile(onClick: () -> Unit) {
-    FilledTonalButton(
-        onClick = onClick,
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-    ) {
-        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-        Spacer(Modifier.size(4.dp))
-        Text("Add place", style = MaterialTheme.typography.labelLarge)
     }
 }
 

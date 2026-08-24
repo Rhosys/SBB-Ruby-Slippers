@@ -20,9 +20,8 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,6 +29,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -74,13 +74,16 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import ch.rhosys.sbb.R
 import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.Place
 import ch.rhosys.sbb.domain.model.SearchEndpoint
+import ch.rhosys.sbb.ui.common.PLACE_GRID_COLUMNS
 import ch.rhosys.sbb.ui.common.StationAutocompleteField
 
 @Composable
@@ -114,65 +117,77 @@ fun HomeScreen(
     val peekHandleVisible = hasOverlayContent && state.overlayHidden
 
     Box(Modifier.fillMaxSize()) {
-        // Main content: tiles / empty state
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp),
-        ) {
-            // Edit icon pinned to top-right
+        Column(Modifier.fillMaxSize()) {
+            // Title header — full-width, primary theme color, with the edit pencil at the end.
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.primary)
+                    .padding(start = 16.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
+                Text(
+                    stringResource(R.string.app_name),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
                 IconButton(onClick = onNavigateToHomeEdit) {
                     Icon(
                         Icons.Default.Edit,
                         contentDescription = "Manage places",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = MaterialTheme.colorScheme.onPrimary,
                     )
                 }
             }
 
-            // Place tiles or giant + button — fills available space
-            Box(Modifier.weight(1f)) {
-                if (state.places.isEmpty() && !state.isLoading) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        FloatingActionButton(
-                            onClick = onNavigateToHomeEdit,
-                            modifier = Modifier.size(120.dp),
-                        ) {
-                            Icon(
-                                Icons.Default.Add,
-                                contentDescription = "Add place",
-                                modifier = Modifier.size(56.dp),
-                            )
+            // Main content: tiles / empty state
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp),
+            ) {
+                // Place tiles or giant + button — fills available space
+                Box(Modifier.weight(1f)) {
+                    if (state.places.isEmpty() && !state.isLoading) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            FloatingActionButton(
+                                onClick = onNavigateToHomeEdit,
+                                modifier = Modifier.size(120.dp),
+                            ) {
+                                Icon(
+                                    Icons.Default.Add,
+                                    contentDescription = "Add place",
+                                    modifier = Modifier.size(56.dp),
+                                )
+                            }
                         }
+                    } else {
+                        PlaceTileGrid(
+                            places = state.places,
+                            onTileClick = { place -> viewModel.routeFromCurrentLocationTo(place) },
+                            onDragRoute = { from, to -> onNavigateToSearch(from, to) },
+                            onCurrentLocationFromClick = viewModel::fillFromWithNearestStop,
+                            onCurrentLocationToClick = viewModel::fillToWithNearestStop,
+                        )
                     }
-                } else {
-                    PlaceTileGrid(
-                        places = state.places,
-                        onTileClick = { place -> viewModel.routeFromCurrentLocationTo(place) },
-                        onDragRoute = { from, to -> onNavigateToSearch(from, to) },
-                        onCurrentLocationFromClick = viewModel::fillFromWithNearestStop,
-                        onCurrentLocationToClick = viewModel::fillToWithNearestStop,
-                    )
                 }
-            }
 
-            // Persistent bottom search form
-            SearchForm(
-                fromText = state.fromText,
-                toText = state.toText,
-                fromSuggestions = state.fromSuggestions,
-                toSuggestions = state.toSuggestions,
-                onFromChanged = viewModel::onFromTextChanged,
-                onToChanged = viewModel::onToTextChanged,
-                onSelectFromSuggestion = viewModel::selectFromSuggestion,
-                onSelectToSuggestion = viewModel::selectToSuggestion,
-                onSearch = { onNavigateToSearch(state.fromText, state.toText) },
-            )
-            Spacer(Modifier.height(8.dp))
+                // Persistent bottom search form
+                SearchForm(
+                    fromText = state.fromText,
+                    toText = state.toText,
+                    fromSuggestions = state.fromSuggestions,
+                    toSuggestions = state.toSuggestions,
+                    onFromChanged = viewModel::onFromTextChanged,
+                    onToChanged = viewModel::onToTextChanged,
+                    onSelectFromSuggestion = viewModel::selectFromSuggestion,
+                    onSelectToSuggestion = viewModel::selectToSuggestion,
+                    onSearch = { onNavigateToSearch(state.fromText, state.toText) },
+                )
+                Spacer(Modifier.height(8.dp))
+            }
         }
 
         // Scrim behind the top sheet
@@ -505,7 +520,8 @@ private const val CURRENT_LOCATION_TO = -2
 // Tile grid with two gestures:
 //   Tap  → onTileClick(place) / onCurrentLocationFromClick() / onCurrentLocationToClick()
 //   Drag → draws a directed line between tiles; on release triggers onDragRoute(from, to)
-@OptIn(ExperimentalLayoutApi::class)
+// Tiles are positioned by each place's saved grid rect (see ui/common/PlaceGrid.kt) —
+// this screen only reads that layout; moving/resizing tiles happens on the edit screen.
 @Composable
 fun PlaceTileGrid(
     places: List<Place>,
@@ -576,28 +592,35 @@ fun PlaceTileGrid(
             },
     ) {
         Column(Modifier.fillMaxSize()) {
-            FlowRow(
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .weight(1f)
                     .padding(top = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                val cellSizeDp = maxWidth / PLACE_GRID_COLUMNS
                 places.forEachIndexed { idx, place ->
-                    PlaceTile(
-                        label = place.name,
-                        icon = Icons.Default.LocationOn,
-                        onClick = { onTileClick(place) },
-                        isSource = dragSourceIdx == idx,
-                        isTarget = dragTargetIdx == idx,
-                        modifier = Modifier.onGloballyPositioned { coords ->
-                            tileWindowBounds[idx] = coords.boundsInWindow()
-                        },
-                    )
+                    Box(
+                        modifier = Modifier
+                            .offset(x = cellSizeDp * place.gridX, y = cellSizeDp * place.gridY)
+                            .size(width = cellSizeDp * place.gridWidth, height = cellSizeDp * place.gridHeight)
+                            .padding(4.dp),
+                    ) {
+                        PlaceTile(
+                            label = place.name,
+                            icon = Icons.Default.LocationOn,
+                            onClick = { onTileClick(place) },
+                            isSource = dragSourceIdx == idx,
+                            isTarget = dragTargetIdx == idx,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .onGloballyPositioned { coords ->
+                                    tileWindowBounds[idx] = coords.boundsInWindow()
+                                },
+                        )
+                    }
                 }
             }
-
-            Spacer(Modifier.weight(1f))
 
             // Pinned "current location" tiles, right above the search form below —
             // tap fills that field instantly (already tracked continuously), drag
