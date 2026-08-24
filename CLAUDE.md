@@ -153,5 +153,7 @@ no-auth Swiss transport open-data API. Main endpoints:
 - `GET v1/locations?query=` — station/stop search
 
 Rate limit: ~1 000 req/day, 3 route queries/min (per IP). Sufficient for a client
-app. For official real-time data (OJP 2.0) use `opentransportdata.swiss` — needs a
-free API token (see `todo.md`).
+app. Live delays/cancellations come from `opentransportdata.swiss`'s **GTFS-RT**
+feed instead (`GtfsRtRefreshWorker`) — needs a free API token (see `todo.md`, Todo
+5). OJP is not used for routing or real-time data in this app; the only reason to
+ever touch it is the OJP Fare endpoint, for a not-yet-built Fares feature.

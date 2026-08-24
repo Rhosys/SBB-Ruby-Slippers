@@ -42,24 +42,32 @@ deploy pipeline runs there. Set the project variable:
 (AWS infra reuses existing `GitLabRunnerRole` + `alias/deployment-encryption-key` —
 no AWS changes needed beyond the keystore in Todo 1.)
 
-### 🔲 5. Register at opentransportdata.swiss and wire the API token
+### 🔲 5. Register at opentransportdata.swiss for a GTFS-RT token
 Free registration at `opentransportdata.swiss` → `api-manager.opentransportdata.swiss`.
-The portal hosts many unrelated products (OJP, SIRI-PT/ET/SX, Train Formation Service,
-road-traffic counters/lights, CKAN, ...) and you subscribe an app profile to each one
-separately, so pick the one that matches whichever of the two items below you're
-wiring up:
+The portal hosts many unrelated products (OJP 1.0/2.0, OJP Fare, SIRI-PT/ET/SX, Train
+Formation Service, road-traffic counters/lights, CKAN, ...) and issues a separate
+token per product you subscribe to — but **for now, this app only needs one**:
+subscribe an app profile to the **`GTFS-RT`** product. That's the one whose key
+authenticates `GtfsRtRefreshWorker`'s requests. Nothing else the app calls today sits
+behind this portal's auth: the GTFS static download (`GtfsImportWorker`) is an
+unauthenticated public link, and `transport.opendata.ch` (connections/stationboard/
+location search) is a separate, unrelated, no-auth API.
 
-- **GTFS-RT** — on the portal, subscribe to the **`GTFS-RT`** product; that's the one
-  whose key authenticates `GtfsRtRefreshWorker`'s requests. `GtfsRtRefreshWorker`
-  already fetches from `opentransportdata.swiss` but uses an empty bearer token. Wire
-  the token through a new `stringPreferencesKey("opentransport_api_token")` in
-  `UserPreferencesRepository`, expose it as a `Flow<String>`, and pass it into the
-  worker via `WorkManager` `inputData` when scheduling. Add a token-entry field to
-  `SettingsScreen`.
-- **OJP 2.0** — on the portal, subscribe to the separate **`OJP 2.0`** product.
-  `GET /ojp` XML journey planner with 50 req/min free tier. The beta **OJP Fare**
-  endpoint returns price information per connection — first step toward fares in
-  `TripReviewScreen`.
+The app-side wiring for this is already done — `UserPreferencesRepository.rtToken`,
+the token-entry field in `SettingsScreen`, and `GtfsRtRefreshWorker` reading the
+token live via Hilt injection (not `WorkManager inputData`) all exist. What's left is
+purely the out-of-repo action: actually registering, subscribing to `GTFS-RT`, and
+pasting the resulting token into Settings.
+
+This self-service, per-user-token model doesn't scale past a handful of users (see
+"Backend Service Todos" below) and doesn't cover Fares — deliberately deferred. OJP is
+not needed for anything today: `plan.md` already replaced OJP's routing/search role
+with local RAPTOR + GTFS, so the only reason to ever touch OJP is the Fare beta
+endpoint for `TripReviewScreen`, and that's on hold until the backend exists to hold
+its token server-side instead of asking every user to register a second time. When
+that work happens, verify which OJP product Fare actually requires before
+subscribing — the OJP cookbook says `OJPFareRequest` is "currently limited to OJP
+1.0," which would make `OJP 1.0 (aka OJP 2020)` the right product, not `OJP 2.0`.
 
 Add the token as a secret to GitHub Actions (`OPENTRANSPORT_API_TOKEN`) and to the
 GitLab project variable of the same name once the mirror exists (Todo 4).
@@ -107,10 +115,17 @@ The Android app currently calls two external services directly:
 | Service | Auth | Rate limit | Used for |
 |:--------|:-----|:-----------|:---------|
 | `transport.opendata.ch` | None | ~1 000 req/day per IP | Connections, stationboard, location search |
-| `opentransportdata.swiss` | Free API token | Per-token quota | GTFS static ZIP, GTFS-RT protobuf |
+| `opentransportdata.swiss` GTFS static ZIP | **None** — plain public download link | Unspecified | Full Swiss timetable, downloaded daily |
+| `opentransportdata.swiss` GTFS-RT | Free API token (`GTFS-RT` product) | Per-token quota | Live delays, cancellations, platform changes |
 
-A Rhosys-owned backend (`api.rhosys.ch/sbb/v1/`) should proxy both.  Benefits:
-- **Token stays server-side** — the opentransportdata.swiss key never ships in the APK.
+Today every user registers their own GTFS-RT token and pastes it into Settings (Todo
+5) — fine for testing, not something to ask of a real user base. A Rhosys-owned
+backend (`api.rhosys.ch/sbb/v1/`) should proxy all of the above, plus OJP Fare once
+that feature is built (see Feature Todos below — it'll need its own stored token,
+likely for the `OJP 1.0` product rather than `OJP 2.0`, pending verification).
+Benefits:
+- **Tokens stay server-side** — no opentransportdata.swiss key ever ships in the APK,
+  and no end user ever needs to register for anything.
 - **Shared rate-limit pool** — all client IPs share one upstream budget; aggressive server-side caching avoids burning it.
 - **Switchable upstream** — if `transport.opendata.ch` is replaced or rate-limited, the Android app base URL (`NetworkModule.BASE_URL`) is changed in one place.
 
@@ -342,8 +357,9 @@ The backend validates the token and forwards the downstream request without the
 | `transport.opendata.ch` connections | ~3 req/min per IP | 60 s response cache keyed on `from+to+limit` |
 | `transport.opendata.ch` stationboard | shared daily budget | 30 s response cache keyed on `station+limit` |
 | `transport.opendata.ch` locations | shared daily budget | 5 min cache for name queries; no cache for coordinate |
-| `opentransportdata.swiss` GTFS ZIP | per-token quota | S3-backed; serve from S3; re-fetch weekly |
+| `opentransportdata.swiss` GTFS ZIP | none (unauthenticated) | S3-backed; serve from S3; re-fetch weekly |
 | `opentransportdata.swiss` GTFS-RT | per-token quota | 30 s in-memory cache; one upstream call fans out to N clients |
+| `opentransportdata.swiss` OJP Fare (not yet built) | 50 req/min, 20 000/day (per OJP product page) | **Not yet designed.** Fare lookups are per-`from+to+date`, not one shared feed — needs a real cache key (e.g. `from+to+date`, like the `connections` proxy) plus backoff, or 10k+ users checking prices will burn the daily quota fast |
 
 ---
 
@@ -353,8 +369,10 @@ The backend validates the token and forwards the downstream request without the
   or Go Lambda is sufficient given the proxy-only workload.
 - GTFS ZIP: store in the same S3 bucket used by the signing pipeline
   (`alias/deployment-encryption-key` account); serve via pre-signed URL or CloudFront.
-- Secrets: `OPENTRANSPORT_API_TOKEN` stored in AWS Secrets Manager (same account as
-  existing KMS key); backend reads it at startup.
+- Secrets: `OPENTRANSPORT_API_TOKEN` (GTFS-RT) stored in AWS Secrets Manager (same
+  account as existing KMS key); backend reads it at startup. Once Fares is built,
+  add a second secret for the OJP Fare token — it's a separate subscription with its
+  own token on this portal, not reusable from the GTFS-RT one.
 - The existing `deployment/` pipeline and GitLab CI do not need changes for the
   backend; it is a separate deployable in `_rhosys-apps-infra`.
 
@@ -363,13 +381,25 @@ The backend validates the token and forwards the downstream request without the
 ## Feature Todos
 
 ### 🔲 Fare display in TripReviewScreen
-Once opentransportdata.swiss token is registered (Infra Todo 5), call the OJP Fare
-beta endpoint for the selected connection and display the price (full fare, Half-Fare,
-GA-free) in `TripReviewScreen`. Requires `subscriptionTier` from SwissPass OAuth
-(Infra Todo 6) to pick the right price column.
-Implementation sketch: `OjpFareRepository` → `GET /ojp` with `<OJPFareRequest>` XML →
-parse `<FareResult>` → emit `FareResult(fullFareCHF, halfFareCHF)` domain type →
-show in TripReviewScreen below the departure/arrival header.
+On hold until the Rhosys backend exists (Backend Service Todos) — asking every user
+to separately register for their own OJP Fare token doesn't scale any better than it
+does for GTFS-RT, so this shouldn't be built as a direct client → opentransportdata.swiss
+call. Once the backend can proxy it: call the OJP Fare beta endpoint for the selected
+connection and display the price (full fare, Half-Fare, GA-free) in `TripReviewScreen`.
+Requires `subscriptionTier` from SwissPass OAuth (Infra Todo 6) to pick the right
+price column.
+
+**Before building:** verify which OJP product Fare actually requires — the OJP
+cookbook says `OJPFareRequest` is "currently limited to OJP 1.0," which points at
+`OJP 1.0 (aka OJP 2020)` rather than `OJP 2.0`, but that's cookbook text, not the
+authoritative OpenAPI spec, so confirm against a real subscription before wiring
+anything up.
+
+Implementation sketch: backend `OjpFareProxy` → `GET /ojp` with `<OJPFareRequest>`
+XML (cached per `from+to+date`, see Rate limiting & caching summary) → app's
+`OjpFareRepository` parses `<FareResult>` → emits `FareResult(fullFareCHF,
+halfFareCHF)` domain type → shown in TripReviewScreen below the departure/arrival
+header.
 
 ### 🔲 "Buy in SBB Mobile" handoff
 Once the deep link spec is obtained (Infra Todo 7), add a secondary button in
