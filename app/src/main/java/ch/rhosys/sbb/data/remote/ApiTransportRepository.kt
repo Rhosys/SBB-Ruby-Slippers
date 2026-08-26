@@ -12,6 +12,8 @@ import ch.rhosys.sbb.domain.model.Leg
 import ch.rhosys.sbb.domain.model.SearchEndpoint
 import ch.rhosys.sbb.domain.model.Stop
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
@@ -19,15 +21,29 @@ import javax.inject.Inject
 // transport.opendata.ch returns offsets without a colon (e.g. "+0100"), which
 // DateTimeFormatter.ISO_OFFSET_DATE_TIME / OffsetDateTime.parse(CharSequence) rejects.
 private val API_OFFSET_TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXX")
+private val API_DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+private val API_TIME_FMT = DateTimeFormatter.ofPattern("HH:mm")
 
 class ApiTransportRepository @Inject constructor(
     private val api: TransportApi,
 ) : TransportRepository {
 
-    override suspend fun getConnections(from: SearchEndpoint, to: SearchEndpoint): List<Connection> {
+    override suspend fun getConnections(
+        from: SearchEndpoint,
+        to: SearchEndpoint,
+        date: LocalDate,
+        time: LocalTime,
+        isArrivalTime: Boolean,
+    ): List<Connection> {
         val fromStr = resolveEndpoint(from)
         val toStr = resolveEndpoint(to)
-        return api.getConnections(from = fromStr, to = toStr).connections.map { it.toDomain() }
+        return api.getConnections(
+            from = fromStr,
+            to = toStr,
+            date = date.format(API_DATE_FMT),
+            time = time.format(API_TIME_FMT),
+            isArrivalTime = if (isArrivalTime) 1 else 0,
+        ).connections.map { it.toDomain() }
     }
 
     override suspend fun getStationboard(station: String): List<Departure> =
