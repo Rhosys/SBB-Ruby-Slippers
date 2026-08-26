@@ -4,11 +4,13 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ch.rhosys.sbb.data.local.photo.PlacePhotoStore
+import ch.rhosys.sbb.data.local.routing.LocalTransportRepository
 import ch.rhosys.sbb.domain.PlaceRepository
 import ch.rhosys.sbb.domain.TransportRepository
 import ch.rhosys.sbb.domain.model.Place
 import ch.rhosys.sbb.ui.common.findFreeGridSlot
 import ch.rhosys.sbb.ui.common.rectOverlapsAnyPlace
+import ch.rhosys.sbb.util.lowercaseAscii
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -40,6 +42,7 @@ data class SuggestionItem(
 class HomeEditViewModel @Inject constructor(
     private val placeRepository: PlaceRepository,
     private val transportRepository: TransportRepository,
+    private val localRouter: LocalTransportRepository,
     private val photoStore: PlacePhotoStore,
 ) : ViewModel() {
 
@@ -47,6 +50,7 @@ class HomeEditViewModel @Inject constructor(
     val uiState: StateFlow<HomeEditUiState> = _uiState
 
     private var suggestJob: Job? = null
+    private var localSuggestJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -143,6 +147,7 @@ class HomeEditViewModel @Inject constructor(
     }
 
     fun dismissAddDialog() {
+        localSuggestJob?.cancel()
         suggestJob?.cancel()
         val staged = _uiState.value.addPhotoUri
         if (staged != null) {
@@ -162,29 +167,50 @@ class HomeEditViewModel @Inject constructor(
         )
     }
 
+    // Local GTFS cache (instant, offline) and the live API (debounced) run in parallel;
+    // each merges its results into whatever's already showing, deduplicated by an
+    // ASCII-only lowercase key so accented station names never collapse together.
     fun onQueryChanged(query: String) {
         _uiState.value = _uiState.value.copy(
             addQuery = query,
             addSuggestions = emptyList(),
             selectedSuggestion = null,
         )
+        localSuggestJob?.cancel()
         suggestJob?.cancel()
         if (query.length >= 2) {
+            localSuggestJob = viewModelScope.launch {
+                val local = localRouter.searchStopNames(query).map { SuggestionItem(it.name, it.lat, it.lng) }
+                _uiState.value = _uiState.value.copy(
+                    addSuggestions = mergeSuggestions(local, _uiState.value.addSuggestions)
+                )
+            }
             suggestJob = viewModelScope.launch {
                 delay(300)
                 runCatching { transportRepository.getLocations(query) }
                     .onSuccess { resp ->
+                        val remote = resp.stations.take(5).mapNotNull { s ->
+                            val name = s.name ?: return@mapNotNull null
+                            val lat = s.coordinate?.y ?: return@mapNotNull null
+                            val lng = s.coordinate?.x ?: return@mapNotNull null
+                            SuggestionItem(name, lat, lng)
+                        }
                         _uiState.value = _uiState.value.copy(
-                            addSuggestions = resp.stations.take(5).mapNotNull { s ->
-                                val name = s.name ?: return@mapNotNull null
-                                val lat = s.coordinate?.y ?: return@mapNotNull null
-                                val lng = s.coordinate?.x ?: return@mapNotNull null
-                                SuggestionItem(name, lat, lng)
-                            }
+                            addSuggestions = mergeSuggestions(_uiState.value.addSuggestions, remote)
                         )
                     }
             }
         }
+    }
+
+    private fun mergeSuggestions(before: List<SuggestionItem>, after: List<SuggestionItem>, max: Int = 5): List<SuggestionItem> {
+        val seen = mutableSetOf<String>()
+        val result = mutableListOf<SuggestionItem>()
+        for (item in before + after) {
+            if (seen.add(item.name.lowercaseAscii())) result.add(item)
+            if (result.size >= max) break
+        }
+        return result
     }
 
     fun onLabelChanged(label: String) {
@@ -206,6 +232,7 @@ class HomeEditViewModel @Inject constructor(
     }
 
     fun selectSuggestion(item: SuggestionItem) {
+        localSuggestJob?.cancel()
         suggestJob?.cancel()
         _uiState.value = _uiState.value.copy(
             addQuery = item.name,

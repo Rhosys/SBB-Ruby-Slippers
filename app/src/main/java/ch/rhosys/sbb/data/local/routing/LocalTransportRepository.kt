@@ -13,6 +13,7 @@ import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.Leg
 import ch.rhosys.sbb.domain.model.SearchEndpoint
 import ch.rhosys.sbb.domain.model.Stop
+import ch.rhosys.sbb.util.lowercaseAscii
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
@@ -33,6 +34,8 @@ private val SWISS_ZONE = ZoneId.of("Europe/Zurich")
 private const val WALK_RADIUS_METERS = 500.0
 private const val MAX_ORIGIN_STOPS = 5
 private const val MAX_DEST_STOPS = 5
+
+data class StopSuggestion(val name: String, val lat: Double, val lng: Double)
 
 @Singleton
 class LocalTransportRepository @Inject constructor(
@@ -58,6 +61,26 @@ class LocalTransportRepository @Inject constructor(
     fun invalidate() { cached = null }
 
     fun hasData(): Boolean = store.hasData()
+
+    // Instant, offline name search over the on-device GTFS stop cache — a substring match
+    // against the ASCII-lowercased name, so "zurich" still matches "Zürich" but distinct
+    // accented names never collapse into the same key. Meant to be combined with (and
+    // deduplicated against) the live API suggestions, not to replace them: the cache only
+    // covers stops in the last-imported GTFS feed, and never departures/times.
+    suspend fun searchStopNames(query: String, max: Int = 5): List<StopSuggestion> {
+        val data = getOrLoad() ?: return emptyList()
+        val q = query.trim().lowercaseAscii()
+        if (q.isEmpty()) return emptyList()
+        val seen = mutableSetOf<String>()
+        val result = mutableListOf<StopSuggestion>()
+        for (stop in data.parsed.network.stops) {
+            if (!stop.name.lowercaseAscii().contains(q)) continue
+            if (!seen.add(stop.name.lowercaseAscii())) continue
+            result.add(StopSuggestion(stop.name, stop.lat, stop.lng))
+            if (result.size >= max) break
+        }
+        return result
+    }
 
     fun routeConnections(
         from: SearchEndpoint,
