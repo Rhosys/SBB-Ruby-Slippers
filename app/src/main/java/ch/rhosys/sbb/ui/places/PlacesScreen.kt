@@ -8,7 +8,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -133,7 +133,7 @@ fun HomeEditScreen(
                 Spacer(Modifier.height(8.dp))
 
                 Text(
-                    "Drag a tile's center to move it, its corner to resize it, or onto trash to remove it.",
+                    "Press and hold a tile's center to move it, its corner to resize it, or onto trash to remove it.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -157,7 +157,7 @@ fun HomeEditScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .pointerInput(state.places, cellSizePx, maxRows) {
-                                detectDragGestures(
+                                detectDragGesturesAfterLongPress(
                                     onDragStart = { localOffset ->
                                         val wp = localOffset + boxWindowOrigin
                                         val handleHit = handleWindowBounds.entries
@@ -201,7 +201,7 @@ fun HomeEditScreen(
                                     },
                                 ) { change, dragAmount ->
                                     val id = dragPlaceId
-                                    if (id == null || dragMode == DragMode.NONE) return@detectDragGestures
+                                    if (id == null || dragMode == DragMode.NONE) return@detectDragGesturesAfterLongPress
                                     dragAccumPx += dragAmount
                                     val dGridX = (dragAccumPx.x / cellSizePx).roundToInt()
                                     val dGridY = (dragAccumPx.y / cellSizePx).roundToInt()
@@ -377,6 +377,7 @@ private fun PlaceGridTile(
             onClick = onTap,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(8.dp),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
             border = if (isInvalid) BorderStroke(2.dp, MaterialTheme.colorScheme.error) else null,
             colors = when {
                 isInvalid -> ButtonDefaults.filledTonalButtonColors(
@@ -419,21 +420,30 @@ private fun PlaceGridTile(
 
         // Resize handle, bottom-end corner — dragging it changes gridWidth/gridHeight
         // instead of moving the tile (see the top-level drag detector's hit-testing).
+        // The hit target (44dp) is deliberately much larger than the 24dp visible circle —
+        // the corner is fiddly to grab precisely, so the extra invisible margin around the
+        // icon still counts as a hit.
         Box(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .size(24.dp)
-                .onGloballyPositioned { onHandleBoundsChanged(it.boundsInWindow()) }
-                .background(MaterialTheme.colorScheme.primary, CircleShape),
+                .size(44.dp)
+                .onGloballyPositioned { onHandleBoundsChanged(it.boundsInWindow()) },
+            contentAlignment = Alignment.BottomEnd,
         ) {
-            Icon(
-                Icons.Default.SouthEast,
-                contentDescription = "Resize ${place.displayName}",
-                tint = MaterialTheme.colorScheme.onPrimary,
+            Box(
                 modifier = Modifier
-                    .size(16.dp)
-                    .align(Alignment.Center),
-            )
+                    .size(24.dp)
+                    .background(MaterialTheme.colorScheme.primary, CircleShape),
+            ) {
+                Icon(
+                    Icons.Default.SouthEast,
+                    contentDescription = "Resize ${place.displayName}",
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier
+                        .size(16.dp)
+                        .align(Alignment.Center),
+                )
+            }
         }
     }
 }

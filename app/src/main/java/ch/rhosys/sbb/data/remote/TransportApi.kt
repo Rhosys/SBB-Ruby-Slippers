@@ -12,6 +12,9 @@ interface TransportApi {
     suspend fun getConnections(
         @Query("from") from: String,
         @Query("to") to: String,
+        @Query("date") date: String? = null,
+        @Query("time") time: String? = null,
+        @Query("isArrivalTime") isArrivalTime: Int? = null,
         @Query("limit") limit: Int = 4,
     ): ConnectionsResponseDto
 

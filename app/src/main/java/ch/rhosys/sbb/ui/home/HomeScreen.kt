@@ -178,13 +178,15 @@ fun HomeScreen(
                 SearchForm(
                     fromText = state.fromText,
                     toText = state.toText,
-                    fromSuggestions = state.fromSuggestions,
-                    toSuggestions = state.toSuggestions,
-                    onFromChanged = viewModel::onFromTextChanged,
-                    onToChanged = viewModel::onToTextChanged,
-                    onSelectFromSuggestion = viewModel::selectFromSuggestion,
-                    onSelectToSuggestion = viewModel::selectToSuggestion,
-                    onSearch = { onNavigateToSearch(state.fromText, state.toText) },
+                    quickSearchText = state.quickSearchText,
+                    quickSearchSuggestions = state.quickSearchSuggestions,
+                    onEditFrom = { onNavigateToSearch(state.fromText, state.toText) },
+                    onEditTo = { onNavigateToSearch(state.fromText, state.toText) },
+                    onQuickSearchChanged = viewModel::onQuickSearchTextChanged,
+                    onSelectQuickSearchSuggestion = viewModel::selectQuickSearchSuggestion,
+                    onSearch = {
+                        onNavigateToSearch(SearchEndpoint.CURRENT_LOCATION_LABEL, state.quickSearchText)
+                    },
                 )
                 Spacer(Modifier.height(8.dp))
             }
@@ -460,16 +462,19 @@ private fun ConnectionSummaryCard(
     }
 }
 
+// "From" and "To" are read-only here — tapping their pencil hands off to the search
+// screen, where the station is actually typed in. The one field left editable on
+// HomeScreen is the quick search below, always "current location → this place".
 @Composable
 private fun SearchForm(
     fromText: String,
     toText: String,
-    fromSuggestions: List<String>,
-    toSuggestions: List<String>,
-    onFromChanged: (String) -> Unit,
-    onToChanged: (String) -> Unit,
-    onSelectFromSuggestion: (String) -> Unit,
-    onSelectToSuggestion: (String) -> Unit,
+    quickSearchText: String,
+    quickSearchSuggestions: List<String>,
+    onEditFrom: () -> Unit,
+    onEditTo: () -> Unit,
+    onQuickSearchChanged: (String) -> Unit,
+    onSelectQuickSearchSuggestion: (String) -> Unit,
     onSearch: () -> Unit,
 ) {
     Card(
@@ -482,29 +487,62 @@ private fun SearchForm(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            StationAutocompleteField(
-                value = fromText,
-                onValueChange = onFromChanged,
+            EndpointRow(
                 label = "From",
-                suggestions = fromSuggestions,
-                onSuggestionSelected = onSelectFromSuggestion,
-                modifier = Modifier.fillMaxWidth(),
+                value = fromText.ifBlank { "Current location" },
+                onEdit = onEditFrom,
+            )
+            EndpointRow(
+                label = "To",
+                value = toText.ifBlank { "Choose a destination" },
+                onEdit = onEditTo,
             )
             StationAutocompleteField(
-                value = toText,
-                onValueChange = onToChanged,
-                label = "To",
-                suggestions = toSuggestions,
-                onSuggestionSelected = onSelectToSuggestion,
+                value = quickSearchText,
+                onValueChange = onQuickSearchChanged,
+                label = "Quick search — from here to…",
+                suggestions = quickSearchSuggestions,
+                onSuggestionSelected = onSelectQuickSearchSuggestion,
                 modifier = Modifier.fillMaxWidth(),
             )
             Button(
                 onClick = onSearch,
                 modifier = Modifier.fillMaxWidth(),
-                enabled = toText.isNotBlank(),
+                enabled = quickSearchText.isNotBlank(),
             ) {
                 Text("Search connections")
             }
+        }
+    }
+}
+
+@Composable
+private fun EndpointRow(
+    label: String,
+    value: String,
+    onEdit: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onEdit),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(value, style = MaterialTheme.typography.bodyLarge)
+        }
+        IconButton(onClick = onEdit) {
+            Icon(
+                Icons.Default.Edit,
+                contentDescription = "Edit $label",
+                tint = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }
@@ -747,6 +785,7 @@ private fun PlaceTile(
         onClick = onClick,
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
         modifier = modifier,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
         colors = when {
             isSource -> ButtonDefaults.filledTonalButtonColors(
                 containerColor = MaterialTheme.colorScheme.primary,

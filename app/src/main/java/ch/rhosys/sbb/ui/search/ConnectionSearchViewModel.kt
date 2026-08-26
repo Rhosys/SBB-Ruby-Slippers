@@ -25,6 +25,8 @@ import java.time.LocalTime
 import java.time.ZoneId
 import javax.inject.Inject
 
+private val SWISS_ZONE = ZoneId.of("Europe/Zurich")
+
 data class ConnectionSearchUiState(
     val fromText: String = "",
     val toText: String = "",
@@ -33,7 +35,13 @@ data class ConnectionSearchUiState(
     val smartSuggestions: List<String> = emptyList(),
     val connections: List<Connection> = emptyList(),
     val isLoading: Boolean = false,
+    val isLoadingEarlier: Boolean = false,
+    val isLoadingLater: Boolean = false,
     val error: String? = null,
+    val searchDate: LocalDate = LocalDate.now(SWISS_ZONE),
+    val searchTime: LocalTime = LocalTime.now(SWISS_ZONE),
+    // false = "depart after" searchTime, true = "arrive by" searchTime.
+    val isArriveBy: Boolean = false,
 )
 
 @HiltViewModel
@@ -201,6 +209,33 @@ class ConnectionSearchViewModel @Inject constructor(
         return SearchEndpoint.NamedPlace(text)
     }
 
+    fun onDateSelected(date: LocalDate) {
+        _uiState.value = _uiState.value.copy(searchDate = date)
+        search()
+    }
+
+    fun onTimeSelected(time: LocalTime) {
+        _uiState.value = _uiState.value.copy(searchTime = time)
+        search()
+    }
+
+    fun onToggleArriveBy() {
+        _uiState.value = _uiState.value.copy(isArriveBy = !_uiState.value.isArriveBy)
+        search()
+    }
+
+    // Reverses the from/to endpoints in place and re-runs the search.
+    fun swapFromTo() {
+        val s = _uiState.value
+        _uiState.value = s.copy(
+            fromText = s.toText,
+            toText = s.fromText,
+            fromSuggestions = emptyList(),
+            toSuggestions = emptyList(),
+        )
+        scheduleAutoSearch(immediate = true)
+    }
+
     fun search() {
         val from = _uiState.value.fromText.trim()
         val to   = _uiState.value.toText.trim()
@@ -218,21 +253,91 @@ class ConnectionSearchViewModel @Inject constructor(
                 toSuggestions = emptyList(),
             )
 
+            val routingTime = routingTimeFor(_uiState.value.searchTime)
             if (localRouter.hasData()) {
-                searchLocally(fromEndpoint, toEndpoint)
+                searchLocally(fromEndpoint, toEndpoint, routingTime)
             } else {
                 searchViaApi(fromEndpoint, toEndpoint)
             }
         }
     }
 
-    private suspend fun searchLocally(from: SearchEndpoint, to: SearchEndpoint) {
-        val swiss = ZoneId.of("Europe/Zurich")
+    // Pulling up (or reaching the top of the list) fetches connections departing/arriving
+    // earlier than what's currently shown; pulling down fetches later ones. Both merge the
+    // freshly-fetched connections into the existing list, deduplicated and re-sorted, rather
+    // than replacing it — that's what makes the list feel like one continuous infinite scroll.
+    fun loadEarlier() {
+        val state = _uiState.value
+        if (state.isLoadingEarlier || state.isLoading) return
+        val first = state.connections.firstOrNull() ?: return
+        val firstDeparture = first.departure.scheduledTime?.atZone(SWISS_ZONE)?.toLocalTime() ?: return
+        if (firstDeparture == LocalTime.MIDNIGHT) return
+
+        val from = endpointFor(state.fromText.trim().ifBlank { state.toText.trim() })
+        val to = endpointFor(state.toText.trim())
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoadingEarlier = true)
+            val earlier = fetchConnections(from, to, state.searchDate, firstDeparture.minusMinutes(1), isArriveBy = true)
+            _uiState.value = _uiState.value.copy(
+                connections = mergeConnections(earlier, _uiState.value.connections),
+                isLoadingEarlier = false,
+            )
+        }
+    }
+
+    fun loadLater() {
+        val state = _uiState.value
+        if (state.isLoadingLater || state.isLoading) return
+        val last = state.connections.lastOrNull() ?: return
+        val lastDeparture = last.departure.scheduledTime?.atZone(SWISS_ZONE)?.toLocalTime() ?: return
+
+        val from = endpointFor(state.fromText.trim().ifBlank { state.toText.trim() })
+        val to = endpointFor(state.toText.trim())
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoadingLater = true)
+            val later = fetchConnections(from, to, state.searchDate, lastDeparture.plusMinutes(1), isArriveBy = false)
+            _uiState.value = _uiState.value.copy(
+                connections = mergeConnections(_uiState.value.connections, later),
+                isLoadingLater = false,
+            )
+        }
+    }
+
+    private fun routingTimeFor(time: LocalTime): RoutingTime =
+        if (_uiState.value.isArriveBy) RoutingTime.ArriveBy(time) else RoutingTime.DepartAfter(time)
+
+    private fun mergeConnections(before: List<Connection>, after: List<Connection>): List<Connection> =
+        (before + after)
+            .distinctBy { it.departure.scheduledTime to it.arrival.scheduledTime to it.lineNames }
+            .sortedBy { it.departure.scheduledTime }
+
+    private suspend fun fetchConnections(
+        from: SearchEndpoint,
+        to: SearchEndpoint,
+        date: LocalDate,
+        time: LocalTime,
+        isArriveBy: Boolean,
+    ): List<Connection> {
+        if (localRouter.hasData()) {
+            val routingTime = if (isArriveBy) RoutingTime.ArriveBy(time) else RoutingTime.DepartAfter(time)
+            var result: List<Connection> = emptyList()
+            localRouter.routeConnections(from = from, to = to, date = date, routingTime = routingTime)
+                .collect { state -> if (state is LocalRoutingState.Results) result = state.connections }
+            return result
+        }
+        return runCatching {
+            repository.getConnections(from, to, date = date, time = time, isArrivalTime = isArriveBy)
+        }.getOrDefault(emptyList())
+    }
+
+    private suspend fun searchLocally(from: SearchEndpoint, to: SearchEndpoint, routingTime: RoutingTime) {
         localRouter.routeConnections(
             from = from,
             to = to,
-            date = LocalDate.now(swiss),
-            routingTime = RoutingTime.DepartAfter(LocalTime.now(swiss)),
+            date = _uiState.value.searchDate,
+            routingTime = routingTime,
         ).collect { state ->
             when (state) {
                 is LocalRoutingState.Results -> _uiState.value = _uiState.value.copy(
@@ -250,7 +355,15 @@ class ConnectionSearchViewModel @Inject constructor(
     }
 
     private suspend fun searchViaApi(from: SearchEndpoint, to: SearchEndpoint) {
-        runCatching { repository.getConnections(from, to) }
+        val state = _uiState.value
+        runCatching {
+            repository.getConnections(
+                from, to,
+                date = state.searchDate,
+                time = state.searchTime,
+                isArrivalTime = state.isArriveBy,
+            )
+        }
             .onSuccess { connections ->
                 _uiState.value = _uiState.value.copy(connections = connections, isLoading = false)
             }

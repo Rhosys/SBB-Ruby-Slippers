@@ -75,16 +75,6 @@ fun FaresTeaserScreen(
                 textAlign = TextAlign.Center,
             )
 
-            Spacer(Modifier.height(12.dp))
-
-            Text(
-                "SwissPass is the single login used across all Swiss public transport apps. " +
-                        "Creating an account is free.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-
             Spacer(Modifier.height(32.dp))
 
             // Placeholder — SwissPass OAuth not yet implemented (Infra Todo 6)

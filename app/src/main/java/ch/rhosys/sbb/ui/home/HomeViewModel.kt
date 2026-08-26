@@ -45,10 +45,13 @@ data class HomeUiState(
     val scorerResult: ScorerResult? = null,
     val activeJourney: ActiveJourneyBanner? = null,
     val overlayHidden: Boolean = false,
+    // Display-only "From"/"To" values shown next to their pencil icons — editing the
+    // actual station happens on the search screen, not here.
     val fromText: String = "",
     val toText: String = "",
-    val fromSuggestions: List<String> = emptyList(),
-    val toSuggestions: List<String> = emptyList(),
+    // The one editable field left on HomeScreen: "current location → this place".
+    val quickSearchText: String = "",
+    val quickSearchSuggestions: List<String> = emptyList(),
 )
 
 @HiltViewModel
@@ -64,8 +67,7 @@ class HomeViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState
 
-    private var fromSuggestJob: Job? = null
-    private var toSuggestJob: Job? = null
+    private var quickSearchSuggestJob: Job? = null
 
     init {
         viewModelScope.launch { infer() }
@@ -96,46 +98,27 @@ class HomeViewModel @Inject constructor(
         refresh()
     }
 
-    fun onFromTextChanged(value: String) {
-        _uiState.value = _uiState.value.copy(fromText = value, fromSuggestions = emptyList())
-        fromSuggestJob?.cancel()
+    // The bottom quick-search field always means "current location → this place",
+    // so typing here only ever updates the "To" display and its own suggestions.
+    fun onQuickSearchTextChanged(value: String) {
+        _uiState.value = _uiState.value.copy(quickSearchText = value, quickSearchSuggestions = emptyList())
+        quickSearchSuggestJob?.cancel()
         if (value.length >= 2) {
-            fromSuggestJob = viewModelScope.launch {
+            quickSearchSuggestJob = viewModelScope.launch {
                 delay(300)
                 runCatching { transportRepository.getLocations(value) }
                     .onSuccess { resp ->
                         _uiState.value = _uiState.value.copy(
-                            fromSuggestions = resp.stations.take(5).mapNotNull { it.name }
+                            quickSearchSuggestions = resp.stations.take(5).mapNotNull { it.name }
                         )
                     }
             }
         }
     }
 
-    fun onToTextChanged(value: String) {
-        _uiState.value = _uiState.value.copy(toText = value, toSuggestions = emptyList())
-        toSuggestJob?.cancel()
-        if (value.length >= 2) {
-            toSuggestJob = viewModelScope.launch {
-                delay(300)
-                runCatching { transportRepository.getLocations(value) }
-                    .onSuccess { resp ->
-                        _uiState.value = _uiState.value.copy(
-                            toSuggestions = resp.stations.take(5).mapNotNull { it.name }
-                        )
-                    }
-            }
-        }
-    }
-
-    fun selectFromSuggestion(name: String) {
-        fromSuggestJob?.cancel()
-        _uiState.value = _uiState.value.copy(fromText = name, fromSuggestions = emptyList())
-    }
-
-    fun selectToSuggestion(name: String) {
-        toSuggestJob?.cancel()
-        _uiState.value = _uiState.value.copy(toText = name, toSuggestions = emptyList())
+    fun selectQuickSearchSuggestion(name: String) {
+        quickSearchSuggestJob?.cancel()
+        _uiState.value = _uiState.value.copy(quickSearchText = name, quickSearchSuggestions = emptyList())
     }
 
     // We're already continuously tracking location (see LocationProvider), so this is
@@ -143,23 +126,15 @@ class HomeViewModel @Inject constructor(
     // field untouched rather than clearing it. A background refresh is kicked off
     // for next time.
     fun fillFromWithNearestStop() {
-        fromSuggestJob?.cancel()
         locationProvider.refreshNow()
         if (locationProvider.currentLocation.value == null) return
-        _uiState.value = _uiState.value.copy(
-            fromText = SearchEndpoint.CURRENT_LOCATION_LABEL,
-            fromSuggestions = emptyList(),
-        )
+        _uiState.value = _uiState.value.copy(fromText = SearchEndpoint.CURRENT_LOCATION_LABEL)
     }
 
     fun fillToWithNearestStop() {
-        toSuggestJob?.cancel()
         locationProvider.refreshNow()
         if (locationProvider.currentLocation.value == null) return
-        _uiState.value = _uiState.value.copy(
-            toText = SearchEndpoint.CURRENT_LOCATION_LABEL,
-            toSuggestions = emptyList(),
-        )
+        _uiState.value = _uiState.value.copy(toText = SearchEndpoint.CURRENT_LOCATION_LABEL)
     }
 
     fun hideOverlay() {
