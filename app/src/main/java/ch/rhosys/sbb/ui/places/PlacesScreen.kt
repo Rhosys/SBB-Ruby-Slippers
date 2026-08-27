@@ -32,7 +32,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.SouthEast
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -67,6 +66,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import ch.rhosys.sbb.domain.model.Place
+import ch.rhosys.sbb.ui.common.AppAlertDialog
 import ch.rhosys.sbb.ui.common.PLACE_GRID_COLUMNS
 import ch.rhosys.sbb.ui.common.rectOverlapsAnyPlace
 import ch.rhosys.sbb.ui.common.StationAutocompleteField
@@ -463,7 +463,7 @@ private fun AddPlaceDialog(
     onDismiss: () -> Unit,
     canConfirm: Boolean,
 ) {
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add place") },
         text = {
@@ -532,7 +532,7 @@ private fun EditPlaceDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Edit place") },
         text = {

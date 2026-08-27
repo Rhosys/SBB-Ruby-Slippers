@@ -17,7 +17,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -47,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import ch.rhosys.sbb.domain.model.TripHistoryItem
+import ch.rhosys.sbb.ui.common.AppAlertDialog
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
@@ -86,7 +86,7 @@ fun JourneysScreen(
     }
 
     state.switchPrompt?.let { prompt ->
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = viewModel::dismissSwitch,
             icon = { Icon(Icons.Default.Warning, contentDescription = null) },
             title = { Text("Better option found") },
@@ -215,7 +215,7 @@ private fun ActiveTab(state: JourneysUiState, viewModel: JourneysViewModel) {
     }
 
     if (showCancelDialog) {
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { showCancelDialog = false },
             icon = { Icon(Icons.Default.Warning, contentDescription = null) },
             title = { Text("Cancel this journey?") },

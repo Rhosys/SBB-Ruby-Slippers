@@ -2,11 +2,11 @@ package ch.rhosys.sbb.ui.journey
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import ch.rhosys.sbb.ui.common.AppAlertDialog
 
 @Composable
 fun MissedBoardingDialog(
@@ -15,7 +15,7 @@ fun MissedBoardingDialog(
     onDifferentRoute: () -> Unit,
     onStillOnIt: () -> Unit,
 ) {
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onStillOnIt,
         title = { Text("Still on track?") },
         text = { Text("You're still near $fromName. Did your plans change?") },

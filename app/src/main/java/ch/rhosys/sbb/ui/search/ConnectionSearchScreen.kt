@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -49,6 +48,7 @@ import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.SwapVert
 import ch.rhosys.sbb.R
 import ch.rhosys.sbb.domain.model.Connection
+import ch.rhosys.sbb.ui.common.AppAlertDialog
 import ch.rhosys.sbb.ui.common.StationAutocompleteField
 import java.time.Instant
 import java.time.LocalDate
@@ -203,7 +203,7 @@ fun ConnectionSearchScreen(
         val datePickerState = rememberDatePickerState(
             initialSelectedDateMillis = state.searchDate.atStartOfDay(zone).toInstant().toEpochMilli(),
         )
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
                 TextButton(onClick = {
@@ -227,7 +227,7 @@ fun ConnectionSearchScreen(
             initialMinute = state.searchTime.minute,
             is24Hour = true,
         )
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { showTimePicker = false },
             confirmButton = {
                 TextButton(onClick = {
