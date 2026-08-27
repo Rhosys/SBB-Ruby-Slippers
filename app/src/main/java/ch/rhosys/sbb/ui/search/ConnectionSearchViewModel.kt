@@ -13,6 +13,7 @@ import ch.rhosys.sbb.domain.TransportRepository
 import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.SearchEndpoint
 import ch.rhosys.sbb.ui.journey.TripReviewHolder
+import ch.rhosys.sbb.util.lowercaseAscii
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -68,6 +69,8 @@ class ConnectionSearchViewModel @Inject constructor(
 
     private var fromSuggestJob: Job? = null
     private var toSuggestJob: Job? = null
+    private var fromLocalSuggestJob: Job? = null
+    private var toLocalSuggestJob: Job? = null
     private var autoSearchJob: Job? = null
 
     init {
@@ -108,20 +111,32 @@ class ConnectionSearchViewModel @Inject constructor(
         )
     }
 
+    // Suggestions come from two sources run in parallel: the on-device GTFS stop cache
+    // (instant, offline — see LocalTransportRepository.searchStopNames) and the live
+    // opendata.ch API (debounced 300ms, as before). Whichever answers first is shown
+    // immediately; the other merges in on top of it, deduplicated, when it lands.
     fun onFromChanged(value: String) {
         val smart = _uiState.value.smartSuggestions
         _uiState.value = _uiState.value.copy(
             fromText = value,
             fromSuggestions = if (value.isEmpty()) smart else emptyList(),
         )
+        fromLocalSuggestJob?.cancel()
         fromSuggestJob?.cancel()
         if (value.length >= 2) {
+            fromLocalSuggestJob = viewModelScope.launch {
+                val local = localRouter.searchStopNames(value).map { it.name }
+                _uiState.value = _uiState.value.copy(
+                    fromSuggestions = mergeSuggestionNames(local, _uiState.value.fromSuggestions)
+                )
+            }
             fromSuggestJob = viewModelScope.launch {
                 delay(300)
                 runCatching { repository.getLocations(value) }
                     .onSuccess { resp ->
+                        val remote = resp.stations.take(5).mapNotNull { it.name }
                         _uiState.value = _uiState.value.copy(
-                            fromSuggestions = resp.stations.take(5).mapNotNull { it.name }
+                            fromSuggestions = mergeSuggestionNames(_uiState.value.fromSuggestions, remote)
                         )
                     }
             }
@@ -135,19 +150,39 @@ class ConnectionSearchViewModel @Inject constructor(
             toText = value,
             toSuggestions = if (value.isEmpty()) smart else emptyList(),
         )
+        toLocalSuggestJob?.cancel()
         toSuggestJob?.cancel()
         if (value.length >= 2) {
+            toLocalSuggestJob = viewModelScope.launch {
+                val local = localRouter.searchStopNames(value).map { it.name }
+                _uiState.value = _uiState.value.copy(
+                    toSuggestions = mergeSuggestionNames(local, _uiState.value.toSuggestions)
+                )
+            }
             toSuggestJob = viewModelScope.launch {
                 delay(300)
                 runCatching { repository.getLocations(value) }
                     .onSuccess { resp ->
+                        val remote = resp.stations.take(5).mapNotNull { it.name }
                         _uiState.value = _uiState.value.copy(
-                            toSuggestions = resp.stations.take(5).mapNotNull { it.name }
+                            toSuggestions = mergeSuggestionNames(_uiState.value.toSuggestions, remote)
                         )
                     }
             }
         }
         scheduleAutoSearch()
+    }
+
+    // ASCII-only lowercase for the dedup key — "Zürich" and "zurich" both matched the
+    // query, but they're different names and must not collapse into one suggestion.
+    private fun mergeSuggestionNames(before: List<String>, after: List<String>, max: Int = 5): List<String> {
+        val seen = mutableSetOf<String>()
+        val result = mutableListOf<String>()
+        for (name in before + after) {
+            if (seen.add(name.lowercaseAscii())) result.add(name)
+            if (result.size >= max) break
+        }
+        return result
     }
 
     fun selectFromSuggestion(name: String) {

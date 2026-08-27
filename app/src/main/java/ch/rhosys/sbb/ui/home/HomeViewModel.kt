@@ -3,6 +3,7 @@ package ch.rhosys.sbb.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ch.rhosys.sbb.data.local.location.LocationProvider
+import ch.rhosys.sbb.data.local.routing.LocalTransportRepository
 import ch.rhosys.sbb.domain.PlaceRepository
 import ch.rhosys.sbb.domain.RouteRepository
 import ch.rhosys.sbb.domain.TransportRepository
@@ -13,6 +14,7 @@ import ch.rhosys.sbb.domain.model.SavedRoute
 import ch.rhosys.sbb.domain.model.SearchEndpoint
 import ch.rhosys.sbb.ui.journey.JourneyStateHolder
 import ch.rhosys.sbb.ui.widget.JourneyWidgetSyncer
+import ch.rhosys.sbb.util.lowercaseAscii
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -60,6 +62,7 @@ class HomeViewModel @Inject constructor(
     private val placeRepository: PlaceRepository,
     private val routeRepository: RouteRepository,
     private val transportRepository: TransportRepository,
+    private val localRouter: LocalTransportRepository,
     private val journeyStateHolder: JourneyStateHolder,
     private val widgetSyncer: JourneyWidgetSyncer,
 ) : ViewModel() {
@@ -68,6 +71,7 @@ class HomeViewModel @Inject constructor(
     val uiState: StateFlow<HomeUiState> = _uiState
 
     private var quickSearchSuggestJob: Job? = null
+    private var quickSearchLocalSuggestJob: Job? = null
 
     init {
         viewModelScope.launch { infer() }
@@ -100,20 +104,41 @@ class HomeViewModel @Inject constructor(
 
     // The bottom quick-search field always means "current location → this place",
     // so typing here only ever updates the "To" display and its own suggestions.
+    // Local GTFS cache (instant, offline) and the live API (debounced) run in parallel;
+    // each merges its results into whatever's already showing, deduplicated by an
+    // ASCII-only lowercase key so accented station names never collapse together.
     fun onQuickSearchTextChanged(value: String) {
         _uiState.value = _uiState.value.copy(quickSearchText = value, quickSearchSuggestions = emptyList())
+        quickSearchLocalSuggestJob?.cancel()
         quickSearchSuggestJob?.cancel()
         if (value.length >= 2) {
+            quickSearchLocalSuggestJob = viewModelScope.launch {
+                val local = localRouter.searchStopNames(value).map { it.name }
+                _uiState.value = _uiState.value.copy(
+                    quickSearchSuggestions = mergeSuggestionNames(local, _uiState.value.quickSearchSuggestions)
+                )
+            }
             quickSearchSuggestJob = viewModelScope.launch {
                 delay(300)
                 runCatching { transportRepository.getLocations(value) }
                     .onSuccess { resp ->
+                        val remote = resp.stations.take(5).mapNotNull { it.name }
                         _uiState.value = _uiState.value.copy(
-                            quickSearchSuggestions = resp.stations.take(5).mapNotNull { it.name }
+                            quickSearchSuggestions = mergeSuggestionNames(_uiState.value.quickSearchSuggestions, remote)
                         )
                     }
             }
         }
+    }
+
+    private fun mergeSuggestionNames(before: List<String>, after: List<String>, max: Int = 5): List<String> {
+        val seen = mutableSetOf<String>()
+        val result = mutableListOf<String>()
+        for (name in before + after) {
+            if (seen.add(name.lowercaseAscii())) result.add(name)
+            if (result.size >= max) break
+        }
+        return result
     }
 
     fun selectQuickSearchSuggestion(name: String) {
