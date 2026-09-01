@@ -54,6 +54,15 @@ export function getVersionName(): string {
   return match[1];
 }
 
+export function getTargetSdk(): string {
+  const gradle = readFileSync('app/build.gradle.kts', 'utf8');
+  const match = gradle.match(/targetSdk\s*=\s*(\d+)/);
+  if (!match) {
+    throw new Error('Could not read targetSdk from app/build.gradle.kts');
+  }
+  return match[1];
+}
+
 function isDraftAppError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return msg.toLowerCase().includes('draft app');
@@ -203,6 +212,21 @@ async function diagnoseError(err: unknown, client: PublisherClient): Promise<nev
       process.stderr.write(`Note: CEL conditions and wildcards do NOT work for SA impersonation.\n`);
       process.stderr.write(`Each app must have an explicit principalSet binding with the full attribute path.\n`);
       process.stderr.write(`After adding, run \`tofu apply\` in the GCP infrastructure root.\n`);
+      process.exit(1);
+    }
+
+    if (msg.toLowerCase().includes('target sdk')) {
+      process.stderr.write(
+        `Root cause: not a permissions issue — Play rejected the artifact's target SDK.\n`
+      );
+      process.stderr.write(`This repo's app/build.gradle.kts currently sets targetSdk = ${getTargetSdk()}.\n\n`);
+      process.stderr.write(
+        `If that's already current, the artifact Play is comparing against is an older\n`
+      );
+      process.stderr.write(
+        `release on some track (often the manually-uploaded bootstrap AAB) — check\n`
+      );
+      process.stderr.write(`Play Console → Release overview for a release below the required target API level.\n`);
       process.exit(1);
     }
 
