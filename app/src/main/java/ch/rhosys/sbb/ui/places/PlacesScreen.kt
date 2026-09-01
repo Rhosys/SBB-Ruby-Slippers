@@ -29,15 +29,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.SouthEast
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -321,6 +324,8 @@ fun HomeEditScreen(
             label = state.addLabel,
             photoUri = state.addPhotoUri,
             suggestions = state.addSuggestions,
+            isSearching = state.isAddSuggesting,
+            error = state.addError,
             onQueryChange = viewModel::onQueryChanged,
             onLabelChange = viewModel::onLabelChanged,
             onSuggestionSelect = viewModel::selectSuggestion,
@@ -351,7 +356,24 @@ fun HomeEditScreen(
             onRemovePhoto = { viewModel.onEditPhotoSelected(null) },
             onConfirm = viewModel::confirmEdit,
             onDismiss = viewModel::dismissEditDialog,
+            onDeleteRequest = viewModel::requestDeleteConfirm,
         )
+
+        if (state.showDeleteConfirm) {
+            AppAlertDialog(
+                onDismissRequest = viewModel::dismissDeleteConfirm,
+                title = { Text("Delete ${editingPlace.displayName}?") },
+                text = { Text("This removes the tile and its photo. This can't be undone.") },
+                confirmButton = {
+                    TextButton(onClick = viewModel::confirmDeleteFromEditDialog) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = viewModel::dismissDeleteConfirm) { Text("Cancel") }
+                },
+            )
+        }
     }
 }
 
@@ -377,7 +399,7 @@ private fun PlaceGridTile(
             onClick = onTap,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(8.dp),
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
             border = if (isInvalid) BorderStroke(2.dp, MaterialTheme.colorScheme.error) else null,
             colors = when {
                 isInvalid -> ButtonDefaults.filledTonalButtonColors(
@@ -454,6 +476,8 @@ private fun AddPlaceDialog(
     label: String,
     photoUri: String?,
     suggestions: List<SuggestionItem>,
+    isSearching: Boolean,
+    error: String?,
     onQueryChange: (String) -> Unit,
     onLabelChange: (String) -> Unit,
     onSuggestionSelect: (SuggestionItem) -> Unit,
@@ -476,8 +500,27 @@ private fun AddPlaceDialog(
                     onSuggestionSelected = { name ->
                         suggestions.firstOrNull { it.name == name }?.let(onSuggestionSelect)
                     },
+                    isSearching = isSearching,
                     modifier = Modifier.fillMaxWidth(),
                 )
+
+                if (error != null) {
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.size(4.dp))
+                        Text(
+                            error,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
 
                 Spacer(Modifier.height(8.dp))
 
@@ -531,6 +574,7 @@ private fun EditPlaceDialog(
     onRemovePhoto: () -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    onDeleteRequest: () -> Unit,
 ) {
     AppAlertDialog(
         onDismissRequest = onDismiss,
@@ -565,6 +609,29 @@ private fun EditPlaceDialog(
                     }
                 } else {
                     TextButton(onClick = onPickPhoto) { Text("Add photo") }
+                }
+
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(12.dp))
+
+                Text(
+                    "Danger zone",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Spacer(Modifier.height(4.dp))
+                OutlinedButton(
+                    onClick = onDeleteRequest,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.size(4.dp))
+                    Text("Delete place")
                 }
             }
         },

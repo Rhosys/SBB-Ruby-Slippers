@@ -33,6 +33,8 @@ data class ConnectionSearchUiState(
     val toText: String = "",
     val fromSuggestions: List<String> = emptyList(),
     val toSuggestions: List<String> = emptyList(),
+    val isFromSuggesting: Boolean = false,
+    val isToSuggesting: Boolean = false,
     val smartSuggestions: List<String> = emptyList(),
     val connections: List<Connection> = emptyList(),
     val isLoading: Boolean = false,
@@ -124,6 +126,7 @@ class ConnectionSearchViewModel @Inject constructor(
         fromLocalSuggestJob?.cancel()
         fromSuggestJob?.cancel()
         if (value.length >= 2) {
+            _uiState.value = _uiState.value.copy(isFromSuggesting = true)
             fromLocalSuggestJob = viewModelScope.launch {
                 val local = localRouter.searchStopNames(value).map { it.name }
                 _uiState.value = _uiState.value.copy(
@@ -139,7 +142,10 @@ class ConnectionSearchViewModel @Inject constructor(
                             fromSuggestions = mergeSuggestionNames(_uiState.value.fromSuggestions, remote)
                         )
                     }
+                _uiState.value = _uiState.value.copy(isFromSuggesting = false)
             }
+        } else {
+            _uiState.value = _uiState.value.copy(isFromSuggesting = false)
         }
         scheduleAutoSearch()
     }
@@ -153,6 +159,7 @@ class ConnectionSearchViewModel @Inject constructor(
         toLocalSuggestJob?.cancel()
         toSuggestJob?.cancel()
         if (value.length >= 2) {
+            _uiState.value = _uiState.value.copy(isToSuggesting = true)
             toLocalSuggestJob = viewModelScope.launch {
                 val local = localRouter.searchStopNames(value).map { it.name }
                 _uiState.value = _uiState.value.copy(
@@ -168,7 +175,10 @@ class ConnectionSearchViewModel @Inject constructor(
                             toSuggestions = mergeSuggestionNames(_uiState.value.toSuggestions, remote)
                         )
                     }
+                _uiState.value = _uiState.value.copy(isToSuggesting = false)
             }
+        } else {
+            _uiState.value = _uiState.value.copy(isToSuggesting = false)
         }
         scheduleAutoSearch()
     }
@@ -186,14 +196,16 @@ class ConnectionSearchViewModel @Inject constructor(
     }
 
     fun selectFromSuggestion(name: String) {
+        fromLocalSuggestJob?.cancel()
         fromSuggestJob?.cancel()
-        _uiState.value = _uiState.value.copy(fromText = name, fromSuggestions = emptyList())
+        _uiState.value = _uiState.value.copy(fromText = name, fromSuggestions = emptyList(), isFromSuggesting = false)
         scheduleAutoSearch(immediate = true)
     }
 
     fun selectToSuggestion(name: String) {
+        toLocalSuggestJob?.cancel()
         toSuggestJob?.cancel()
-        _uiState.value = _uiState.value.copy(toText = name, toSuggestions = emptyList())
+        _uiState.value = _uiState.value.copy(toText = name, toSuggestions = emptyList(), isToSuggesting = false)
         scheduleAutoSearch(immediate = true)
     }
 
@@ -201,23 +213,27 @@ class ConnectionSearchViewModel @Inject constructor(
     // cached value — no spinner, no wait. No fix yet → leave the field untouched
     // rather than clearing it. A background refresh is kicked off for next time.
     fun fillFromWithNearestStop() {
+        fromLocalSuggestJob?.cancel()
         fromSuggestJob?.cancel()
         locationProvider.refreshNow()
         if (locationProvider.currentLocation.value == null) return
         _uiState.value = _uiState.value.copy(
             fromText = SearchEndpoint.CURRENT_LOCATION_LABEL,
             fromSuggestions = emptyList(),
+            isFromSuggesting = false,
         )
         scheduleAutoSearch(immediate = true)
     }
 
     fun fillToWithNearestStop() {
+        toLocalSuggestJob?.cancel()
         toSuggestJob?.cancel()
         locationProvider.refreshNow()
         if (locationProvider.currentLocation.value == null) return
         _uiState.value = _uiState.value.copy(
             toText = SearchEndpoint.CURRENT_LOCATION_LABEL,
             toSuggestions = emptyList(),
+            isToSuggesting = false,
         )
         scheduleAutoSearch(immediate = true)
     }

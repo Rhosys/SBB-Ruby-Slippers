@@ -2,6 +2,7 @@ package ch.rhosys.sbb.ui.common
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
@@ -56,6 +58,9 @@ fun StationAutocompleteField(
     modifier: Modifier = Modifier,
     onGpsClick: (() -> Unit)? = null,
     isLocating: Boolean = false,
+    // Shows a small spinner (search in progress) or a checkmark (search finished, with
+    // results to show) next to the field, so a slow lookup never looks like it's hung.
+    isSearching: Boolean = false,
 ) {
     var fieldSize by remember { mutableStateOf(IntSize.Zero) }
     val density = LocalDensity.current
@@ -69,16 +74,32 @@ fun StationAutocompleteField(
                 .fillMaxWidth()
                 .onGloballyPositioned { fieldSize = it.size },
             singleLine = true,
-            trailingIcon = if (onGpsClick != null) {
+            trailingIcon = if (onGpsClick != null || isSearching || value.trim().length >= 2) {
                 {
-                    IconButton(onClick = onGpsClick, enabled = !isLocating) {
-                        if (isLocating) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        when {
+                            isSearching -> CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
                                 strokeWidth = 2.dp,
                             )
-                        } else {
-                            Icon(Icons.Default.GpsFixed, contentDescription = "Use nearest stop")
+                            value.trim().length >= 2 -> Icon(
+                                Icons.Default.Check,
+                                contentDescription = "Search finished",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                        if (onGpsClick != null) {
+                            IconButton(onClick = onGpsClick, enabled = !isLocating) {
+                                if (isLocating) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                } else {
+                                    Icon(Icons.Default.GpsFixed, contentDescription = "Use nearest stop")
+                                }
+                            }
                         }
                     }
                 }

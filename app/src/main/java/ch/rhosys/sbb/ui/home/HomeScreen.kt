@@ -166,7 +166,9 @@ fun HomeScreen(
                     } else {
                         PlaceTileGrid(
                             places = state.places,
-                            onTileClick = { place -> viewModel.routeFromCurrentLocationTo(place) },
+                            onTileClick = { place ->
+                                onNavigateToSearch(SearchEndpoint.CURRENT_LOCATION_LABEL, place.name)
+                            },
                             onDragRoute = { from, to -> onNavigateToSearch(from, to) },
                             onCurrentLocationFromClick = viewModel::fillFromWithNearestStop,
                             onCurrentLocationToClick = viewModel::fillToWithNearestStop,
@@ -180,6 +182,7 @@ fun HomeScreen(
                     toText = state.toText,
                     quickSearchText = state.quickSearchText,
                     quickSearchSuggestions = state.quickSearchSuggestions,
+                    isQuickSearchSuggesting = state.isQuickSearchSuggesting,
                     onEditFrom = { onNavigateToSearch(state.fromText, state.toText) },
                     onEditTo = { onNavigateToSearch(state.fromText, state.toText) },
                     onQuickSearchChanged = viewModel::onQuickSearchTextChanged,
@@ -265,11 +268,15 @@ fun HomeScreen(
                             banner = activeJourney,
                             onTap = onNavigateToJourneys,
                         )
-                    }
-                    if (activeJourney != null && scorerResult != null) {
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    } else {
+                        Text(
+                            "No active journey",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     if (scorerResult != null) {
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                         ScorerSheetContent(
                             result = scorerResult,
                             onCardTap = {
@@ -471,6 +478,7 @@ private fun SearchForm(
     toText: String,
     quickSearchText: String,
     quickSearchSuggestions: List<String>,
+    isQuickSearchSuggesting: Boolean,
     onEditFrom: () -> Unit,
     onEditTo: () -> Unit,
     onQuickSearchChanged: (String) -> Unit,
@@ -503,6 +511,7 @@ private fun SearchForm(
                 label = "Quick search — from here to…",
                 suggestions = quickSearchSuggestions,
                 onSuggestionSelected = onSelectQuickSearchSuggestion,
+                isSearching = isQuickSearchSuggesting,
                 modifier = Modifier.fillMaxWidth(),
             )
             Button(
@@ -645,7 +654,7 @@ fun PlaceTileGrid(
                             .padding(4.dp),
                     ) {
                         PlaceTile(
-                            label = place.name,
+                            label = place.displayName,
                             icon = Icons.Default.LocationOn,
                             onClick = { onTileClick(place) },
                             isSource = dragSourceIdx == idx,
@@ -785,7 +794,7 @@ private fun PlaceTile(
         onClick = onClick,
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
         modifier = modifier,
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
         colors = when {
             isSource -> ButtonDefaults.filledTonalButtonColors(
                 containerColor = MaterialTheme.colorScheme.primary,

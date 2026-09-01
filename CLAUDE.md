@@ -113,14 +113,14 @@ places. HomeScreen only *reads* that layout — moving and resizing happens on t
 Places (edit) screen.
 
 ### HomeScreen
-- **Tap** a place tile → routes from the user's current GPS location to that place
-  (HomeViewModel.routeFromCurrentLocationTo); result shown in the pull-over sheet.
+- **Tap** a place tile → navigates to ConnectionSearchScreen with from = current
+  location, to = that place.
 - **Drag** from one tile to another → animated flowing arrow (dashes animate
   source → target, arrowhead at tip); on release navigates to ConnectionSearchScreen
   with from/to pre-filled. Source tile highlights in primary, target in secondary.
 
 ### Places screen (`ui/places/PlacesScreen.kt`, `fun HomeEditScreen`)
-- **Tap** a tile → opens the edit dialog (label / photo).
+- **Tap** a tile → opens the edit dialog (label / photo / delete).
 - **Drag a tile's center** → moves it to a new grid position.
 - **Drag a tile's corner handle** → resizes it (gridWidth/gridHeight).
 - Both drags reject a drop that would overlap another tile — the tile outlines red

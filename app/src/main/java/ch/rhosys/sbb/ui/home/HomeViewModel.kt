@@ -54,6 +54,7 @@ data class HomeUiState(
     // The one editable field left on HomeScreen: "current location → this place".
     val quickSearchText: String = "",
     val quickSearchSuggestions: List<String> = emptyList(),
+    val isQuickSearchSuggesting: Boolean = false,
 )
 
 @HiltViewModel
@@ -112,6 +113,7 @@ class HomeViewModel @Inject constructor(
         quickSearchLocalSuggestJob?.cancel()
         quickSearchSuggestJob?.cancel()
         if (value.length >= 2) {
+            _uiState.value = _uiState.value.copy(isQuickSearchSuggesting = true)
             quickSearchLocalSuggestJob = viewModelScope.launch {
                 val local = localRouter.searchStopNames(value).map { it.name }
                 _uiState.value = _uiState.value.copy(
@@ -127,7 +129,10 @@ class HomeViewModel @Inject constructor(
                             quickSearchSuggestions = mergeSuggestionNames(_uiState.value.quickSearchSuggestions, remote)
                         )
                     }
+                _uiState.value = _uiState.value.copy(isQuickSearchSuggesting = false)
             }
+        } else {
+            _uiState.value = _uiState.value.copy(isQuickSearchSuggesting = false)
         }
     }
 
@@ -142,8 +147,13 @@ class HomeViewModel @Inject constructor(
     }
 
     fun selectQuickSearchSuggestion(name: String) {
+        quickSearchLocalSuggestJob?.cancel()
         quickSearchSuggestJob?.cancel()
-        _uiState.value = _uiState.value.copy(quickSearchText = name, quickSearchSuggestions = emptyList())
+        _uiState.value = _uiState.value.copy(
+            quickSearchText = name,
+            quickSearchSuggestions = emptyList(),
+            isQuickSearchSuggesting = false,
+        )
     }
 
     // We're already continuously tracking location (see LocationProvider), so this is
@@ -168,32 +178,6 @@ class HomeViewModel @Inject constructor(
 
     fun showOverlay() {
         _uiState.value = _uiState.value.copy(overlayHidden = false)
-    }
-
-    fun routeFromCurrentLocationTo(place: Place) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
-            val location = locationProvider.getLocationOrNull()
-            val from = if (location != null)
-                SearchEndpoint.CurrentLocation(location.first, location.second)
-            else
-                SearchEndpoint.NamedPlace(place.name)
-
-            val connections = runCatching {
-                transportRepository.getConnections(from, place.toSearchEndpoint())
-            }.getOrNull() ?: emptyList()
-
-            val result = if (connections.isNotEmpty()) {
-                ScorerResult(
-                    destination = place.name,
-                    connections = connections,
-                    from = from,
-                    to = place.toSearchEndpoint(),
-                )
-            } else null
-            _uiState.value = _uiState.value.copy(isLoading = false, scorerResult = result)
-            if (result != null) notifyWidget(result) else widgetSyncer.clearScorerResult()
-        }
     }
 
     private suspend fun infer() {

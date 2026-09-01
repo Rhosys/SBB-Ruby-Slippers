@@ -14,10 +14,12 @@ import ch.rhosys.sbb.domain.model.Leg
 import ch.rhosys.sbb.domain.model.SearchEndpoint
 import ch.rhosys.sbb.domain.model.Stop
 import ch.rhosys.sbb.util.lowercaseAscii
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -71,15 +73,20 @@ class LocalTransportRepository @Inject constructor(
         val data = getOrLoad() ?: return emptyList()
         val q = query.trim().lowercaseAscii()
         if (q.isEmpty()) return emptyList()
-        val seen = mutableSetOf<String>()
-        val result = mutableListOf<StopSuggestion>()
-        for (stop in data.parsed.network.stops) {
-            if (!stop.name.lowercaseAscii().contains(q)) continue
-            if (!seen.add(stop.name.lowercaseAscii())) continue
-            result.add(StopSuggestion(stop.name, stop.lat, stop.lng))
-            if (result.size >= max) break
+        // The GTFS stop list can run into the thousands, so the scan is pushed off the
+        // caller's dispatcher (typically Main, since this is called on every keystroke)
+        // to keep the UI thread free while typing.
+        return withContext(Dispatchers.Default) {
+            val seen = mutableSetOf<String>()
+            val result = mutableListOf<StopSuggestion>()
+            for (stop in data.parsed.network.stops) {
+                if (!stop.name.lowercaseAscii().contains(q)) continue
+                if (!seen.add(stop.name.lowercaseAscii())) continue
+                result.add(StopSuggestion(stop.name, stop.lat, stop.lng))
+                if (result.size >= max) break
+            }
+            result
         }
-        return result
     }
 
     fun routeConnections(
