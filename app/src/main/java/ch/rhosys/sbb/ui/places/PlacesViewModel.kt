@@ -25,11 +25,14 @@ data class HomeEditUiState(
     val addLabel: String = "",
     val addPhotoUri: String? = null,
     val addSuggestions: List<SuggestionItem> = emptyList(),
+    val isAddSuggesting: Boolean = false,
     val showAddDialog: Boolean = false,
     val selectedSuggestion: SuggestionItem? = null,
+    val addError: String? = null,
     val editingPlace: Place? = null,
     val editLabel: String = "",
     val editPhotoUri: String? = null,
+    val showDeleteConfirm: Boolean = false,
 )
 
 data class SuggestionItem(
@@ -121,7 +124,26 @@ class HomeEditViewModel @Inject constructor(
             editingPlace = null,
             editLabel = "",
             editPhotoUri = null,
+            showDeleteConfirm = false,
         )
+    }
+
+    fun requestDeleteConfirm() {
+        _uiState.value = _uiState.value.copy(showDeleteConfirm = true)
+    }
+
+    fun dismissDeleteConfirm() {
+        _uiState.value = _uiState.value.copy(showDeleteConfirm = false)
+    }
+
+    fun confirmDeleteFromEditDialog() {
+        val place = _uiState.value.editingPlace ?: return
+        val uncommitted = _uiState.value.editPhotoUri.takeIf { it != place.photoUri }
+        if (uncommitted != null) {
+            viewModelScope.launch { photoStore.delete(uncommitted) }
+        }
+        deletePlace(place.id)
+        clearEditDialogState()
     }
 
     // Commits a move or resize from the edit screen's drag gesture. The screen already
@@ -143,6 +165,7 @@ class HomeEditViewModel @Inject constructor(
             addPhotoUri = null,
             addSuggestions = emptyList(),
             selectedSuggestion = null,
+            addError = null,
         )
     }
 
@@ -164,6 +187,7 @@ class HomeEditViewModel @Inject constructor(
             addPhotoUri = null,
             addSuggestions = emptyList(),
             selectedSuggestion = null,
+            addError = null,
         )
     }
 
@@ -175,10 +199,12 @@ class HomeEditViewModel @Inject constructor(
             addQuery = query,
             addSuggestions = emptyList(),
             selectedSuggestion = null,
+            addError = null,
         )
         localSuggestJob?.cancel()
         suggestJob?.cancel()
         if (query.length >= 2) {
+            _uiState.value = _uiState.value.copy(isAddSuggesting = true)
             localSuggestJob = viewModelScope.launch {
                 val local = localRouter.searchStopNames(query).map { SuggestionItem(it.name, it.lat, it.lng) }
                 _uiState.value = _uiState.value.copy(
@@ -199,7 +225,10 @@ class HomeEditViewModel @Inject constructor(
                             addSuggestions = mergeSuggestions(_uiState.value.addSuggestions, remote)
                         )
                     }
+                _uiState.value = _uiState.value.copy(isAddSuggesting = false)
             }
+        } else {
+            _uiState.value = _uiState.value.copy(isAddSuggesting = false)
         }
     }
 
@@ -238,14 +267,22 @@ class HomeEditViewModel @Inject constructor(
             addQuery = item.name,
             addSuggestions = emptyList(),
             selectedSuggestion = item,
+            addError = null,
+            isAddSuggesting = false,
         )
     }
 
+    // Only a place picked from the suggestion list (a real, resolvable station) can be
+    // saved — typing text that was never matched to a suggestion has no coordinates and
+    // would silently create an unroutable tile, so it's rejected with an inline error.
     fun confirmAdd() {
         val item = _uiState.value.selectedSuggestion
-            ?: _uiState.value.addQuery.trim().takeIf { it.isNotBlank() }
-                ?.let { SuggestionItem(it, 0.0, 0.0) }
-            ?: return
+        if (item == null || item.name != _uiState.value.addQuery.trim()) {
+            _uiState.value = _uiState.value.copy(
+                addError = "Pick a location from the suggestions list",
+            )
+            return
+        }
 
         val (gridX, gridY) = findFreeGridSlot(_uiState.value.places)
         viewModelScope.launch {
