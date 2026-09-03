@@ -127,6 +127,21 @@ async function fetchTrackReleases(
   }
 }
 
+function flattenReleases(
+  tracks: Array<{ track: string | null; releases: TrackRelease[] }>
+): Array<{ track: string | null } & TrackRelease> {
+  return tracks.flatMap((t) => t.releases.map((r) => ({ track: t.track, ...r })));
+}
+
+function printReleaseTable(releases: Array<{ track: string | null } & TrackRelease>): void {
+  for (const r of releases) {
+    const versionCodes = r.versionCodes.length > 0 ? r.versionCodes.join(', ') : '(none)';
+    process.stderr.write(
+      `  track '${r.track ?? 'unknown'}' [${r.status ?? 'unknown'}] versionCode(s): ${versionCodes} — ${r.name ?? '(unnamed)'}\n`
+    );
+  }
+}
+
 export function makePublisherClient(): PublisherClient {
   const auth = new GoogleAuth({
     scopes: ['https://www.googleapis.com/auth/androidpublisher'],
@@ -175,7 +190,7 @@ export function makePublisherClient(): PublisherClient {
   };
 }
 
-async function diagnoseError(err: unknown, client: PublisherClient): Promise<never> {
+export async function diagnoseError(err: unknown, client: PublisherClient): Promise<never> {
   const status =
     (err as { status?: number; code?: number }).status ??
     (err as { status?: number; code?: number }).code;
@@ -220,13 +235,39 @@ async function diagnoseError(err: unknown, client: PublisherClient): Promise<nev
         `Root cause: not a permissions issue — Play rejected the artifact's target SDK.\n`
       );
       process.stderr.write(`This repo's app/build.gradle.kts currently sets targetSdk = ${getTargetSdk()}.\n\n`);
-      process.stderr.write(
-        `If that's already current, the artifact Play is comparing against is an older\n`
-      );
-      process.stderr.write(
-        `release on some track (often the manually-uploaded bootstrap AAB) — check\n`
-      );
-      process.stderr.write(`Play Console → Release overview for a release below the required target API level.\n`);
+
+      process.stderr.write(`Cross-checking against Play's own release list (not just trusting this error string)...\n`);
+      const tracks = await fetchTrackReleases(client, PACKAGE_NAME);
+      if (tracks === null) {
+        process.stderr.write(
+          `Could not fetch existing track releases to verify independently — check Play Console\n`
+        );
+        process.stderr.write(`→ Release overview manually for a release below the required target API level.\n`);
+      } else {
+        const releases = flattenReleases(tracks);
+        if (releases.length === 0) {
+          process.stderr.write(`Play reports no releases on any track.\n`);
+        } else {
+          process.stderr.write(`Releases Play currently has on file:\n`);
+          printReleaseTable(releases);
+          process.stderr.write(
+            `\nThis build's versionCode is printed above ("Creating release N ..."); it is not\n`
+          );
+          process.stderr.write(
+            `in this table because the upload was rejected before a release could be created.\n`
+          );
+          process.stderr.write(
+            `Play's target-SDK policy is enforced per app, not per release — the low target SDK\n`
+          );
+          process.stderr.write(
+            `it is citing almost always belongs to whichever release above has the lowest\n`
+          );
+          process.stderr.write(
+            `versionCode (often the manually-uploaded bootstrap AAB used to create the app).\n`
+          );
+          process.stderr.write(`Check that release in Play Console → Release overview and replace it.\n`);
+        }
+      }
       process.exit(1);
     }
 
