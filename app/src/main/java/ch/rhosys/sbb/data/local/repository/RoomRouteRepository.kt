@@ -119,4 +119,5 @@ private fun TripHistoryEntity.toDomain() = TripHistoryItem(
     wasLockedIn = wasLockedIn,
     wasCancelled = wasCancelled,
     departureEpoch = departureEpoch,
+    arrivalEpoch = arrivalEpoch,
 )

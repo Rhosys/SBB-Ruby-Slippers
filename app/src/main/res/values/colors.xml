@@ -7,4 +7,10 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Persistent journey notification -->
+    <color name="journey_accent">#FF0FA3A3</color>
+    <color name="journey_track">#33808080</color>
+    <color name="journey_icon_muted">#FF808080</color>
+    <color name="journey_blip_upcoming">#FFB0BEC5</color>
 </resources>

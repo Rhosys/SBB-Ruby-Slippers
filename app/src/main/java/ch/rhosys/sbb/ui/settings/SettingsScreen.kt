@@ -312,6 +312,30 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+
+        if (Build.VERSION.SDK_INT >= 36) {
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
+            SectionLabel("Status bar chip")
+
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Show total trip remaining", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Off shows time to the next change instead.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = state.journeyChipShowsTotalRemaining,
+                    onCheckedChange = viewModel::setJourneyChipShowsTotalRemaining,
+                )
+            }
+        }
     }
 }
 

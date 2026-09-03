@@ -1,10 +1,15 @@
 package ch.rhosys.sbb.ui.journey
 
+import android.content.Context
+import android.content.Intent
+import androidx.core.content.ContextCompat
 import ch.rhosys.sbb.data.local.preferences.PersistedJourney
 import ch.rhosys.sbb.data.local.preferences.UserPreferencesRepository
 import ch.rhosys.sbb.domain.RouteRepository
 import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.SearchEndpoint
+import ch.rhosys.sbb.notification.JourneyNotificationService
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -16,6 +21,7 @@ import javax.inject.Singleton
 
 @Singleton
 class JourneyStateHolder @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val prefs: UserPreferencesRepository,
     private val autoClearManager: JourneyAutoClearManager,
     private val routeRepository: RouteRepository,
@@ -45,6 +51,7 @@ class JourneyStateHolder @Inject constructor(
             departureEpoch = departureEpoch,
             arrivalEpoch = arrivalEpoch,
         )
+        ContextCompat.startForegroundService(context, Intent(context, JourneyNotificationService::class.java))
     }
 
     fun promptMissedBoarding() {
@@ -60,6 +67,7 @@ class JourneyStateHolder @Inject constructor(
         _missedBoardingPrompt.value = false
         autoClearManager.cancel()
         scope.launch { prefs.clearActiveJourney() }
+        context.stopService(Intent(context, JourneyNotificationService::class.java))
     }
 
     // Explicit user-initiated cancellation, as opposed to arrival/geofence auto-clear:
@@ -73,6 +81,7 @@ class JourneyStateHolder @Inject constructor(
             prefs.clearActiveJourney()
             tripHistoryId?.let { routeRepository.markTripCancelled(it) }
         }
+        context.stopService(Intent(context, JourneyNotificationService::class.java))
     }
 
     data class ActiveJourney(

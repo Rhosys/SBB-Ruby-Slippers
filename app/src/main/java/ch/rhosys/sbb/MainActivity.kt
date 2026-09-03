@@ -1,5 +1,6 @@
 package ch.rhosys.sbb
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,6 +17,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.first
@@ -38,10 +40,25 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var prefs: UserPreferencesRepository
     @Inject lateinit var journeyStateHolder: JourneyStateHolder
 
+    // Tapping the persistent journey notification should always land on the Journeys screen,
+    // whether this activity is cold-started (onCreate) or already running (onNewIntent).
+    private val openJourneyRequested = mutableStateOf(false)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_OPEN_JOURNEY, false)) {
+            openJourneyRequested.value = true
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         val isFreshStart = savedInstanceState == null
+        if (intent?.getBooleanExtra(EXTRA_OPEN_JOURNEY, false) == true) {
+            openJourneyRequested.value = true
+        }
 
         setContent {
             SbbRubySlippersTheme {
@@ -71,6 +88,13 @@ class MainActivity : ComponentActivity() {
                         if (journey.arrivalEpoch > Instant.now().epochSecond) {
                             navController.navigate(Screen.Journeys.route)
                         }
+                    }
+                }
+
+                LaunchedEffect(openJourneyRequested.value) {
+                    if (openJourneyRequested.value) {
+                        navController.navigate(Screen.Journeys.route)
+                        openJourneyRequested.value = false
                     }
                 }
 
@@ -132,5 +156,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    companion object {
+        // Set on the tap intent for the persistent journey notification.
+        const val EXTRA_OPEN_JOURNEY = "ch.rhosys.sbb.extra.OPEN_JOURNEY"
     }
 }

@@ -8,4 +8,5 @@ data class TripHistoryItem(
     val wasLockedIn: Boolean,
     val wasCancelled: Boolean,
     val departureEpoch: Long?,
+    val arrivalEpoch: Long?,
 )

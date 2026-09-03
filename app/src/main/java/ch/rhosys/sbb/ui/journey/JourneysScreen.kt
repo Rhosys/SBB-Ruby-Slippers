@@ -64,7 +64,7 @@ fun JourneysScreen(
         Box(Modifier.weight(1f)) {
             when (state.selectedTab) {
                 JourneysTab.ACTIVE -> ActiveTab(state, viewModel)
-                JourneysTab.PAST -> PastTab(state.lockedInHistory)
+                JourneysTab.PAST -> PastTab(state.lockedInHistory, viewModel)
                 JourneysTab.PLANNED -> PlannedTab(state)
             }
         }
@@ -235,7 +235,7 @@ private fun ActiveTab(state: JourneysUiState, viewModel: JourneysViewModel) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PastTab(history: List<TripHistoryItem>) {
+private fun PastTab(history: List<TripHistoryItem>, viewModel: JourneysViewModel) {
     if (history.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No past trips yet", style = MaterialTheme.typography.bodyMedium,
@@ -272,7 +272,11 @@ private fun PastTab(history: List<TripHistoryItem>) {
                     }
                 }
                 items(items, key = { it.id }) { item ->
-                    TripHistoryCard(item)
+                    TripHistoryCard(
+                        item = item,
+                        canReactivate = item.arrivalEpoch != null && item.arrivalEpoch > now,
+                        onReactivate = { viewModel.reactivateTrip(item) },
+                    )
                 }
             }
             item { Spacer(Modifier.height(16.dp)) }
@@ -300,49 +304,62 @@ private fun PastTab(history: List<TripHistoryItem>) {
 }
 
 @Composable
-private fun TripHistoryCard(item: TripHistoryItem) {
+private fun TripHistoryCard(
+    item: TripHistoryItem,
+    canReactivate: Boolean,
+    onReactivate: () -> Unit,
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "${item.fromName} → ${item.toName}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    if (item.wasCancelled) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.errorContainer,
-                            shape = MaterialTheme.shapes.small,
-                        ) {
-                            Text(
-                                "Cancelled",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            )
+        Column(Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "${item.fromName} → ${item.toName}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        if (item.wasCancelled) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                shape = MaterialTheme.shapes.small,
+                            ) {
+                                Text(
+                                    "Cancelled",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                )
+                            }
                         }
                     }
+                    if (item.departureEpoch != null) {
+                        Text(
+                            formatEpoch(item.departureEpoch),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
-                if (item.departureEpoch != null) {
-                    Text(
-                        formatEpoch(item.departureEpoch),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            }
+            if (canReactivate) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onReactivate,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Reactivate trip")
                 }
             }
         }

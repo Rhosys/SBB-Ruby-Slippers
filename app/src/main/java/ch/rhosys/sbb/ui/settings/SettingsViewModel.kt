@@ -33,6 +33,7 @@ data class SettingsUiState(
     val rtLastErrorMessage: String? = null,
     val calendarSyncing: Boolean = false,
     val calendarSyncError: String? = null,
+    val journeyChipShowsTotalRemaining: Boolean = false,
 )
 
 private data class RtStatus(
@@ -59,7 +60,8 @@ class SettingsViewModel @Inject constructor(
             prefs.rtToken, prefs.rtLastSuccessEpoch, prefs.rtLastErrorEpoch, prefs.rtLastErrorMessage,
         ) { token, successEpoch, errorEpoch, errorMsg -> RtStatus(token, successEpoch, errorEpoch, errorMsg) },
         combine(calendarSyncing, calendarSyncError) { syncing, error -> syncing to error },
-    ) { (walking, running, threshold), (calSync, calInterval), rt, (syncing, error) ->
+        prefs.journeyChipShowsTotalRemaining,
+    ) { (walking, running, threshold), (calSync, calInterval), rt, (syncing, error), chipShowsTotal ->
         SettingsUiState(
             walkingPaceKmh = walking,
             runningPaceKmh = running,
@@ -72,12 +74,15 @@ class SettingsViewModel @Inject constructor(
             rtLastErrorMessage = rt.lastErrorMessage,
             calendarSyncing = syncing,
             calendarSyncError = error,
+            journeyChipShowsTotalRemaining = chipShowsTotal,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
     fun setWalkingPace(kmh: Float) = viewModelScope.launch { prefs.setWalkingPace(kmh) }
     fun setRunningPace(kmh: Float) = viewModelScope.launch { prefs.setRunningPace(kmh) }
     fun setSwitchThreshold(minutes: Int) = viewModelScope.launch { prefs.setSwitchThreshold(minutes) }
+    fun setJourneyChipShowsTotalRemaining(showTotal: Boolean) =
+        viewModelScope.launch { prefs.setJourneyChipShowsTotalRemaining(showTotal) }
 
     /**
      * Called once READ_CALENDAR is granted. Runs an immediate sync check before persisting

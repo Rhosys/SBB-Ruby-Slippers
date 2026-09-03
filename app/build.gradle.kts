@@ -9,12 +9,12 @@ plugins {
 
 android {
     namespace = "ch.rhosys.sbb"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "ch.rhosys.sbb"
         minSdk = 29
-        targetSdk = 35
+        targetSdk = 36
         versionCode = (findProperty("versionCode") as? String)?.toIntOrNull() ?: 1
         versionName = (findProperty("versionName") as? String) ?: "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
