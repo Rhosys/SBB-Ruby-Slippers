@@ -164,13 +164,6 @@ private fun buildRemoteViews(
         views.addView(R.id.journeyBlipRow, blip)
     }
 
-    val endTripIntent = Intent(context, JourneyNotificationActionReceiver::class.java)
-        .setAction(ACTION_END_JOURNEY)
-    val endTripPendingIntent = PendingIntent.getBroadcast(
-        context, 0, endTripIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-    )
-    views.setOnClickPendingIntent(R.id.journeyEndTrip, endTripPendingIntent)
-
     return views
 }
 
@@ -183,6 +176,7 @@ private fun buildNotification(
     val remoteViews = buildRemoteViews(context, progress, destinationName)
     val tapIntent = Intent(context, MainActivity::class.java).apply {
         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        putExtra(MainActivity.EXTRA_OPEN_JOURNEY, true)
     }
     val tapPendingIntent = PendingIntent.getActivity(
         context, 0, tapIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,

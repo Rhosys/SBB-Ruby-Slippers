@@ -209,6 +209,34 @@ class JourneysViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(activeConnection = null, switchPrompt = null)
     }
 
+    // Re-locks-in a Past trip whose scheduled arrival hasn't happened yet (e.g. one the
+    // user cancelled early). Re-fetches connections rather than replaying stale data, since
+    // trip_history only keeps names/times, not the full Connection.
+    fun reactivateTrip(item: TripHistoryItem) = viewModelScope.launch {
+        val from = SearchEndpoint.NamedPlace(item.fromName)
+        val to = SearchEndpoint.NamedPlace(item.toName)
+        val connections = runCatching { transportRepository.getConnections(from, to) }.getOrNull()
+        val now = Instant.now().epochSecond
+        val connection = connections?.firstOrNull { (it.arrival.effectiveTime?.epochSecond ?: 0) > now }
+            ?: connections?.firstOrNull()
+            ?: return@launch
+
+        val tripHistoryId = routeRepository.recordSearch(
+            fromName = item.fromName,
+            toName = item.toName,
+            toLat = 0.0,
+            toLng = 0.0,
+            wasLockedIn = true,
+            departureEpoch = connection.departure.effectiveTime?.epochSecond,
+            arrivalEpoch = connection.arrival.effectiveTime?.epochSecond,
+        )
+        journeyStateHolder.lockIn(connection, from, to, tripHistoryId)
+        _uiState.value = _uiState.value.copy(
+            activeConnection = connection,
+            selectedTab = JourneysTab.ACTIVE,
+        )
+    }
+
     private fun buildReason(active: Connection, better: Connection): String {
         val activeDelay = active.departure.delayMinutes
         return if (activeDelay > 0) {

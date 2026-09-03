@@ -56,14 +56,6 @@
         </service>
 
         <receiver
-            android:name=".notification.JourneyNotificationActionReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="ch.rhosys.sbb.action.END_JOURNEY" />
-            </intent-filter>
-        </receiver>
-
-        <receiver
             android:name=".ui.widget.DepartureWidgetReceiver"
             android:exported="false">
             <intent-filter>

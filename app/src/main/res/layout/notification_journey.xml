@@ -75,18 +75,4 @@
         android:orientation="horizontal"
         android:gravity="center_vertical" />
 
-    <TextView
-        android:id="@+id/journeyEndTrip"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:background="@drawable/bg_journey_end_trip_button"
-        android:gravity="center"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp"
-        android:text="End trip"
-        android:textColor="@color/journey_accent"
-        android:textStyle="bold"
-        android:textSize="14sp" />
-
 </LinearLayout>
