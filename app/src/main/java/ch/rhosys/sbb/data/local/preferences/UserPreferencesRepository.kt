@@ -40,6 +40,8 @@ class UserPreferencesRepository @Inject constructor(
         val RT_LAST_SUCCESS_EPOCH     = longPreferencesKey("rt_last_success_epoch")
         val RT_LAST_ERROR_EPOCH       = longPreferencesKey("rt_last_error_epoch")
         val RT_LAST_ERROR_MESSAGE     = stringPreferencesKey("rt_last_error_message")
+        // Status bar chip (Android 16+ Live Updates) content: next change vs. total trip remaining.
+        val JOURNEY_CHIP_SHOWS_TOTAL_REMAINING = booleanPreferencesKey("journey_chip_shows_total_remaining")
     }
 
     val walkingPaceKmh: Flow<Float>   = dataStore.data.map { it[WALKING_PACE_KMH] ?: 6f }
@@ -52,6 +54,8 @@ class UserPreferencesRepository @Inject constructor(
     val rtLastSuccessEpoch: Flow<Long?> = dataStore.data.map { it[RT_LAST_SUCCESS_EPOCH] }
     val rtLastErrorEpoch: Flow<Long?> = dataStore.data.map { it[RT_LAST_ERROR_EPOCH] }
     val rtLastErrorMessage: Flow<String?> = dataStore.data.map { it[RT_LAST_ERROR_MESSAGE] }
+    val journeyChipShowsTotalRemaining: Flow<Boolean> =
+        dataStore.data.map { it[JOURNEY_CHIP_SHOWS_TOTAL_REMAINING] ?: false }
     val activeJourney: Flow<PersistedJourney?> = dataStore.data.map { prefs ->
         prefs[ACTIVE_JOURNEY]?.let { runCatching { Json.decodeFromString<PersistedJourney>(it) }.getOrNull() }
     }
@@ -68,6 +72,9 @@ class UserPreferencesRepository @Inject constructor(
         it[RT_LAST_ERROR_EPOCH] = epochSecond
         it[RT_LAST_ERROR_MESSAGE] = message
     }
+
+    suspend fun setJourneyChipShowsTotalRemaining(showTotal: Boolean) =
+        dataStore.edit { it[JOURNEY_CHIP_SHOWS_TOTAL_REMAINING] = showTotal }
 
     suspend fun persistActiveJourney(journey: PersistedJourney) = dataStore.edit { prefs ->
         prefs[ACTIVE_JOURNEY] = Json.encodeToString(journey)

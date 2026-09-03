@@ -13,6 +13,9 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Departure reminders — requested contextually in Settings (API 33+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Persistent active-journey progress notification -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
         android:name=".SbbRubySlippersApp"
@@ -23,7 +26,7 @@
         android:theme="@style/Theme.SbbRubySlippers"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
-        tools:targetApi="35">
+        tools:targetApi="36">
 
         <activity
             android:name=".MainActivity"
@@ -40,6 +43,23 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="ch.rhosys.sbb.GEOFENCE_TRANSITION" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".notification.JourneyNotificationService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="active-journey-progress-notification" />
+        </service>
+
+        <receiver
+            android:name=".notification.JourneyNotificationActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="ch.rhosys.sbb.action.END_JOURNEY" />
             </intent-filter>
         </receiver>
 

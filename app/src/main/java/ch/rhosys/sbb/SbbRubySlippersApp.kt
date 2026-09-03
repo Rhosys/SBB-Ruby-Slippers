@@ -8,6 +8,7 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import ch.rhosys.sbb.data.local.location.LocationProvider
 import ch.rhosys.sbb.domain.RouteRepository
+import ch.rhosys.sbb.notification.JourneyNotificationService
 import ch.rhosys.sbb.ui.widget.JourneyWidgetSyncer
 import ch.rhosys.sbb.wear.PhoneWearDataPusher
 import ch.rhosys.sbb.worker.GtfsImportWorker
@@ -69,6 +70,7 @@ class SbbRubySlippersApp : Application(), Configuration.Provider {
     }
 
     private fun createNotificationChannel() {
+        val manager = getSystemService(NotificationManager::class.java)
         val channel = NotificationChannel(
             RouteNotificationWorker.CHANNEL_ID,
             "Departure reminders",
@@ -76,7 +78,17 @@ class SbbRubySlippersApp : Application(), Configuration.Provider {
         ).apply {
             description = "Notifies you before recurring route departures"
         }
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        manager.createNotificationChannel(channel)
+
+        val journeyChannel = NotificationChannel(
+            JourneyNotificationService.CHANNEL_ID,
+            "Active journey",
+            NotificationManager.IMPORTANCE_LOW,
+        ).apply {
+            description = "Ongoing progress for the journey you're currently on"
+            setShowBadge(false)
+        }
+        manager.createNotificationChannel(journeyChannel)
     }
 
     private fun initPostHog() {
