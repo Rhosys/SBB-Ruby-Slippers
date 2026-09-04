@@ -193,7 +193,10 @@ fun ConnectionSearchScreen(
                     item {
                         LoadMoreRow(isLoading = state.isLoadingEarlier, label = "Loading earlier connections…")
                     }
-                    itemsIndexed(state.connections) { index, connection ->
+                    itemsIndexed(
+                        items = state.connections,
+                        key = { _, connection -> connectionKey(connection) },
+                    ) { index, connection ->
                         ConnectionCard(
                             connection = connection,
                             isHero = index == 0,
@@ -275,6 +278,11 @@ fun ConnectionSearchScreen(
         )
     }
 }
+
+// Stable key so LazyColumn anchors scroll position to the connection itself
+// (not its index) when earlier/later pages are prepended/appended.
+private fun connectionKey(connection: Connection): String =
+    "${connection.departure.scheduledTime}-${connection.arrival.scheduledTime}-${connection.lineNames.joinToString()}"
 
 @Composable
 private fun RecentSearchRow(item: TripHistoryItem, onClick: () -> Unit) {
