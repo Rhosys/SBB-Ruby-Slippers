@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -61,20 +63,31 @@ fun StationAutocompleteField(
     // Shows a small spinner (search in progress) or a checkmark (search finished, with
     // results to show) next to the field, so a slow lookup never looks like it's hung.
     isSearching: Boolean = false,
+    // When true, `value` is the internal "current location" placeholder — instead of
+    // showing that raw text, the field renders a colored badge (GPS icon + the resolved
+    // nearest station, once known) in place of it. Tapping the badge clears the field so
+    // the user can type over it.
+    isCurrentLocation: Boolean = false,
+    currentLocationStationName: String? = null,
+    onClearCurrentLocation: () -> Unit = {},
 ) {
     var fieldSize by remember { mutableStateOf(IntSize.Zero) }
     val density = LocalDensity.current
 
     Box(modifier = modifier) {
         OutlinedTextField(
-            value = value,
+            value = if (isCurrentLocation) "" else value,
             onValueChange = onValueChange,
             label = { Text(label) },
             modifier = Modifier
                 .fillMaxWidth()
                 .onGloballyPositioned { fieldSize = it.size },
             singleLine = true,
-            trailingIcon = if (onGpsClick != null || isSearching || value.trim().length >= 2) {
+            readOnly = isCurrentLocation,
+            leadingIcon = if (isCurrentLocation) {
+                { CurrentLocationBadge(stationName = currentLocationStationName, onClick = onClearCurrentLocation) }
+            } else null,
+            trailingIcon = if (onGpsClick != null || isSearching || (!isCurrentLocation && value.trim().length >= 2)) {
                 {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         when {
@@ -82,7 +95,7 @@ fun StationAutocompleteField(
                                 modifier = Modifier.size(16.dp),
                                 strokeWidth = 2.dp,
                             )
-                            value.trim().length >= 2 -> Icon(
+                            !isCurrentLocation && value.trim().length >= 2 -> Icon(
                                 Icons.Default.Check,
                                 contentDescription = "Search finished",
                                 tint = MaterialTheme.colorScheme.primary,
@@ -131,6 +144,37 @@ fun StationAutocompleteField(
                     }
                 }
             }
+        }
+    }
+}
+
+// A small colored chip standing in for the raw "Current location" placeholder text,
+// showing the GPS target icon plus the nearest resolved station (once known) so the
+// user can see location resolution is actually working. Tapping it clears the field.
+@Composable
+private fun CurrentLocationBadge(stationName: String?, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.primaryContainer,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+        ) {
+            Icon(
+                Icons.Default.GpsFixed,
+                contentDescription = "Current location — tap to clear",
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                stationName ?: "Current location",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                maxLines = 1,
+            )
         }
     }
 }

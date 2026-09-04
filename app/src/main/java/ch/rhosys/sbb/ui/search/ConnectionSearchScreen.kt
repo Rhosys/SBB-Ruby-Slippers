@@ -44,10 +44,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.SwapVert
 import ch.rhosys.sbb.R
 import ch.rhosys.sbb.domain.model.Connection
+import ch.rhosys.sbb.domain.model.TripHistoryItem
 import ch.rhosys.sbb.ui.common.AppAlertDialog
 import ch.rhosys.sbb.ui.common.StationAutocompleteField
 import java.time.Instant
@@ -69,8 +71,7 @@ fun ConnectionSearchScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
-    var showDatePicker by remember { mutableStateOf(false) }
-    var showTimePicker by remember { mutableStateOf(false) }
+    var showDateTimePicker by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -90,7 +91,11 @@ fun ConnectionSearchScreen(
                     suggestions = state.fromSuggestions,
                     onSuggestionSelected = viewModel::selectFromSuggestion,
                     onGpsClick = viewModel::fillFromWithNearestStop,
+                    isLocating = state.isFromLocating,
                     isSearching = state.isFromSuggesting,
+                    isCurrentLocation = state.fromIsCurrentLocation,
+                    currentLocationStationName = state.fromBadgeStationName,
+                    onClearCurrentLocation = { viewModel.onFromChanged("") },
                     modifier = Modifier.fillMaxWidth(),
                 )
 
@@ -101,7 +106,11 @@ fun ConnectionSearchScreen(
                     suggestions = state.toSuggestions,
                     onSuggestionSelected = viewModel::selectToSuggestion,
                     onGpsClick = viewModel::fillToWithNearestStop,
+                    isLocating = state.isToLocating,
                     isSearching = state.isToSuggesting,
+                    isCurrentLocation = state.toIsCurrentLocation,
+                    currentLocationStationName = state.toBadgeStationName,
+                    onClearCurrentLocation = { viewModel.onToChanged("") },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -131,11 +140,15 @@ fun ConnectionSearchScreen(
                 label = { Text("Arrive by") },
             )
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = { showDatePicker = true }) {
-                Text(state.searchDate.format(DATE_LABEL_FMT))
+            IconButton(onClick = viewModel::toggleRecentSearches) {
+                Icon(
+                    Icons.Default.History,
+                    contentDescription = "Recent searches",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
             }
-            TextButton(onClick = { showTimePicker = true }) {
-                Text(state.searchTime.format(TIME_LABEL_FMT))
+            TextButton(onClick = { showDateTimePicker = true }) {
+                Text("${state.searchDate.format(DATE_LABEL_FMT)}, ${state.searchTime.format(TIME_LABEL_FMT)}")
             }
         }
 
@@ -200,47 +213,82 @@ fun ConnectionSearchScreen(
         }
     }
 
-    if (showDatePicker) {
+    if (showDateTimePicker) {
         val zone = ZoneId.of("Europe/Zurich")
         val datePickerState = rememberDatePickerState(
             initialSelectedDateMillis = state.searchDate.atStartOfDay(zone).toInstant().toEpochMilli(),
         )
-        AppAlertDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    datePickerState.selectedDateMillis?.let { millis ->
-                        val date = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
-                        viewModel.onDateSelected(date)
-                    }
-                    showDatePicker = false
-                }) { Text("OK") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
-            },
-            text = { DatePicker(state = datePickerState) },
-        )
-    }
-
-    if (showTimePicker) {
         val timePickerState = rememberTimePickerState(
             initialHour = state.searchTime.hour,
             initialMinute = state.searchTime.minute,
             is24Hour = true,
         )
         AppAlertDialog(
-            onDismissRequest = { showTimePicker = false },
+            onDismissRequest = { showDateTimePicker = false },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.onTimeSelected(LocalTime.of(timePickerState.hour, timePickerState.minute))
-                    showTimePicker = false
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val date = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
+                        viewModel.onDateSelected(date)
+                    }
+                    showDateTimePicker = false
                 }) { Text("OK") }
             },
             dismissButton = {
-                TextButton(onClick = { showTimePicker = false }) { Text("Cancel") }
+                TextButton(onClick = { showDateTimePicker = false }) { Text("Cancel") }
             },
-            text = { TimePicker(state = timePickerState) },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    TimePicker(state = timePickerState)
+                    DatePicker(state = datePickerState)
+                }
+            },
+        )
+    }
+
+    if (state.showRecentSearches) {
+        AppAlertDialog(
+            onDismissRequest = viewModel::dismissRecentSearches,
+            confirmButton = {
+                TextButton(onClick = viewModel::dismissRecentSearches) { Text("Close") }
+            },
+            title = { Text("Recent searches") },
+            text = {
+                if (state.recentSearches.isEmpty()) {
+                    Text(
+                        "No recent searches yet.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                } else {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        itemsIndexed(state.recentSearches) { _, item ->
+                            RecentSearchRow(item = item, onClick = { viewModel.selectRecentSearch(item) })
+                        }
+                    }
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun RecentSearchRow(item: TripHistoryItem, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "${item.fromName} → ${item.toName}",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
         )
     }
 }
