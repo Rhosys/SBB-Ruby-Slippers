@@ -1,6 +1,5 @@
 package ch.rhosys.sbb.ui.search
 
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ch.rhosys.sbb.data.local.location.LocationProvider
@@ -12,6 +11,7 @@ import ch.rhosys.sbb.domain.RouteRepository
 import ch.rhosys.sbb.domain.TransportRepository
 import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.SearchEndpoint
+import ch.rhosys.sbb.domain.model.TripHistoryItem
 import ch.rhosys.sbb.ui.journey.TripReviewHolder
 import ch.rhosys.sbb.util.lowercaseAscii
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -35,6 +35,12 @@ data class ConnectionSearchUiState(
     val toSuggestions: List<String> = emptyList(),
     val isFromSuggesting: Boolean = false,
     val isToSuggesting: Boolean = false,
+    val isFromLocating: Boolean = false,
+    val isToLocating: Boolean = false,
+    // Name of the nearest stop to the user's last-resolved GPS fix, shown on the
+    // "Current location" badge so the user can see it's actually working.
+    val fromBadgeStationName: String? = null,
+    val toBadgeStationName: String? = null,
     val smartSuggestions: List<String> = emptyList(),
     val connections: List<Connection> = emptyList(),
     val isLoading: Boolean = false,
@@ -45,7 +51,12 @@ data class ConnectionSearchUiState(
     val searchTime: LocalTime = LocalTime.now(SWISS_ZONE),
     // false = "depart after" searchTime, true = "arrive by" searchTime.
     val isArriveBy: Boolean = false,
-)
+    val showRecentSearches: Boolean = false,
+    val recentSearches: List<TripHistoryItem> = emptyList(),
+) {
+    val fromIsCurrentLocation: Boolean get() = fromText == SearchEndpoint.CURRENT_LOCATION_LABEL
+    val toIsCurrentLocation: Boolean get() = toText == SearchEndpoint.CURRENT_LOCATION_LABEL
+}
 
 @HiltViewModel
 class ConnectionSearchViewModel @Inject constructor(
@@ -55,18 +66,10 @@ class ConnectionSearchViewModel @Inject constructor(
     private val placeRepository: PlaceRepository,
     private val locationProvider: LocationProvider,
     private val tripReviewHolder: TripReviewHolder,
-    savedStateHandle: SavedStateHandle,
+    private val searchNavigationBridge: SearchNavigationBridge,
 ) : ViewModel() {
 
-    private val initialFrom = savedStateHandle.get<String>("from") ?: ""
-    private val initialTo   = savedStateHandle.get<String>("to") ?: ""
-
-    private val _uiState = MutableStateFlow(
-        ConnectionSearchUiState(
-            fromText = initialFrom,
-            toText = initialTo,
-        )
-    )
+    private val _uiState = MutableStateFlow(ConnectionSearchUiState())
     val uiState: StateFlow<ConnectionSearchUiState> = _uiState
 
     private var fromSuggestJob: Job? = null
@@ -75,9 +78,39 @@ class ConnectionSearchViewModel @Inject constructor(
     private var toLocalSuggestJob: Job? = null
     private var autoSearchJob: Job? = null
 
+    // The exact endpoints the currently-displayed connections were resolved against —
+    // reused by openTripReview so the review matches what was actually searched instead
+    // of re-resolving "Current location" a second time against a possibly different fix.
+    private var lastResolvedFrom: SearchEndpoint? = null
+    private var lastResolvedTo: SearchEndpoint? = null
+
     init {
         viewModelScope.launch { loadSmartSuggestions() }
-        if (initialFrom.isNotBlank() && initialTo.isNotBlank()) search()
+
+        // The Search tab keeps showing whatever was last searched, but Home (and anywhere
+        // else that plans a trip) still needs a way to push a fresh from/to into it without
+        // resetting the whole screen through navigation args — this bridge is that channel.
+        viewModelScope.launch {
+            searchNavigationBridge.pending.collect { request ->
+                if (request == null) return@collect
+                applyIncomingRequest(request)
+                searchNavigationBridge.consume()
+            }
+        }
+    }
+
+    private fun applyIncomingRequest(request: SearchNavigationBridge.Request) {
+        fromLocalSuggestJob?.cancel(); fromSuggestJob?.cancel()
+        toLocalSuggestJob?.cancel(); toSuggestJob?.cancel()
+        _uiState.value = _uiState.value.copy(
+            fromText = request.from,
+            toText = request.to,
+            fromSuggestions = emptyList(),
+            toSuggestions = emptyList(),
+            fromBadgeStationName = null,
+            toBadgeStationName = null,
+        )
+        scheduleAutoSearch(immediate = true)
     }
 
     private suspend fun loadSmartSuggestions() {
@@ -106,11 +139,41 @@ class ConnectionSearchViewModel @Inject constructor(
             .take(4)
             .forEach { if (seen.add(it.toName)) result.add(it.toName) }
 
-        _uiState.value = _uiState.value.copy(
+        val current = _uiState.value
+        _uiState.value = current.copy(
             smartSuggestions = result,
-            fromSuggestions = if (initialFrom.isEmpty()) result else emptyList(),
-            toSuggestions = if (initialTo.isEmpty()) result else emptyList(),
+            fromSuggestions = if (current.fromText.isEmpty()) result else current.fromSuggestions,
+            toSuggestions = if (current.toText.isEmpty()) result else current.toSuggestions,
         )
+    }
+
+    fun toggleRecentSearches() {
+        val opening = !_uiState.value.showRecentSearches
+        _uiState.value = _uiState.value.copy(showRecentSearches = opening)
+        if (opening) {
+            viewModelScope.launch {
+                _uiState.value = _uiState.value.copy(recentSearches = routeRepository.getRecentSearches(20))
+            }
+        }
+    }
+
+    fun dismissRecentSearches() {
+        _uiState.value = _uiState.value.copy(showRecentSearches = false)
+    }
+
+    fun selectRecentSearch(item: TripHistoryItem) {
+        fromLocalSuggestJob?.cancel(); fromSuggestJob?.cancel()
+        toLocalSuggestJob?.cancel(); toSuggestJob?.cancel()
+        _uiState.value = _uiState.value.copy(
+            fromText = item.fromName,
+            toText = item.toName,
+            fromSuggestions = emptyList(),
+            toSuggestions = emptyList(),
+            fromBadgeStationName = null,
+            toBadgeStationName = null,
+            showRecentSearches = false,
+        )
+        scheduleAutoSearch(immediate = true)
     }
 
     // Suggestions come from two sources run in parallel: the on-device GTFS stop cache
@@ -122,6 +185,7 @@ class ConnectionSearchViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             fromText = value,
             fromSuggestions = if (value.isEmpty()) smart else emptyList(),
+            fromBadgeStationName = null,
         )
         fromLocalSuggestJob?.cancel()
         fromSuggestJob?.cancel()
@@ -155,6 +219,7 @@ class ConnectionSearchViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             toText = value,
             toSuggestions = if (value.isEmpty()) smart else emptyList(),
+            toBadgeStationName = null,
         )
         toLocalSuggestJob?.cancel()
         toSuggestJob?.cancel()
@@ -198,44 +263,63 @@ class ConnectionSearchViewModel @Inject constructor(
     fun selectFromSuggestion(name: String) {
         fromLocalSuggestJob?.cancel()
         fromSuggestJob?.cancel()
-        _uiState.value = _uiState.value.copy(fromText = name, fromSuggestions = emptyList(), isFromSuggesting = false)
+        _uiState.value = _uiState.value.copy(
+            fromText = name, fromSuggestions = emptyList(), isFromSuggesting = false, fromBadgeStationName = null,
+        )
         scheduleAutoSearch(immediate = true)
     }
 
     fun selectToSuggestion(name: String) {
         toLocalSuggestJob?.cancel()
         toSuggestJob?.cancel()
-        _uiState.value = _uiState.value.copy(toText = name, toSuggestions = emptyList(), isToSuggesting = false)
+        _uiState.value = _uiState.value.copy(
+            toText = name, toSuggestions = emptyList(), isToSuggesting = false, toBadgeStationName = null,
+        )
         scheduleAutoSearch(immediate = true)
     }
 
-    // Already tracked continuously (see LocationProvider), so this is instant off the
-    // cached value — no spinner, no wait. No fix yet → leave the field untouched
-    // rather than clearing it. A background refresh is kicked off for next time.
+    // Requests a brand-new GPS fix (never a stale cached one) and resolves the nearest
+    // stop name for the badge, so the field always reflects where the user actually is
+    // right now rather than wherever they were the last time this was tapped.
     fun fillFromWithNearestStop() {
         fromLocalSuggestJob?.cancel()
         fromSuggestJob?.cancel()
-        locationProvider.refreshNow()
-        if (locationProvider.currentLocation.value == null) return
         _uiState.value = _uiState.value.copy(
             fromText = SearchEndpoint.CURRENT_LOCATION_LABEL,
             fromSuggestions = emptyList(),
             isFromSuggesting = false,
+            isFromLocating = true,
+            fromBadgeStationName = null,
         )
-        scheduleAutoSearch(immediate = true)
+        viewModelScope.launch {
+            val stationName = resolveCurrentLocationBadge()
+            _uiState.value = _uiState.value.copy(isFromLocating = false, fromBadgeStationName = stationName)
+            scheduleAutoSearch(immediate = true)
+        }
     }
 
     fun fillToWithNearestStop() {
         toLocalSuggestJob?.cancel()
         toSuggestJob?.cancel()
-        locationProvider.refreshNow()
-        if (locationProvider.currentLocation.value == null) return
         _uiState.value = _uiState.value.copy(
             toText = SearchEndpoint.CURRENT_LOCATION_LABEL,
             toSuggestions = emptyList(),
             isToSuggesting = false,
+            isToLocating = true,
+            toBadgeStationName = null,
         )
-        scheduleAutoSearch(immediate = true)
+        viewModelScope.launch {
+            val stationName = resolveCurrentLocationBadge()
+            _uiState.value = _uiState.value.copy(isToLocating = false, toBadgeStationName = stationName)
+            scheduleAutoSearch(immediate = true)
+        }
+    }
+
+    private suspend fun resolveCurrentLocationBadge(): String? {
+        val (lat, lng) = locationProvider.getFreshLocationOrNull() ?: return null
+        return localRouter.nearestStopName(lat, lng)
+            ?: runCatching { repository.getLocationsByCoordinate(lat, lng) }
+                .getOrNull()?.stations?.firstOrNull()?.name
     }
 
     // Debounced while typing; immediate right after a discrete selection (suggestion tap, GPS fill).
@@ -249,11 +333,12 @@ class ConnectionSearchViewModel @Inject constructor(
     }
 
     // Resolves the "Current location" placeholder text (typed, tapped, or dragged in)
-    // into an actual coordinate-bearing endpoint using the continuously-tracked
-    // location; falls back to a plain named lookup for everything else.
-    private fun endpointFor(text: String): SearchEndpoint {
+    // into an actual coordinate-bearing endpoint using a freshly-requested fix — never a
+    // location computed for a previous search — falling back to a plain named lookup for
+    // everything else.
+    private suspend fun endpointFor(text: String): SearchEndpoint {
         if (text == SearchEndpoint.CURRENT_LOCATION_LABEL) {
-            locationProvider.currentLocation.value?.let { (lat, lng) ->
+            locationProvider.getFreshLocationOrNull()?.let { (lat, lng) ->
                 return SearchEndpoint.CurrentLocation(lat, lng)
             }
         }
@@ -283,6 +368,8 @@ class ConnectionSearchViewModel @Inject constructor(
             toText = s.fromText,
             fromSuggestions = emptyList(),
             toSuggestions = emptyList(),
+            fromBadgeStationName = s.toBadgeStationName,
+            toBadgeStationName = s.fromBadgeStationName,
         )
         scheduleAutoSearch(immediate = true)
     }
@@ -292,9 +379,6 @@ class ConnectionSearchViewModel @Inject constructor(
         val to   = _uiState.value.toText.trim()
         if (to.isBlank()) return
 
-        val fromEndpoint = endpointFor(from.ifBlank { to })
-        val toEndpoint = endpointFor(to)
-
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isLoading = true,
@@ -303,6 +387,11 @@ class ConnectionSearchViewModel @Inject constructor(
                 fromSuggestions = emptyList(),
                 toSuggestions = emptyList(),
             )
+
+            val fromEndpoint = endpointFor(from.ifBlank { to })
+            val toEndpoint = endpointFor(to)
+            lastResolvedFrom = fromEndpoint
+            lastResolvedTo = toEndpoint
 
             val routingTime = routingTimeFor(_uiState.value.searchTime)
             if (localRouter.hasData()) {
@@ -324,11 +413,10 @@ class ConnectionSearchViewModel @Inject constructor(
         val firstDeparture = first.departure.scheduledTime?.atZone(SWISS_ZONE)?.toLocalTime() ?: return
         if (firstDeparture == LocalTime.MIDNIGHT) return
 
-        val from = endpointFor(state.fromText.trim().ifBlank { state.toText.trim() })
-        val to = endpointFor(state.toText.trim())
-
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoadingEarlier = true)
+            val from = endpointFor(state.fromText.trim().ifBlank { state.toText.trim() })
+            val to = endpointFor(state.toText.trim())
             val earlier = fetchConnections(from, to, state.searchDate, firstDeparture.minusMinutes(1), isArriveBy = true)
             _uiState.value = _uiState.value.copy(
                 connections = mergeConnections(earlier, _uiState.value.connections),
@@ -343,11 +431,10 @@ class ConnectionSearchViewModel @Inject constructor(
         val last = state.connections.lastOrNull() ?: return
         val lastDeparture = last.departure.scheduledTime?.atZone(SWISS_ZONE)?.toLocalTime() ?: return
 
-        val from = endpointFor(state.fromText.trim().ifBlank { state.toText.trim() })
-        val to = endpointFor(state.toText.trim())
-
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoadingLater = true)
+            val from = endpointFor(state.fromText.trim().ifBlank { state.toText.trim() })
+            val to = endpointFor(state.toText.trim())
             val later = fetchConnections(from, to, state.searchDate, lastDeparture.plusMinutes(1), isArriveBy = false)
             _uiState.value = _uiState.value.copy(
                 connections = mergeConnections(_uiState.value.connections, later),
@@ -428,8 +515,8 @@ class ConnectionSearchViewModel @Inject constructor(
         val toText   = _uiState.value.toText.trim()
         tripReviewHolder.set(
             connection = connection,
-            from = endpointFor(fromText.ifBlank { toText }),
-            to   = endpointFor(toText),
+            from = lastResolvedFrom ?: SearchEndpoint.NamedPlace(fromText.ifBlank { toText }),
+            to   = lastResolvedTo ?: SearchEndpoint.NamedPlace(toText),
         )
     }
 }

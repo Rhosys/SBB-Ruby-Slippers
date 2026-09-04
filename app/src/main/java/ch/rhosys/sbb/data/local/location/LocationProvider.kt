@@ -88,4 +88,24 @@ class LocationProvider @Inject constructor(
             loc?.let { it.latitude to it.longitude }
         }.getOrNull()?.also { _currentLocation.value = it }
     }
+
+    /**
+     * Always requests a brand-new fix rather than returning a previously cached one, so
+     * callers that must reflect the user's *current* position (not wherever they were when
+     * "Current location" was last resolved) get up-to-date coordinates. Falls back to the
+     * last known fix only if the fresh request fails outright.
+     */
+    suspend fun getFreshLocationOrNull(): Pair<Double, Double>? {
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_COARSE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasPermission) return _currentLocation.value
+        val fresh = runCatching {
+            val cts = CancellationTokenSource()
+            val loc = fusedClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts.token).await()
+            loc?.let { it.latitude to it.longitude }
+        }.getOrNull()
+        if (fresh != null) _currentLocation.value = fresh
+        return fresh ?: _currentLocation.value
+    }
 }

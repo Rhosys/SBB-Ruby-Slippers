@@ -64,6 +64,15 @@ class LocalTransportRepository @Inject constructor(
 
     fun hasData(): Boolean = store.hasData()
 
+    // Offline nearest-stop lookup over the on-device GTFS cache — used to label the
+    // "current location" badge with a real station name without a network round trip.
+    suspend fun nearestStopName(lat: Double, lng: Double): String? {
+        val data = getOrLoad() ?: return null
+        return withContext(Dispatchers.Default) {
+            data.parsed.network.stops.minByOrNull { haversineMeters(it.lat, it.lng, lat, lng) }?.name
+        }
+    }
+
     // Instant, offline name search over the on-device GTFS stop cache — a substring match
     // against the ASCII-lowercased name, so "zurich" still matches "Zürich" but distinct
     // accented names never collapse into the same key. Meant to be combined with (and

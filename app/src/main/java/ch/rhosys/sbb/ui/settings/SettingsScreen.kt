@@ -51,6 +51,14 @@ import kotlin.math.roundToInt
 // "GTFS-RT" API specifically; that's the one GtfsRtRefreshWorker authenticates against.
 private const val RT_TOKEN_SIGNUP_URL = "https://api-manager.opentransportdata.swiss/"
 
+// 0.5-5.0 km/h in 0.1 increments; 0.5-10.0 km/h in 0.1 increments. `steps` counts the
+// discrete positions *between* the two ends, so it's one less than the number of 0.1
+// increments spanning the range.
+private val WALKING_PACE_RANGE = 0.5f..5f
+private val WALKING_PACE_STEPS = (((WALKING_PACE_RANGE.endInclusive - WALKING_PACE_RANGE.start) / 0.1f).roundToInt()) - 1
+private val RUNNING_PACE_RANGE = 0.5f..10f
+private val RUNNING_PACE_STEPS = (((RUNNING_PACE_RANGE.endInclusive - RUNNING_PACE_RANGE.start) / 0.1f).roundToInt()) - 1
+
 @Composable
 fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsState()
@@ -103,19 +111,21 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         LabelledSlider(
             label = "Walking pace",
             value = state.walkingPaceKmh,
-            valueLabel = "${state.walkingPaceKmh.roundToInt()} km/h",
-            range = 2f..12f,
-            steps = 9,
+            valueLabel = "%.1f km/h".format(state.walkingPaceKmh),
+            range = WALKING_PACE_RANGE,
+            steps = WALKING_PACE_STEPS,
             onValueChange = viewModel::setWalkingPace,
+            endpointFormat = { "%.1f".format(it) },
         )
 
         LabelledSlider(
             label = "Running pace",
             value = state.runningPaceKmh,
-            valueLabel = "${state.runningPaceKmh.roundToInt()} km/h",
-            range = 6f..20f,
-            steps = 13,
+            valueLabel = "%.1f km/h".format(state.runningPaceKmh),
+            range = RUNNING_PACE_RANGE,
+            steps = RUNNING_PACE_STEPS,
             onValueChange = viewModel::setRunningPace,
+            endpointFormat = { "%.1f".format(it) },
         )
 
         HorizontalDivider(Modifier.padding(vertical = 12.dp))
@@ -386,6 +396,7 @@ private fun LabelledSlider(
     range: ClosedFloatingPointRange<Float>,
     steps: Int,
     onValueChange: (Float) -> Unit,
+    endpointFormat: (Float) -> String = { it.roundToInt().toString() },
 ) {
     Column {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -400,5 +411,19 @@ private fun LabelledSlider(
             steps = steps,
             modifier = Modifier.fillMaxWidth(),
         )
+        // Endpoint markings: the min/max values the slider actually spans, so it's clear
+        // at a glance what dragging all the way to either end sets.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                endpointFormat(range.start),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                endpointFormat(range.endInclusive),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }

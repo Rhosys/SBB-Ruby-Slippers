@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -29,6 +30,7 @@ import ch.rhosys.sbb.ui.journey.JourneyStateHolder
 import ch.rhosys.sbb.ui.journey.MissedBoardingDialog
 import ch.rhosys.sbb.ui.navigation.AppNavHost
 import ch.rhosys.sbb.ui.navigation.Screen
+import ch.rhosys.sbb.ui.search.SearchNavigationBridge
 import ch.rhosys.sbb.ui.theme.SbbRubySlippersTheme
 import dagger.hilt.android.AndroidEntryPoint
 import java.time.Instant
@@ -39,6 +41,7 @@ class MainActivity : ComponentActivity() {
 
     @Inject lateinit var prefs: UserPreferencesRepository
     @Inject lateinit var journeyStateHolder: JourneyStateHolder
+    @Inject lateinit var searchNavigationBridge: SearchNavigationBridge
 
     // Tapping the persistent journey notification should always land on the Journeys screen,
     // whether this activity is cold-started (onCreate) or already running (onNewIntent).
@@ -114,6 +117,7 @@ class MainActivity : ComponentActivity() {
 
                 val tabScreens = listOf(
                     Triple(Screen.Home,     "Home",     Icons.Default.Home),
+                    Triple(Screen.Search,   "Search",   Icons.Default.Search),
                     Triple(Screen.Journeys, "Journeys", Icons.Default.DateRange),
                     Triple(Screen.Settings, "Settings", Icons.Default.Settings),
                 )
@@ -151,6 +155,7 @@ class MainActivity : ComponentActivity() {
                     AppNavHost(
                         navController = navController,
                         startDestination = startDestination,
+                        searchNavigationBridge = searchNavigationBridge,
                         modifier = Modifier.padding(innerPadding),
                     )
                 }

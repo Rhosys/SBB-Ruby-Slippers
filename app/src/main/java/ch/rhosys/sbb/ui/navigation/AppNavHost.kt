@@ -3,10 +3,8 @@ package ch.rhosys.sbb.ui.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
-import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.navArgument
 import ch.rhosys.sbb.ui.fares.FaresTeaserScreen
 import ch.rhosys.sbb.ui.home.HomeScreen
 import ch.rhosys.sbb.ui.places.HomeEditScreen
@@ -14,12 +12,14 @@ import ch.rhosys.sbb.ui.journey.JourneysScreen
 import ch.rhosys.sbb.ui.journey.TripReviewScreen
 import ch.rhosys.sbb.ui.onboarding.OnboardingScreen
 import ch.rhosys.sbb.ui.search.ConnectionSearchScreen
+import ch.rhosys.sbb.ui.search.SearchNavigationBridge
 import ch.rhosys.sbb.ui.settings.SettingsScreen
 
 @Composable
 fun AppNavHost(
     navController: NavHostController,
     startDestination: String,
+    searchNavigationBridge: SearchNavigationBridge,
     modifier: Modifier = Modifier,
 ) {
     NavHost(
@@ -40,7 +40,12 @@ fun AppNavHost(
         composable(Screen.Home.route) {
             HomeScreen(
                 onNavigateToSearch = { from, to ->
-                    navController.navigate(Screen.Search.withArgs(from, to))
+                    searchNavigationBridge.request(from, to)
+                    navController.navigate(Screen.Search.route) {
+                        popUpTo(Screen.Home.route) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
                 },
                 onNavigateToJourneys = {
                     navController.navigate(Screen.Journeys.route)
@@ -57,13 +62,7 @@ fun AppNavHost(
             )
         }
 
-        composable(
-            route = Screen.Search.route,
-            arguments = listOf(
-                navArgument("from") { type = NavType.StringType; defaultValue = "" },
-                navArgument("to")   { type = NavType.StringType; defaultValue = "" },
-            ),
-        ) {
+        composable(Screen.Search.route) {
             ConnectionSearchScreen(
                 onNavigateToReview = {
                     navController.navigate(Screen.TripReview.route)
