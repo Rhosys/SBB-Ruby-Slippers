@@ -11,7 +11,7 @@ data class LocationDto(
     val name: String? = null,
     val score: Double? = null,
     val coordinate: CoordinateDto? = null,
-    val distance: Int? = null,
+    val distance: Double? = null,
 )
 
 @Serializable
