@@ -34,6 +34,27 @@ class JourneyStateHolder @Inject constructor(
     private val _missedBoardingPrompt = MutableStateFlow(false)
     val missedBoardingPrompt: StateFlow<Boolean> = _missedBoardingPrompt
 
+    // Records the trip in history and locks it in as the active journey. Runs on this
+    // holder's own singleton-scoped CoroutineScope (not a ViewModel's) so the work isn't
+    // cancelled when the caller navigates away and its own screen's ViewModel is cleared.
+    fun startJourney(connection: Connection, from: SearchEndpoint, to: SearchEndpoint) {
+        lockIn(connection, from, to)
+        scope.launch {
+            val tripHistoryId = routeRepository.recordSearch(
+                fromName = from.displayName(),
+                toName = to.displayName(),
+                toLat = to.latOrNull() ?: 0.0,
+                toLng = to.lngOrNull() ?: 0.0,
+                wasLockedIn = true,
+                departureEpoch = connection.departure.effectiveTime?.epochSecond,
+                arrivalEpoch = connection.arrival.effectiveTime?.epochSecond,
+            )
+            if (_activeJourney.value?.connection == connection) {
+                _activeJourney.value = _activeJourney.value?.copy(tripHistoryId = tripHistoryId)
+            }
+        }
+    }
+
     fun lockIn(connection: Connection, from: SearchEndpoint, to: SearchEndpoint, tripHistoryId: Long? = null) {
         _activeJourney.value = ActiveJourney(connection, from, to, tripHistoryId)
         val departureEpoch = connection.departure.effectiveTime?.epochSecond

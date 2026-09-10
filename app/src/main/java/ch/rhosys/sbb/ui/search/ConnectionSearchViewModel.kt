@@ -12,6 +12,7 @@ import ch.rhosys.sbb.domain.TransportRepository
 import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.SearchEndpoint
 import ch.rhosys.sbb.domain.model.TripHistoryItem
+import ch.rhosys.sbb.ui.journey.JourneyStateHolder
 import ch.rhosys.sbb.ui.journey.TripReviewHolder
 import ch.rhosys.sbb.util.lowercaseAscii
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -53,6 +54,9 @@ data class ConnectionSearchUiState(
     val isArriveBy: Boolean = false,
     val showRecentSearches: Boolean = false,
     val recentSearches: List<TripHistoryItem> = emptyList(),
+    // Stable key of the currently active (started) journey, if any of the displayed
+    // connections is it — drives the "already started" highlight on its card.
+    val activeConnectionKey: String? = null,
 ) {
     val fromIsCurrentLocation: Boolean get() = fromText == SearchEndpoint.CURRENT_LOCATION_LABEL
     val toIsCurrentLocation: Boolean get() = toText == SearchEndpoint.CURRENT_LOCATION_LABEL
@@ -67,6 +71,7 @@ class ConnectionSearchViewModel @Inject constructor(
     private val locationProvider: LocationProvider,
     private val tripReviewHolder: TripReviewHolder,
     private val searchNavigationBridge: SearchNavigationBridge,
+    private val journeyStateHolder: JourneyStateHolder,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ConnectionSearchUiState())
@@ -95,6 +100,11 @@ class ConnectionSearchViewModel @Inject constructor(
                 if (request == null) return@collect
                 applyIncomingRequest(request)
                 searchNavigationBridge.consume()
+            }
+        }
+        viewModelScope.launch {
+            journeyStateHolder.activeJourney.collect { journey ->
+                _uiState.value = _uiState.value.copy(activeConnectionKey = journey?.connection?.stableKey)
             }
         }
     }

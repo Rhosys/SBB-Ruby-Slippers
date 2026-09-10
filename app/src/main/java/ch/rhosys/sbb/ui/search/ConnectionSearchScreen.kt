@@ -41,6 +41,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.material.icons.Icons
@@ -195,12 +196,14 @@ fun ConnectionSearchScreen(
                     }
                     itemsIndexed(
                         items = state.connections,
-                        key = { _, connection -> connectionKey(connection) },
+                        key = { _, connection -> connection.stableKey },
                     ) { index, connection ->
                         ConnectionCard(
                             connection = connection,
+                            order = index + 1,
                             isHero = index == 0,
                             isRecommended = shortestDuration != null && connection.transitDuration == shortestDuration,
+                            isActiveJourney = connection.stableKey == state.activeConnectionKey,
                             onClick = {
                                 viewModel.openTripReview(connection)
                                 onNavigateToReview()
@@ -279,11 +282,6 @@ fun ConnectionSearchScreen(
     }
 }
 
-// Stable key so LazyColumn anchors scroll position to the connection itself
-// (not its index) when earlier/later pages are prepended/appended.
-private fun connectionKey(connection: Connection): String =
-    "${connection.departure.scheduledTime}-${connection.arrival.scheduledTime}-${connection.lineNames.joinToString()}"
-
 @Composable
 private fun RecentSearchRow(item: TripHistoryItem, onClick: () -> Unit) {
     Row(
@@ -318,12 +316,16 @@ private fun LoadMoreRow(isLoading: Boolean, label: String) {
 }
 
 private val RECOMMENDED_GREEN = androidx.compose.ui.graphics.Color(0xFF2E7D32)
+private val ACTIVE_JOURNEY_GREEN = androidx.compose.ui.graphics.Color(0xFF1B5E20)
+private val ACTIVE_JOURNEY_GREEN_CONTAINER = androidx.compose.ui.graphics.Color(0xFFA5D6A7)
 
 @Composable
 private fun ConnectionCard(
     connection: Connection,
+    order: Int,
     isHero: Boolean,
     isRecommended: Boolean,
+    isActiveJourney: Boolean,
     onClick: () -> Unit,
     onFaresTap: () -> Unit,
 ) {
@@ -331,10 +333,20 @@ private fun ConnectionCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        colors = if (isHero) CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-        ) else CardDefaults.cardColors(),
-        border = if (isRecommended) BorderStroke(2.dp, RECOMMENDED_GREEN) else null,
+        colors = when {
+            isActiveJourney -> CardDefaults.cardColors(
+                containerColor = ACTIVE_JOURNEY_GREEN_CONTAINER,
+            )
+            isHero -> CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+            )
+            else -> CardDefaults.cardColors()
+        },
+        border = when {
+            isActiveJourney -> BorderStroke(2.dp, ACTIVE_JOURNEY_GREEN)
+            isRecommended -> BorderStroke(2.dp, RECOMMENDED_GREEN)
+            else -> null
+        },
     ) {
         Row(
             modifier = Modifier
@@ -370,7 +382,14 @@ private fun ConnectionCard(
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
-                if (isRecommended) {
+                if (isActiveJourney) {
+                    Text(
+                        "Journey started · #$order",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = ACTIVE_JOURNEY_GREEN,
+                    )
+                } else if (isRecommended) {
                     Text(
                         "Shortest connection",
                         style = MaterialTheme.typography.labelSmall,

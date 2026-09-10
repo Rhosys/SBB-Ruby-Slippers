@@ -65,10 +65,22 @@ class JourneysViewModel @Inject constructor(
         if (journeyStateHolder.activeJourney.value == null) {
             viewModelScope.launch { restoreJourney() }
         }
+        observeActiveJourney()
         startPolling()
         observeRtAlerts()
         observePastAndPlanned()
         viewModelScope.launch { routeRepository.pruneExpiredBrowsedTrips() }
+    }
+
+    // Reflects the active journey as it changes, rather than only reading it once at
+    // construction time — a journey locked in elsewhere (e.g. the trip review screen)
+    // must show up here even if this ViewModel already existed when that happened.
+    private fun observeActiveJourney() {
+        viewModelScope.launch {
+            journeyStateHolder.activeJourney.collect { journey ->
+                _uiState.value = _uiState.value.copy(activeConnection = journey?.connection)
+            }
+        }
     }
 
     fun selectTab(tab: JourneysTab) {

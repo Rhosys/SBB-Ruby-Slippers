@@ -55,18 +55,10 @@ class TripReviewViewModel @Inject constructor(
 
     fun lockIn(): Boolean {
         val candidate = holder.candidate.value ?: return false
-        viewModelScope.launch {
-            val tripHistoryId = routeRepository.recordSearch(
-                fromName = candidate.from.displayName(),
-                toName = candidate.to.displayName(),
-                toLat = candidate.to.latOrNull() ?: 0.0,
-                toLng = candidate.to.lngOrNull() ?: 0.0,
-                wasLockedIn = true,
-                departureEpoch = candidate.connection.departure.effectiveTime?.epochSecond,
-                arrivalEpoch = candidate.connection.arrival.effectiveTime?.epochSecond,
-            )
-            journeyStateHolder.lockIn(candidate.connection, candidate.from, candidate.to, tripHistoryId)
-        }
+        // Delegated to JourneyStateHolder's own scope rather than viewModelScope: this
+        // ViewModel is cleared as soon as navigation pops TripReview off the back stack,
+        // which would cancel the record+lock-in work before it finished.
+        journeyStateHolder.startJourney(candidate.connection, candidate.from, candidate.to)
         holder.clear()
         return true
     }
