@@ -2,6 +2,7 @@ package ch.rhosys.sbb.ui.journey
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import ch.rhosys.sbb.data.local.location.LocationProvider
 import ch.rhosys.sbb.data.local.preferences.UserPreferencesRepository
 import ch.rhosys.sbb.data.local.routing.rt.GtfsRtStore
 import ch.rhosys.sbb.data.local.routing.rt.RtAlert
@@ -15,7 +16,9 @@ import ch.rhosys.sbb.domain.model.SearchEndpoint
 import ch.rhosys.sbb.domain.model.TripHistoryItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -43,6 +46,9 @@ data class JourneysUiState(
     // Planned tab
     val savedRoutes: List<SavedRoute> = emptyList(),
     val recurringRoutes: List<RecurringRoute> = emptyList(),
+    // Id of the saved/recurring route currently being resolved into a reviewable
+    // connection, so its card can show a loading state and taps can be ignored meanwhile.
+    val openingRouteId: Long? = null,
 )
 
 @HiltViewModel
@@ -52,6 +58,8 @@ class JourneysViewModel @Inject constructor(
     private val prefs: UserPreferencesRepository,
     private val rtStore: GtfsRtStore,
     private val routeRepository: RouteRepository,
+    private val tripReviewHolder: TripReviewHolder,
+    private val locationProvider: LocationProvider,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -60,6 +68,11 @@ class JourneysViewModel @Inject constructor(
         )
     )
     val uiState: StateFlow<JourneysUiState> = _uiState
+
+    // One-shot navigation signal collected by the screen — resolving a saved/recurring
+    // route into a connection is async, so this fires only once that has succeeded.
+    private val _navigateToTripReview = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val navigateToTripReview: SharedFlow<Unit> = _navigateToTripReview
 
     init {
         if (journeyStateHolder.activeJourney.value == null) {
@@ -247,6 +260,34 @@ class JourneysViewModel @Inject constructor(
             activeConnection = connection,
             selectedTab = JourneysTab.ACTIVE,
         )
+    }
+
+    fun openSavedRoute(route: SavedRoute) = openDestination(route.id, route.toDestinationEndpoint())
+
+    fun openRecurringRoute(route: RecurringRoute) = openDestination(route.id, route.toDestinationEndpoint())
+
+    // Saved/recurring routes only store a destination — the trip is always current
+    // location → that destination, same as tapping the place tile on Home would search.
+    private fun openDestination(routeId: Long, to: SearchEndpoint) = viewModelScope.launch {
+        if (_uiState.value.openingRouteId != null) return@launch
+        _uiState.value = _uiState.value.copy(openingRouteId = routeId)
+
+        val location = locationProvider.getLocationOrNull()
+        val from = if (location != null) {
+            SearchEndpoint.CurrentLocation(location.first, location.second)
+        } else {
+            SearchEndpoint.NamedPlace("")
+        }
+
+        val connection = runCatching { transportRepository.getConnections(from, to) }
+            .getOrNull()
+            ?.firstOrNull()
+
+        _uiState.value = _uiState.value.copy(openingRouteId = null)
+        if (connection != null) {
+            tripReviewHolder.set(connection, from, to)
+            _navigateToTripReview.emit(Unit)
+        }
     }
 
     private fun buildReason(active: Connection, better: Connection): String {
