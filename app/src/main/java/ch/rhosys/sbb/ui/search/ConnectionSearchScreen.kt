@@ -22,9 +22,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -33,18 +35,23 @@ import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.SwapVert
 import ch.rhosys.sbb.R
@@ -52,6 +59,7 @@ import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.TripHistoryItem
 import ch.rhosys.sbb.ui.common.AppAlertDialog
 import ch.rhosys.sbb.ui.common.StationAutocompleteField
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -171,6 +179,13 @@ fun ConnectionSearchScreen(
             else -> {
                 val listState = rememberLazyListState()
                 val shortestDuration = state.connections.mapNotNull { it.transitDuration }.minOrNull()
+                val now = remember(state.connections) { Instant.now() }
+                val rows = remember(state.connections, now) { buildRowsWithNowDivider(state.connections, now) }
+                // Index of the "Now" row within the LazyColumn's own item indices — offset
+                // by 1 for the leading "load earlier" sentinel — used to tell whether the
+                // divider is currently on-screen or has scrolled past the visible range.
+                val nowLazyIndex = remember(rows) { 1 + rows.indexOfFirst { it is ConnectionListRow.NowDivider } }
+                val scope = rememberCoroutineScope()
 
                 LaunchedEffect(listState, state.connections) {
                     snapshotFlow { listState.layoutInfo }
@@ -185,31 +200,66 @@ fun ConnectionSearchScreen(
                         }
                 }
 
-                LazyColumn(
-                    state = listState,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(vertical = 4.dp),
-                ) {
-                    item {
-                        LoadMoreRow(isLoading = state.isLoadingEarlier, label = "Loading earlier connections…")
+                val nowPinnedEdge by remember(nowLazyIndex) {
+                    derivedStateOf {
+                        val visible = listState.layoutInfo.visibleItemsInfo
+                        val firstVisible = visible.firstOrNull()?.index
+                        val lastVisible = visible.lastOrNull()?.index
+                        when {
+                            firstVisible == null || lastVisible == null -> null
+                            nowLazyIndex < firstVisible -> Alignment.TopCenter
+                            nowLazyIndex > lastVisible -> Alignment.BottomCenter
+                            else -> null
+                        }
                     }
-                    itemsIndexed(
-                        items = state.connections,
-                        key = { _, connection -> connectionKey(connection) },
-                    ) { index, connection ->
-                        ConnectionCard(
-                            connection = connection,
-                            isHero = index == 0,
-                            isRecommended = shortestDuration != null && connection.transitDuration == shortestDuration,
+                }
+
+                Box(Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        state = listState,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp),
+                    ) {
+                        item {
+                            LoadMoreRow(isLoading = state.isLoadingEarlier, label = "Loading earlier connections…")
+                        }
+                        itemsIndexed(
+                            items = rows,
+                            key = { _, row -> row.key },
+                        ) { _, row ->
+                            when (row) {
+                                is ConnectionListRow.NowDivider -> NowDividerRow()
+                                is ConnectionListRow.ConnectionRow -> ConnectionCard(
+                                    connection = row.connection,
+                                    order = row.order,
+                                    isHero = row.order == 1,
+                                    isRecommended = shortestDuration != null && row.connection.transitDuration == shortestDuration,
+                                    isActiveJourney = row.connection.stableKey == state.activeConnectionKey,
+                                    onClick = {
+                                        viewModel.openTripReview(row.connection)
+                                        onNavigateToReview()
+                                    },
+                                    onFaresTap = onNavigateToFares,
+                                )
+                            }
+                        }
+                        item {
+                            LoadMoreRow(isLoading = state.isLoadingLater, label = "Loading later connections…")
+                        }
+                    }
+
+                    nowPinnedEdge?.let { edge ->
+                        StickyNowMarker(
+                            modifier = Modifier
+                                .align(edge)
+                                .fillMaxWidth(),
+                            pointsUp = edge == Alignment.TopCenter,
                             onClick = {
-                                viewModel.openTripReview(connection)
-                                onNavigateToReview()
+                                scope.launch {
+                                    listState.animateScrollToItem(nowLazyIndex)
+                                }
                             },
-                            onFaresTap = onNavigateToFares,
                         )
-                    }
-                    item {
-                        LoadMoreRow(isLoading = state.isLoadingLater, label = "Loading later connections…")
                     }
                 }
             }
@@ -279,10 +329,98 @@ fun ConnectionSearchScreen(
     }
 }
 
-// Stable key so LazyColumn anchors scroll position to the connection itself
-// (not its index) when earlier/later pages are prepended/appended.
-private fun connectionKey(connection: Connection): String =
-    "${connection.departure.scheduledTime}-${connection.arrival.scheduledTime}-${connection.lineNames.joinToString()}"
+// One row per connection, plus a single "Now" divider row inserted at the boundary
+// between past and future departures — connections are always shown sorted ascending.
+private sealed class ConnectionListRow {
+    abstract val key: String
+
+    data class ConnectionRow(val connection: Connection, val order: Int) : ConnectionListRow() {
+        override val key: String = connection.stableKey
+    }
+
+    object NowDivider : ConnectionListRow() {
+        override val key: String = "now-divider"
+    }
+}
+
+private fun buildRowsWithNowDivider(connections: List<Connection>, now: Instant): List<ConnectionListRow> {
+    val rows = mutableListOf<ConnectionListRow>()
+    var dividerInserted = false
+    connections.forEachIndexed { index, connection ->
+        val departure = connection.departure.effectiveTime ?: connection.departure.scheduledTime
+        if (!dividerInserted && departure != null && !departure.isBefore(now)) {
+            rows += ConnectionListRow.NowDivider
+            dividerInserted = true
+        }
+        rows += ConnectionListRow.ConnectionRow(connection, index + 1)
+    }
+    // All connections are in the past (or times are unknown) — the divider still needs
+    // to exist so the sticky marker has somewhere to point.
+    if (!dividerInserted) rows += ConnectionListRow.NowDivider
+    return rows
+}
+
+@Composable
+private fun NowDividerRow() {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.primary)
+        Text(
+            "NOW",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.primary)
+    }
+}
+
+// Shown pinned to the top or bottom edge of the list whenever the in-list "Now" divider
+// has scrolled out of view, so it's always obvious which direction "now" is in — tapping
+// it scrolls the divider back into view.
+@Composable
+private fun StickyNowMarker(
+    modifier: Modifier = Modifier,
+    pointsUp: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        color = MaterialTheme.colorScheme.primary,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (pointsUp) {
+                Icon(
+                    Icons.Default.KeyboardArrowUp,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                )
+            }
+            Text(
+                "NOW",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimary,
+            )
+            if (!pointsUp) {
+                Icon(
+                    Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun RecentSearchRow(item: TripHistoryItem, onClick: () -> Unit) {
@@ -318,12 +456,16 @@ private fun LoadMoreRow(isLoading: Boolean, label: String) {
 }
 
 private val RECOMMENDED_GREEN = androidx.compose.ui.graphics.Color(0xFF2E7D32)
+private val ACTIVE_JOURNEY_GREEN = androidx.compose.ui.graphics.Color(0xFF1B5E20)
+private val ACTIVE_JOURNEY_GREEN_CONTAINER = androidx.compose.ui.graphics.Color(0xFFA5D6A7)
 
 @Composable
 private fun ConnectionCard(
     connection: Connection,
+    order: Int,
     isHero: Boolean,
     isRecommended: Boolean,
+    isActiveJourney: Boolean,
     onClick: () -> Unit,
     onFaresTap: () -> Unit,
 ) {
@@ -331,10 +473,20 @@ private fun ConnectionCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        colors = if (isHero) CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-        ) else CardDefaults.cardColors(),
-        border = if (isRecommended) BorderStroke(2.dp, RECOMMENDED_GREEN) else null,
+        colors = when {
+            isActiveJourney -> CardDefaults.cardColors(
+                containerColor = ACTIVE_JOURNEY_GREEN_CONTAINER,
+            )
+            isHero -> CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+            )
+            else -> CardDefaults.cardColors()
+        },
+        border = when {
+            isActiveJourney -> BorderStroke(2.dp, ACTIVE_JOURNEY_GREEN)
+            isRecommended -> BorderStroke(2.dp, RECOMMENDED_GREEN)
+            else -> null
+        },
     ) {
         Row(
             modifier = Modifier
@@ -370,7 +522,14 @@ private fun ConnectionCard(
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
-                if (isRecommended) {
+                if (isActiveJourney) {
+                    Text(
+                        "Journey started · #$order",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = ACTIVE_JOURNEY_GREEN,
+                    )
+                } else if (isRecommended) {
                     Text(
                         "Shortest connection",
                         style = MaterialTheme.typography.labelSmall,

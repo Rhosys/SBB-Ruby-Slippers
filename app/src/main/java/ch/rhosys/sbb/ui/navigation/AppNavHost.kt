@@ -94,7 +94,11 @@ fun AppNavHost(
         }
 
         composable(Screen.Journeys.route) {
-            JourneysScreen()
+            JourneysScreen(
+                onNavigateToTripReview = {
+                    navController.navigate(Screen.TripReview.route)
+                },
+            )
         }
 
         composable(Screen.Settings.route) { SettingsScreen() }

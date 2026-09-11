@@ -29,4 +29,9 @@ data class Connection(
     // Display uses walkToFirstStop, transitDuration, and walkFromLastStop separately.
     val optimisationDuration: Duration?
         get() = transitDuration?.let { walkToFirstStop + it + walkFromLastStop }
+
+    // Identifies "the same physical connection" across separate API responses — stable
+    // even as real-time delay fields on Stop change, unlike full structural equality.
+    val stableKey: String
+        get() = "${departure.scheduledTime}-${arrival.scheduledTime}-${lineNames.joinToString()}"
 }

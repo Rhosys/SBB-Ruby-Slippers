@@ -1,14 +1,17 @@
 package ch.rhosys.sbb.ui.journey
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.lazy.LazyColumn
@@ -33,6 +36,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -56,16 +60,21 @@ import java.time.format.DateTimeFormatter
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun JourneysScreen(
+    onNavigateToTripReview: () -> Unit,
     viewModel: JourneysViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+
+    LaunchedEffect(Unit) {
+        viewModel.navigateToTripReview.collect { onNavigateToTripReview() }
+    }
 
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) {
             when (state.selectedTab) {
                 JourneysTab.ACTIVE -> ActiveTab(state, viewModel)
                 JourneysTab.PAST -> PastTab(state.lockedInHistory, viewModel)
-                JourneysTab.PLANNED -> PlannedTab(state)
+                JourneysTab.PLANNED -> PlannedTab(state, viewModel)
             }
         }
 
@@ -367,7 +376,7 @@ private fun TripHistoryCard(
 }
 
 @Composable
-private fun PlannedTab(state: JourneysUiState) {
+private fun PlannedTab(state: JourneysUiState, viewModel: JourneysViewModel) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -392,25 +401,26 @@ private fun PlannedTab(state: JourneysUiState) {
                     modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
             }
             items(state.savedRoutes, key = { "saved-${it.id}" }) { route ->
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp)) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(route.label ?: route.destinationName,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium)
-                            if (route.isCalendarLinked) {
-                                Text("Calendar",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary)
-                            }
+                PlannedRouteCard(
+                    isOpening = state.openingRouteId == route.id,
+                    onClick = { viewModel.openSavedRoute(route) },
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(route.label ?: route.destinationName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium)
+                        if (route.isCalendarLinked) {
+                            Text("Calendar",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary)
                         }
-                        Text("→ ${route.destinationName}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    Text("→ ${route.destinationName}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -422,23 +432,51 @@ private fun PlannedTab(state: JourneysUiState) {
                     modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
             }
             items(state.recurringRoutes, key = { "recur-${it.id}" }) { route ->
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(route.label ?: route.destinationName,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium)
-                        Text(
-                            "→ ${route.destinationName} · " +
-                                    "%02d:%02d".format(route.departureHour, route.departureMinute),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                PlannedRouteCard(
+                    isOpening = state.openingRouteId == route.id,
+                    onClick = { viewModel.openRecurringRoute(route) },
+                ) {
+                    Text(route.label ?: route.destinationName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium)
+                    Text(
+                        "→ ${route.destinationName} · " +
+                                "%02d:%02d".format(route.departureHour, route.departureMinute),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
 
         item { Spacer(Modifier.height(16.dp)) }
+    }
+}
+
+// Wraps a saved/recurring route summary in a tappable card that resolves it into a live
+// connection and opens the full trip review screen — showing a small spinner while that
+// network lookup is in flight instead of leaving the tap looking like it did nothing.
+@Composable
+private fun PlannedRouteCard(
+    isOpening: Boolean,
+    onClick: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), content = content)
+            if (isOpening) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            }
+        }
     }
 }
 
