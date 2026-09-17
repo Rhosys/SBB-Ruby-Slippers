@@ -206,6 +206,40 @@ class RoutingEngineTest {
     }
 
     @Test
+    fun `walking transfer straight out of the origin is considered`() = runTest {
+        // StopE has no transit route through it at all — the only way anywhere is a
+        // transfers-txt walk to StopA, then boarding Route1 there.
+        val networkWithIsolatedOrigin = GtfsNetworkBuilder()
+            .addStop(id = 0, name = "StopA", lat = 47.3000, lng = 8.5000)
+            .addStop(id = 1, name = "StopB", lat = 47.3100, lng = 8.5100)
+            .addStop(id = 2, name = "StopC", lat = 47.3200, lng = 8.5200)
+            .addStop(id = 4, name = "StopE", lat = 47.2900, lng = 8.4900)
+            .addRoute(id = 0, name = "R1", stops = listOf(0, 1, 2))
+            .addTrip(
+                routeId = 0, tripId = 0,
+                times = listOf(8 * 3600, 8 * 3600 + 600, 8 * 3600 + 720, 8 * 3600 + 1500),
+            )
+            .addTransfer(fromStop = 4, toStop = 0, walkSeconds = 120) // E → A, 2 min walk
+            .build()
+        val isolatedEngine = RoutingEngine(networkWithIsolatedOrigin)
+
+        val query = RoutingQuery(
+            originStopIds = listOf(4),
+            destinationStopIds = listOf(2),
+            routingTime = RoutingTime.DepartAfter(LocalTime.of(7, 0)),
+            date = LocalDate.now(),
+            walkToFirstStop = Duration.ZERO,
+            walkFromLastStop = Duration.ZERO,
+        )
+
+        val results = isolatedEngine.route(query).toList()
+
+        assertTrue("Expected a connection via the walk out of the origin", results.isNotEmpty())
+        val connection = results.last().connections.first()
+        assertEquals(8 * 3600 + 1500, connection.arrivalSeconds) // 08:25, same trip as direct A→C
+    }
+
+    @Test
     fun `no connection emitted before departure time`() = runTest {
         val query = RoutingQuery(
             originStopIds = listOf(0),

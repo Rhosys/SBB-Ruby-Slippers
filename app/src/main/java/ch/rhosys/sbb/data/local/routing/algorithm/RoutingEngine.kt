@@ -50,6 +50,14 @@ class RoutingEngine(
             val marked = BooleanArray(network.stops.size) { false }
             val improved = BooleanArray(network.stops.size) { false }
 
+            // Phase 2 below only walks from stops marked "improved" this round — without
+            // this, a walking transfer straight out of the origin (e.g. a station's own
+            // transfers.txt entry to a nearby platform) would never fire, since the
+            // origin stops were only seeded, never "improved" by a Phase 1 trip boarding.
+            if (round == 1) {
+                for (stopId in query.originStopIds) improved[stopId] = true
+            }
+
             // Phase 1: for each marked stop, scan routes through it
             for (stopId in network.stops.indices) {
                 if (best[stopId] == INF) continue
@@ -194,6 +202,13 @@ class RoutingEngine(
         for (round in 1..MAX_ROUNDS) {
             val roundStart = System.currentTimeMillis()
             val improved = BooleanArray(network.stops.size) { false }
+
+            // Same fix as the forward pass: without this, a walking transfer straight
+            // into the destination would never be considered, since destination stops
+            // are only seeded, never "improved" by a Phase 1 trip alighting.
+            if (round == 1) {
+                for (stopId in query.destinationStopIds) improved[stopId] = true
+            }
 
             // Phase 1: for each stop with a known "latest reachable" time,
             // scan routes through it in reverse to find earlier boarding stops.
