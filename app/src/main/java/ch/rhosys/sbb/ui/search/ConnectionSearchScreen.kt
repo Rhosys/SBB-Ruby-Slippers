@@ -522,6 +522,18 @@ private fun ConnectionCard(
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
+                connection.transferInfos.forEach { transfer ->
+                    Text(
+                        text = "Change at ${transfer.stationName}: ${transfer.effectiveBufferMinutes} min",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (transfer.isAtRisk) FontWeight.Bold else FontWeight.Normal,
+                        color = if (transfer.isAtRisk) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
                 if (isActiveJourney) {
                     Text(
                         "Journey started · #$order",

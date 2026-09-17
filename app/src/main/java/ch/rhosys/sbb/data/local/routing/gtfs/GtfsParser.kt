@@ -108,29 +108,36 @@ class GtfsParser {
 
         val routes = mutableListOf<GtfsRoute>()
         for ((gtfsRouteId, tripIds) in routeToTripIds) {
-            val firstId = tripIds.firstOrNull { tripStopTimes.containsKey(it) } ?: continue
-            val canonical = tripStopTimes[firstId] ?: continue
-            val stopIdList = canonical.mapNotNull { stopIdMap[it.stopGtfsId] }
-            if (stopIdList.size < 2) continue
+            // A single GTFS route_id commonly covers several distinct stopping patterns
+            // (an express run, a shortened last-of-day run that turns back early, a trip
+            // serving one extra stop, ...). Grouping every trip against just the first
+            // trip's pattern silently dropped every trip that didn't match it exactly —
+            // losing real, valid connections. Each distinct pattern now becomes its own
+            // GtfsRoute instead.
+            val byPattern = tripIds
+                .mapNotNull { tripId -> tripStopTimes[tripId]?.takeIf { it.size >= 2 }?.let { tripId to it } }
+                .groupBy { (_, sts) -> sts.map { it.stopGtfsId } }
 
-            val trips = tripIds.mapNotNull { tripId ->
-                val sts = tripStopTimes[tripId] ?: return@mapNotNull null
-                if (sts.size != canonical.size) return@mapNotNull null
-                if (sts.map { it.stopGtfsId } != canonical.map { it.stopGtfsId }) return@mapNotNull null
-                GtfsTrip(
-                    id = tripId.hashCode(),
-                    serviceId = tripMeta[tripId]?.serviceId ?: return@mapNotNull null,
-                    times = buildTripTimes(sts),
-                )
+            for ((stopPattern, tripsInPattern) in byPattern) {
+                val stopIdList = stopPattern.mapNotNull { stopIdMap[it] }
+                if (stopIdList.size != stopPattern.size || stopIdList.size < 2) continue
+
+                val trips = tripsInPattern.mapNotNull { (tripId, sts) ->
+                    GtfsTrip(
+                        id = tripId.hashCode(),
+                        serviceId = tripMeta[tripId]?.serviceId ?: return@mapNotNull null,
+                        times = buildTripTimes(sts),
+                    )
+                }
+                if (trips.isEmpty()) continue
+
+                routes.add(GtfsRoute(
+                    id = routes.size,
+                    name = routeNames[gtfsRouteId] ?: gtfsRouteId,
+                    stopIds = stopIdList,
+                    trips = trips,
+                ))
             }
-            if (trips.isEmpty()) continue
-
-            routes.add(GtfsRoute(
-                id = routes.size,
-                name = routeNames[gtfsRouteId] ?: gtfsRouteId,
-                stopIds = stopIdList,
-                trips = trips,
-            ))
         }
         return routes
     }
