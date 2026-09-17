@@ -3,6 +3,7 @@ package ch.rhosys.sbb.ui.search
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ch.rhosys.sbb.data.local.location.LocationProvider
+import ch.rhosys.sbb.data.local.preferences.UserPreferencesRepository
 import ch.rhosys.sbb.data.local.routing.LocalRoutingState
 import ch.rhosys.sbb.data.local.routing.LocalTransportRepository
 import ch.rhosys.sbb.data.local.routing.algorithm.RoutingTime
@@ -72,6 +73,7 @@ class ConnectionSearchViewModel @Inject constructor(
     private val tripReviewHolder: TripReviewHolder,
     private val searchNavigationBridge: SearchNavigationBridge,
     private val journeyStateHolder: JourneyStateHolder,
+    private val userPreferencesRepository: UserPreferencesRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ConnectionSearchUiState())
@@ -471,8 +473,10 @@ class ConnectionSearchViewModel @Inject constructor(
         if (localRouter.hasData()) {
             val routingTime = if (isArriveBy) RoutingTime.ArriveBy(time) else RoutingTime.DepartAfter(time)
             var result: List<Connection> = emptyList()
-            localRouter.routeConnections(from = from, to = to, date = date, routingTime = routingTime)
-                .collect { state -> if (state is LocalRoutingState.Results) result = state.connections }
+            localRouter.routeConnections(
+                from = from, to = to, date = date, routingTime = routingTime,
+                walkingPaceKmh = userPreferencesRepository.walkingPaceKmh.first(),
+            ).collect { state -> if (state is LocalRoutingState.Results) result = state.connections }
             return result
         }
         return runCatching {
@@ -486,6 +490,7 @@ class ConnectionSearchViewModel @Inject constructor(
             to = to,
             date = _uiState.value.searchDate,
             routingTime = routingTime,
+            walkingPaceKmh = userPreferencesRepository.walkingPaceKmh.first(),
         ).collect { state ->
             when (state) {
                 is LocalRoutingState.Results -> _uiState.value = _uiState.value.copy(

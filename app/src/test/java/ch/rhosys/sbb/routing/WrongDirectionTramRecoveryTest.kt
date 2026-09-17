@@ -18,11 +18,14 @@ import java.time.LocalTime
 /**
  * Real-world scenario reported on Thu 17 Sep 2026: rider is on tram 9 at
  * Talweissenstrasse heading the wrong way (towards Heuried). Correct recovery is to
- * get off at 21:01, cross to the opposite-direction platform (a short walk/run, not an
- * instant same-spot transfer), board tram 14 the other way at 21:02, ride to
- * Stauffacher, catch the *early* tram 2 departing 21:09 (a later 21:15 tram 2 also
- * exists but is too late), arrive Stadelhofen, Bahnhof at 21:19, and make the 21:20
- * Stadelhofen -> Winterthur train with one minute to spare.
+ * get off at 21:01, cross to the opposite-direction platform -- a real walk, not an
+ * instant same-spot transfer: transfers are modelled as a *distance* (500 m, roughly
+ * a busy intersection crossing) and converted to time via the rider's configured
+ * walking pace, which takes 5 minutes at the app's default 6 km/h -- then board tram
+ * 14 the other way at 21:06, ride to Stauffacher, catch the *early* tram 2 departing
+ * 21:09 (a later 21:15 tram 2 also exists but is too late), arrive Stadelhofen,
+ * Bahnhof at 21:19, and make the 21:20 Stadelhofen -> Winterthur train with one
+ * minute to spare.
  *
  * Stop ids: 0=Talweissenstrasse (Heuried-bound platform), 1=Heuried,
  * 2=Talweissenstrasse (city-bound platform, across the road from stop 0),
@@ -42,14 +45,15 @@ class WrongDirectionTramRecoveryTest {
         // Winterthur in time.
         .addRoute(id = 0, name = "9", stops = listOf(0, 1))
         .addTrip(routeId = 0, tripId = 0, serviceId = "WEEKDAY", times = listOf(20 * 3600 + 3300, 21 * 3600 + 60))
-        // Crossing the street to the opposite platform (stop 0 -> stop 2) takes 30
-        // seconds -- not an instant, same-spot transfer.
-        .addTransfer(fromStop = 0, toStop = 2, walkSeconds = 30)
-        // Tram 14, the other direction: Talweissenstrasse (stop 2) dep 21:02 -> Stauffacher arr 21:08.
+        // Crossing the street to the opposite platform (stop 0 -> stop 2) is 500 m --
+        // a busy intersection, not an instant same-spot transfer -- which takes 5
+        // minutes at the app's default 6 km/h walking pace.
+        .addTransfer(fromStop = 0, toStop = 2, distanceMeters = 500.0)
+        // Tram 14, the other direction: Talweissenstrasse (stop 2) dep 21:06 -> Stauffacher arr 21:08.
         .addRoute(id = 1, name = "14", stops = listOf(2, 3))
         .addTrip(
             routeId = 1, tripId = 1, serviceId = "WEEKDAY",
-            times = listOf(21 * 3600 + 120, 21 * 3600 + 480),
+            times = listOf(21 * 3600 + 360, 21 * 3600 + 480),
         )
         // Tram 2 from Stauffacher to Stadelhofen: an early trip (dep 21:09, arr 21:19 --
         // makes the train) and a later one (dep 21:15, arr 21:25 -- misses it). Earliest-
@@ -110,8 +114,8 @@ class WrongDirectionTramRecoveryTest {
             0, walkLegs.first().fromStopId)
         assertEquals("Crossing to the opposite platform ends at the correct-direction stop",
             2, walkLegs.first().toStopId)
-        assertEquals("Crossing the street takes 30 seconds, not an instant transfer",
-            30, walkLegs.first().durationSeconds)
+        assertEquals("Crossing 500m at the default 6 km/h pace takes 5 minutes, not an instant transfer",
+            300, walkLegs.first().durationSeconds)
 
         assertEquals("Expected exactly 3 transit legs (14, 2, S-Bahn) -- not via tram 9",
             3, transitLegs.size)
@@ -119,8 +123,8 @@ class WrongDirectionTramRecoveryTest {
         assertEquals("2", transitLegs[1].routeName)
         assertEquals("S-Bahn", transitLegs[2].routeName)
 
-        // Tram 14: Talweissenstrasse (opposite platform) 21:02 -> Stauffacher 21:08.
-        assertEquals(21 * 3600 + 120, transitLegs[0].boardSeconds)
+        // Tram 14: Talweissenstrasse (opposite platform) 21:06 -> Stauffacher 21:08.
+        assertEquals(21 * 3600 + 360, transitLegs[0].boardSeconds)
         assertEquals(21 * 3600 + 480, transitLegs[0].alightSeconds)
 
         // Tram 2: must be the EARLY 21:09 departure, not the 21:15 one.

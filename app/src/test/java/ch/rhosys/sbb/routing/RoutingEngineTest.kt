@@ -78,7 +78,7 @@ class RoutingEngineTest {
                     8 * 3600 + 1800, // D arr 08:30
                 ),
             )
-            .addTransfer(fromStop = 0, toStop = 1, walkSeconds = 180) // A→B 3 min
+            .addTransfer(fromStop = 0, toStop = 1, distanceMeters = 300.0) // A→B 3 min @ default 6km/h pace
             .build()
 
         engine = RoutingEngine(network)
@@ -219,7 +219,7 @@ class RoutingEngineTest {
                 routeId = 0, tripId = 0,
                 times = listOf(8 * 3600, 8 * 3600 + 600, 8 * 3600 + 720, 8 * 3600 + 1500),
             )
-            .addTransfer(fromStop = 0, toStop = 1, walkSeconds = 120) // E → A, 2 min walk
+            .addTransfer(fromStop = 0, toStop = 1, distanceMeters = 200.0) // E → A, 2 min walk @ default 6km/h pace
             .build()
         val isolatedEngine = RoutingEngine(networkWithIsolatedOrigin)
 

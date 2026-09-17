@@ -6,6 +6,7 @@ import ch.rhosys.sbb.data.local.routing.gtfs.GtfsRoute
 import ch.rhosys.sbb.data.local.routing.gtfs.GtfsTrip
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlin.math.roundToInt
 
 private const val INF = Int.MAX_VALUE / 2
 private const val MAX_ROUNDS = 7
@@ -96,7 +97,8 @@ class RoutingEngine(
             for (stopId in network.stops.indices) {
                 if (!improved[stopId]) continue
                 val transfers = network.stopToTransfers[stopId] ?: continue
-                for ((neighbourId, walkSecs) in transfers) {
+                for ((neighbourId, distanceMeters) in transfers) {
+                    val walkSecs = (distanceMeters / query.walkingPaceMetersPerSecond).roundToInt()
                     val arrivalViaWalk = best[stopId] + walkSecs
                     if (arrivalViaWalk < best[neighbourId]) {
                         best[neighbourId] = arrivalViaWalk
@@ -250,7 +252,8 @@ class RoutingEngine(
             for (stopId in network.stops.indices) {
                 if (!improved[stopId]) continue
                 val transfers = network.stopToTransfers[stopId] ?: continue
-                for ((neighbourId, walkSecs) in transfers) {
+                for ((neighbourId, distanceMeters) in transfers) {
+                    val walkSecs = (distanceMeters / query.walkingPaceMetersPerSecond).roundToInt()
                     val depViaWalk = best[stopId] - walkSecs
                     if (depViaWalk > best[neighbourId]) {
                         best[neighbourId] = depViaWalk

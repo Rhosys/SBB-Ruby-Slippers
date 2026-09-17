@@ -23,10 +23,14 @@ data class GtfsTrip(
     val times: List<Int>,
 )
 
+// Transfers are stored as a physical distance, not a fixed duration — GTFS feeds
+// don't reliably provide walking times, and a fixed time can't reflect the user's own
+// pace anyway. The engine converts distance -> seconds at query time using the
+// user-configured walking speed (see RoutingQuery.walkingPaceMetersPerSecond).
 data class GtfsTransfer(
     val fromStopId: Int,
     val toStopId: Int,
-    val walkSeconds: Int,
+    val distanceMeters: Double,
 )
 
 data class GtfsNetwork(
@@ -45,12 +49,12 @@ data class GtfsNetwork(
         }
     }
 
-    // Derived index: stop → list of (neighbourStopId, walkSeconds)
-    val stopToTransfers: Map<Int, List<Pair<Int, Int>>> by lazy {
-        buildMap<Int, MutableList<Pair<Int, Int>>> {
+    // Derived index: stop → list of (neighbourStopId, distanceMeters)
+    val stopToTransfers: Map<Int, List<Pair<Int, Double>>> by lazy {
+        buildMap<Int, MutableList<Pair<Int, Double>>> {
             transfers.forEach { t ->
-                getOrPut(t.fromStopId) { mutableListOf() }.add(t.toStopId to t.walkSeconds)
-                getOrPut(t.toStopId) { mutableListOf() }.add(t.fromStopId to t.walkSeconds)
+                getOrPut(t.fromStopId) { mutableListOf() }.add(t.toStopId to t.distanceMeters)
+                getOrPut(t.toStopId) { mutableListOf() }.add(t.fromStopId to t.distanceMeters)
             }
         }
     }

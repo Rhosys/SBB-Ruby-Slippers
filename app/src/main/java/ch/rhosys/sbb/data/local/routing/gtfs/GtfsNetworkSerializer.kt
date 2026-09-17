@@ -12,7 +12,10 @@ import java.io.OutputStream
 // Strings use writeUTF/readUTF (2-byte length-prefixed modified UTF-8).
 object GtfsNetworkSerializer {
     private const val MAGIC = 0x47544653.toInt() // 'G','T','F','S'
-    private const val VERSION = 1
+    // v2: transfers store distanceMeters (Double) instead of walkSeconds (Int) — a
+    // version bump so a stale v1 cache is rejected and re-imported rather than being
+    // misread as distances.
+    private const val VERSION = 2
 
     private val DAY_KEYS = listOf("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 
@@ -111,14 +114,14 @@ object GtfsNetworkSerializer {
         for (t in transfers) {
             dos.writeInt(t.fromStopId)
             dos.writeInt(t.toStopId)
-            dos.writeInt(t.walkSeconds)
+            dos.writeDouble(t.distanceMeters)
         }
     }
 
     private fun readTransfers(dis: DataInputStream): List<GtfsTransfer> {
         val count = dis.readInt()
         return List(count) {
-            GtfsTransfer(dis.readInt(), dis.readInt(), dis.readInt())
+            GtfsTransfer(dis.readInt(), dis.readInt(), dis.readDouble())
         }
     }
 

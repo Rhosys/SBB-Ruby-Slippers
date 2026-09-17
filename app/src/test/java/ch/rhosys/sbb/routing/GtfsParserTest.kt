@@ -181,16 +181,19 @@ class GtfsParserTest {
     // ---- Transfers ---------------------------------------------------------
 
     @Test
-    fun `transfers parsed with correct walk time`() {
+    fun `transfers carry the distance between the two stops, not the feed's min_transfer_time`() {
+        // S1 and S2 are 0.001 degrees of latitude apart (~111 m) — the feed's own
+        // min_transfer_time (999, deliberately wrong) must be ignored entirely; the
+        // distance is derived from the stops' own coordinates instead.
         val feed = feedWith(
-            stops = "stop_id,stop_name,stop_lat,stop_lon\nS1,A,0.0,0.0\nS2,B,0.0,0.0",
-            transfers = "from_stop_id,to_stop_id,transfer_type,min_transfer_time\nS1,S2,2,180"
+            stops = "stop_id,stop_name,stop_lat,stop_lon\nS1,A,0.0,0.0\nS2,B,0.001,0.0",
+            transfers = "from_stop_id,to_stop_id,transfer_type,min_transfer_time\nS1,S2,2,999"
         )
         val transfers = parser.parse(feed).network.transfers
         assertEquals(1, transfers.size)
         assertEquals(0, transfers[0].fromStopId)
         assertEquals(1, transfers[0].toStopId)
-        assertEquals(180, transfers[0].walkSeconds)
+        assertEquals(111.2, transfers[0].distanceMeters, 0.5)
     }
 
     // ---- Calendar integration ----------------------------------------------

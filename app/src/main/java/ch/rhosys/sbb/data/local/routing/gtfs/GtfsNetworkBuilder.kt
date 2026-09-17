@@ -24,8 +24,8 @@ class GtfsNetworkBuilder {
         routes.first { it.id == routeId }.trips.add(GtfsTrip(tripId, serviceId, times))
     }
 
-    fun addTransfer(fromStop: Int, toStop: Int, walkSeconds: Int) = apply {
-        transfers.add(GtfsTransfer(fromStop, toStop, walkSeconds))
+    fun addTransfer(fromStop: Int, toStop: Int, distanceMeters: Double) = apply {
+        transfers.add(GtfsTransfer(fromStop, toStop, distanceMeters))
     }
 
     fun build(): GtfsNetwork = GtfsNetwork(

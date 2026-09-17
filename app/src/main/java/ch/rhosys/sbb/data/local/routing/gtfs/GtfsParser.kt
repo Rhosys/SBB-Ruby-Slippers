@@ -1,5 +1,7 @@
 package ch.rhosys.sbb.data.local.routing.gtfs
 
+import ch.rhosys.sbb.data.local.routing.haversineMeters
+
 class GtfsParser {
 
     data class ParsedGtfs(
@@ -19,7 +21,7 @@ class GtfsParser {
         val tripMeta = buildTripMeta(parseCsv(files["trips.txt"] ?: ""))
         val tripStopTimes = buildTripStopTimes(parseCsv(files["stop_times.txt"] ?: ""))
         val routes = buildRoutes(tripMeta, tripStopTimes, routeNames, stopIdMap)
-        val transfers = buildTransfers(parseCsv(files["transfers.txt"] ?: ""), stopIdMap)
+        val transfers = buildTransfers(parseCsv(files["transfers.txt"] ?: ""), stopIdMap, stops)
         val calendarPatternRows = parseCsv(files["calendar.txt"] ?: "")
         val calendarExceptionRows = parseCsv(files["calendar_dates.txt"] ?: "")
         val calendar = GtfsCalendarResolver(
@@ -154,14 +156,24 @@ class GtfsParser {
         return times.toList()
     }
 
+    // Transfer times aren't taken from the feed's own min_transfer_time (a fixed,
+    // unpersonalised duration many feeds don't even populate reliably) — instead each
+    // transfers.txt row is kept only for WHICH stop pairs connect, and the distance
+    // between them is computed from their own coordinates. Actual walking time is
+    // derived from this distance using the user's configured pace at query time.
     private fun buildTransfers(
         rows: List<Map<String, String>>,
         stopIdMap: Map<String, Int>,
-    ): List<GtfsTransfer> = rows.mapNotNull { row ->
-        val fromId = stopIdMap[row["from_stop_id"] ?: return@mapNotNull null] ?: return@mapNotNull null
-        val toId = stopIdMap[row["to_stop_id"] ?: return@mapNotNull null] ?: return@mapNotNull null
-        val walkSec = row["min_transfer_time"]?.toIntOrNull() ?: return@mapNotNull null
-        GtfsTransfer(fromId, toId, walkSec)
+        stops: List<GtfsStop>,
+    ): List<GtfsTransfer> {
+        val stopsById = stops.associateBy { it.id }
+        return rows.mapNotNull { row ->
+            val fromId = stopIdMap[row["from_stop_id"] ?: return@mapNotNull null] ?: return@mapNotNull null
+            val toId = stopIdMap[row["to_stop_id"] ?: return@mapNotNull null] ?: return@mapNotNull null
+            val from = stopsById[fromId] ?: return@mapNotNull null
+            val to = stopsById[toId] ?: return@mapNotNull null
+            GtfsTransfer(fromId, toId, haversineMeters(from.lat, from.lng, to.lat, to.lng))
+        }
     }
 
     // CSV parsing — handles quoted fields and UTF-8 BOM

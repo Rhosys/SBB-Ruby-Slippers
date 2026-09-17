@@ -66,7 +66,7 @@ class GtfsNetworkSerializerTest {
         assertEquals(1, network.transfers.size)
         assertEquals(0, network.transfers[0].fromStopId)
         assertEquals(1, network.transfers[0].toStopId)
-        assertEquals(180, network.transfers[0].walkSeconds)
+        assertEquals(300.0, network.transfers[0].distanceMeters, 0.001)
     }
 
     @Test
@@ -111,7 +111,7 @@ class GtfsNetworkSerializerTest {
         .addRoute(0, "IC6", listOf(0, 1, 2))
         .addTrip(0, 10, listOf(8 * 3600, 8 * 3600 + 600, 8 * 3600 + 720, 8 * 3600 + 1500), serviceId = "WD")
         .addTrip(0, 11, listOf(9 * 3600, 9 * 3600 + 600, 9 * 3600 + 720, 9 * 3600 + 1500), serviceId = "WD")
-        .addTransfer(0, 1, 180)
+        .addTransfer(0, 1, 300.0)
         .build()
 
     private fun roundTrip(
