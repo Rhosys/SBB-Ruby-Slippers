@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MonetizationOn
@@ -34,6 +34,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import ch.rhosys.sbb.domain.model.Leg
@@ -141,7 +142,9 @@ fun TripReviewScreen(
                 Spacer(Modifier.height(12.dp))
             }
 
-            items(connection.legs) { leg -> LegRow(leg) }
+            itemsIndexed(connection.legs) { index, leg ->
+                LegRow(leg, nextLeg = connection.legs.getOrNull(index + 1))
+            }
 
             item {
                 Spacer(Modifier.height(16.dp))
@@ -173,10 +176,10 @@ fun TripReviewScreen(
 }
 
 @Composable
-internal fun LegRow(leg: Leg) {
+internal fun LegRow(leg: Leg, nextLeg: Leg? = null) {
     when (leg) {
         is Leg.Transit -> TransitLegRow(leg)
-        is Leg.Walk -> WalkLegRow(leg)
+        is Leg.Walk -> WalkLegRow(leg, nextLeg as? Leg.Transit)
     }
 }
 
@@ -259,22 +262,47 @@ private fun TransitLegRow(leg: Leg.Transit) {
 }
 
 @Composable
-private fun WalkLegRow(leg: Leg.Walk) {
+private fun WalkLegRow(leg: Leg.Walk, nextTransit: Leg.Transit?) {
+    // Same station name on both ends means this isn't a walk to a different place —
+    // it's a cross-platform dash to the opposite direction at the same stop, which
+    // needs a much more urgent call to action than a generic "Walk" row.
+    val isCrossPlatform = leg.fromName.isNotBlank() && leg.fromName == leg.toName
+
     Row(
         Modifier.padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            "Walk",
+            if (isCrossPlatform) "Get off" else "Walk",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = if (isCrossPlatform) FontWeight.Bold else FontWeight.Normal,
+            color = if (isCrossPlatform) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.width(52.dp),
         )
         Spacer(Modifier.width(8.dp))
-        Text(
-            "${leg.durationMinutes} min · ${leg.toName}",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        if (isCrossPlatform) {
+            Column {
+                Text(
+                    "Get off immediately — cross to the other direction",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                Text(
+                    buildString {
+                        append("${leg.durationMinutes} min")
+                        if (nextTransit != null) append(" · towards ${nextTransit.direction} (${nextTransit.lineName})")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            Text(
+                "${leg.durationMinutes} min · ${leg.toName}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
