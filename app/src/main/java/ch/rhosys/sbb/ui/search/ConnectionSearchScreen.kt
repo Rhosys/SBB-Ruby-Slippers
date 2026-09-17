@@ -103,7 +103,6 @@ fun ConnectionSearchScreen(
                     isSearching = state.isFromSuggesting,
                     isCurrentLocation = state.fromIsCurrentLocation,
                     currentLocationStationName = state.fromBadgeStationName,
-                    onClearCurrentLocation = { viewModel.onFromChanged("") },
                     modifier = Modifier.fillMaxWidth(),
                 )
 
@@ -118,7 +117,6 @@ fun ConnectionSearchScreen(
                     isSearching = state.isToSuggesting,
                     isCurrentLocation = state.toIsCurrentLocation,
                     currentLocationStationName = state.toBadgeStationName,
-                    onClearCurrentLocation = { viewModel.onToChanged("") },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
