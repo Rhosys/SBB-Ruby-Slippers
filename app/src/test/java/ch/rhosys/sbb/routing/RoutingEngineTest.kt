@@ -210,22 +210,22 @@ class RoutingEngineTest {
         // StopE has no transit route through it at all — the only way anywhere is a
         // transfers-txt walk to StopA, then boarding Route1 there.
         val networkWithIsolatedOrigin = GtfsNetworkBuilder()
-            .addStop(id = 0, name = "StopA", lat = 47.3000, lng = 8.5000)
-            .addStop(id = 1, name = "StopB", lat = 47.3100, lng = 8.5100)
-            .addStop(id = 2, name = "StopC", lat = 47.3200, lng = 8.5200)
-            .addStop(id = 4, name = "StopE", lat = 47.2900, lng = 8.4900)
-            .addRoute(id = 0, name = "R1", stops = listOf(0, 1, 2))
+            .addStop(id = 0, name = "StopE", lat = 47.2900, lng = 8.4900)
+            .addStop(id = 1, name = "StopA", lat = 47.3000, lng = 8.5000)
+            .addStop(id = 2, name = "StopB", lat = 47.3100, lng = 8.5100)
+            .addStop(id = 3, name = "StopC", lat = 47.3200, lng = 8.5200)
+            .addRoute(id = 0, name = "R1", stops = listOf(1, 2, 3))
             .addTrip(
                 routeId = 0, tripId = 0,
                 times = listOf(8 * 3600, 8 * 3600 + 600, 8 * 3600 + 720, 8 * 3600 + 1500),
             )
-            .addTransfer(fromStop = 4, toStop = 0, walkSeconds = 120) // E → A, 2 min walk
+            .addTransfer(fromStop = 0, toStop = 1, walkSeconds = 120) // E → A, 2 min walk
             .build()
         val isolatedEngine = RoutingEngine(networkWithIsolatedOrigin)
 
         val query = RoutingQuery(
-            originStopIds = listOf(4),
-            destinationStopIds = listOf(2),
+            originStopIds = listOf(0),
+            destinationStopIds = listOf(3),
             routingTime = RoutingTime.DepartAfter(LocalTime.of(7, 0)),
             date = LocalDate.now(),
             walkToFirstStop = Duration.ZERO,
