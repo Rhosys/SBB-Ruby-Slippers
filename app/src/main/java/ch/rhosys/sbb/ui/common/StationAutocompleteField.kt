@@ -84,7 +84,10 @@ fun StationAutocompleteField(
 
     Box(modifier = modifier) {
         OutlinedTextField(
-            value = if (showBadge) "" else value,
+            // Blank whenever the value is still the unedited "current location"
+            // placeholder — both before reveal (badge shown) and right after (revealed
+            // but the user hasn't typed a replacement character yet).
+            value = if (isCurrentLocation) "" else value,
             onValueChange = onValueChange,
             label = { Text(label) },
             modifier = Modifier

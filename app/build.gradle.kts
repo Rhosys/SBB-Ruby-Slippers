@@ -47,6 +47,14 @@ android {
 
     testBuildType = "release"
 
+    testOptions {
+        unitTests {
+            // Lets Robolectric-backed unit tests resolve app resources/themes
+            // (needed for Compose UI assertions run on the JVM, no emulator).
+            isIncludeAndroidResources = true
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -119,6 +127,13 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.kotlinx.serialization.json)
+
+    // Compose component tests, run as JVM unit tests via Robolectric (no emulator).
+    testImplementation(platform(libs.compose.bom))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation("androidx.test:core:1.6.1")
+    testImplementation("org.robolectric:robolectric:4.14.1")
 
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
