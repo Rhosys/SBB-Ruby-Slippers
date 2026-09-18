@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import ch.rhosys.sbb.domain.model.Leg
+import ch.rhosys.sbb.ui.common.RunningManBadge
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,6 +96,26 @@ fun TripReviewScreen(
             return@Scaffold
         }
 
+        // For each modeled Walk leg between two transit legs, whether the delay-adjusted
+        // buffer no longer covers walking it at a normal pace — only running.
+        val runningLegIndices = remember(connection, state.walkingPaceKmh, state.runningPaceKmh) {
+            val result = mutableSetOf<Int>()
+            val legs = connection.legs
+            val transitIndices = legs.indices.filter { legs[it] is Leg.Transit }
+            val transferInfos = connection.transferInfos
+            for (k in 0 until transitIndices.size - 1) {
+                val prevIdx = transitIndices[k]
+                val nextIdx = transitIndices[k + 1]
+                if (nextIdx == prevIdx + 2 && legs[prevIdx + 1] is Leg.Walk) {
+                    val info = transferInfos.getOrNull(k) ?: continue
+                    if (info.requiresRunning(state.walkingPaceKmh, state.runningPaceKmh)) {
+                        result += prevIdx + 1
+                    }
+                }
+            }
+            result
+        }
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -143,7 +164,11 @@ fun TripReviewScreen(
             }
 
             itemsIndexed(connection.legs) { index, leg ->
-                LegRow(leg, nextLeg = connection.legs.getOrNull(index + 1))
+                LegRow(
+                    leg,
+                    nextLeg = connection.legs.getOrNull(index + 1),
+                    requiresRunning = index in runningLegIndices,
+                )
             }
 
             item {
@@ -176,10 +201,10 @@ fun TripReviewScreen(
 }
 
 @Composable
-internal fun LegRow(leg: Leg, nextLeg: Leg? = null) {
+internal fun LegRow(leg: Leg, nextLeg: Leg? = null, requiresRunning: Boolean = false) {
     when (leg) {
         is Leg.Transit -> TransitLegRow(leg)
-        is Leg.Walk -> WalkLegRow(leg, nextLeg as? Leg.Transit)
+        is Leg.Walk -> WalkLegRow(leg, nextLeg as? Leg.Transit, requiresRunning)
     }
 }
 
@@ -262,7 +287,7 @@ private fun TransitLegRow(leg: Leg.Transit) {
 }
 
 @Composable
-private fun WalkLegRow(leg: Leg.Walk, nextTransit: Leg.Transit?) {
+private fun WalkLegRow(leg: Leg.Walk, nextTransit: Leg.Transit?, requiresRunning: Boolean = false) {
     // Same station name on both ends means this isn't a walk to a different place —
     // it's a cross-platform dash to the opposite direction at the same stop, which
     // needs a much more urgent call to action than a generic "Walk" row.
@@ -282,12 +307,18 @@ private fun WalkLegRow(leg: Leg.Walk, nextTransit: Leg.Transit?) {
         Spacer(Modifier.width(8.dp))
         if (isCrossPlatform) {
             Column {
-                Text(
-                    "Get off immediately — cross to the other direction",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.error,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Get off immediately — cross to the other direction",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    if (requiresRunning) {
+                        Spacer(Modifier.width(6.dp))
+                        RunningManBadge()
+                    }
+                }
                 Text(
                     buildString {
                         append("${leg.durationMinutes} min")
@@ -298,11 +329,17 @@ private fun WalkLegRow(leg: Leg.Walk, nextTransit: Leg.Transit?) {
                 )
             }
         } else {
-            Text(
-                "${leg.durationMinutes} min · ${leg.toName}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${leg.durationMinutes} min · ${leg.toName}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (requiresRunning) {
+                    Spacer(Modifier.width(6.dp))
+                    RunningManBadge()
+                }
+            }
         }
     }
 }

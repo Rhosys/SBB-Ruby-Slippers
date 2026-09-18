@@ -58,6 +58,10 @@ data class ConnectionSearchUiState(
     // Stable key of the currently active (started) journey, if any of the displayed
     // connections is it — drives the "already started" highlight on its card.
     val activeConnectionKey: String? = null,
+    // Live from Settings — used to tell whether a tight transfer still covers a normal
+    // walk or only a run (see TransferInfo.requiresRunning).
+    val walkingPaceKmh: Float = 6f,
+    val runningPaceKmh: Float = 10f,
 ) {
     val fromIsCurrentLocation: Boolean get() = fromText == SearchEndpoint.CURRENT_LOCATION_LABEL
     val toIsCurrentLocation: Boolean get() = toText == SearchEndpoint.CURRENT_LOCATION_LABEL
@@ -107,6 +111,16 @@ class ConnectionSearchViewModel @Inject constructor(
         viewModelScope.launch {
             journeyStateHolder.activeJourney.collect { journey ->
                 _uiState.value = _uiState.value.copy(activeConnectionKey = journey?.connection?.stableKey)
+            }
+        }
+        viewModelScope.launch {
+            userPreferencesRepository.walkingPaceKmh.collect { kmh ->
+                _uiState.value = _uiState.value.copy(walkingPaceKmh = kmh)
+            }
+        }
+        viewModelScope.launch {
+            userPreferencesRepository.runningPaceKmh.collect { kmh ->
+                _uiState.value = _uiState.value.copy(runningPaceKmh = kmh)
             }
         }
     }
