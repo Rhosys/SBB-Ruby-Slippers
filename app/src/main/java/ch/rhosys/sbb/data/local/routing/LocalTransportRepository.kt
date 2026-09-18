@@ -105,6 +105,9 @@ class LocalTransportRepository @Inject constructor(
         routingTime: RoutingTime,
         walkToFirstStop: Duration = Duration.ZERO,
         walkFromLastStop: Duration = Duration.ZERO,
+        // km/h. Defaults to UserPreferencesRepository's own default so callers that
+        // don't have a preference on hand yet still get a sensible pace.
+        walkingPaceKmh: Float = 6f,
     ): Flow<LocalRoutingState> = flow {
         emit(LocalRoutingState.Loading)
 
@@ -128,6 +131,7 @@ class LocalTransportRepository @Inject constructor(
             routingTime = routingTime,
             walkToFirstStop = walkToFirstStop,
             walkFromLastStop = walkFromLastStop,
+            walkingPaceMetersPerSecond = walkingPaceKmh * 1000.0 / 3600.0,
         )
 
         var hadAnyResult = false

@@ -6,6 +6,7 @@ import ch.rhosys.sbb.data.local.routing.gtfs.GtfsRoute
 import ch.rhosys.sbb.data.local.routing.gtfs.GtfsTrip
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlin.math.roundToInt
 
 private const val INF = Int.MAX_VALUE / 2
 private const val MAX_ROUNDS = 7
@@ -50,6 +51,14 @@ class RoutingEngine(
             val marked = BooleanArray(network.stops.size) { false }
             val improved = BooleanArray(network.stops.size) { false }
 
+            // Phase 2 below only walks from stops marked "improved" this round — without
+            // this, a walking transfer straight out of the origin (e.g. a station's own
+            // transfers.txt entry to a nearby platform) would never fire, since the
+            // origin stops were only seeded, never "improved" by a Phase 1 trip boarding.
+            if (round == 1) {
+                for (stopId in query.originStopIds) improved[stopId] = true
+            }
+
             // Phase 1: for each marked stop, scan routes through it
             for (stopId in network.stops.indices) {
                 if (best[stopId] == INF) continue
@@ -88,7 +97,8 @@ class RoutingEngine(
             for (stopId in network.stops.indices) {
                 if (!improved[stopId]) continue
                 val transfers = network.stopToTransfers[stopId] ?: continue
-                for ((neighbourId, walkSecs) in transfers) {
+                for ((neighbourId, distanceMeters) in transfers) {
+                    val walkSecs = (distanceMeters / query.walkingPaceMetersPerSecond).roundToInt()
                     val arrivalViaWalk = best[stopId] + walkSecs
                     if (arrivalViaWalk < best[neighbourId]) {
                         best[neighbourId] = arrivalViaWalk
@@ -195,6 +205,13 @@ class RoutingEngine(
             val roundStart = System.currentTimeMillis()
             val improved = BooleanArray(network.stops.size) { false }
 
+            // Same fix as the forward pass: without this, a walking transfer straight
+            // into the destination would never be considered, since destination stops
+            // are only seeded, never "improved" by a Phase 1 trip alighting.
+            if (round == 1) {
+                for (stopId in query.destinationStopIds) improved[stopId] = true
+            }
+
             // Phase 1: for each stop with a known "latest reachable" time,
             // scan routes through it in reverse to find earlier boarding stops.
             for (stopId in network.stops.indices) {
@@ -235,7 +252,8 @@ class RoutingEngine(
             for (stopId in network.stops.indices) {
                 if (!improved[stopId]) continue
                 val transfers = network.stopToTransfers[stopId] ?: continue
-                for ((neighbourId, walkSecs) in transfers) {
+                for ((neighbourId, distanceMeters) in transfers) {
+                    val walkSecs = (distanceMeters / query.walkingPaceMetersPerSecond).roundToInt()
                     val depViaWalk = best[stopId] - walkSecs
                     if (depViaWalk > best[neighbourId]) {
                         best[neighbourId] = depViaWalk

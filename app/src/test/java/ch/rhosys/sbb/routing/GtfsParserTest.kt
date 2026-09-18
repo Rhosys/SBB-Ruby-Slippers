@@ -140,19 +140,60 @@ class GtfsParserTest {
         assertEquals("WD", trip.serviceId)
     }
 
+    @Test
+    fun `trips with a different stopping pattern form a separate route instead of being dropped`() {
+        // Same route_id, two trips: T1 stops at S1,S2,S3; T2 (e.g. a shortened last run
+        // of the day) only stops at S1,S2. Both must be routable, not just the first.
+        val feed = mapOf(
+            "stops.txt" to """
+                stop_id,stop_name,stop_lat,stop_lon
+                S1,StopA,47.0,8.0
+                S2,StopB,47.1,8.1
+                S3,StopC,47.2,8.2
+            """.trimIndent(),
+            "routes.txt" to "route_id,route_short_name,route_long_name\nR1,IC1,InterCity 1",
+            "trips.txt" to """
+                trip_id,route_id,service_id
+                T1,R1,DAILY
+                T2,R1,DAILY
+            """.trimIndent(),
+            "stop_times.txt" to """
+                trip_id,arrival_time,departure_time,stop_id,stop_sequence
+                T1,08:00:00,08:00:00,S1,1
+                T1,08:10:00,08:12:00,S2,2
+                T1,08:25:00,08:25:00,S3,3
+                T2,23:00:00,23:00:00,S1,1
+                T2,23:10:00,23:10:00,S2,2
+            """.trimIndent(),
+            "calendar.txt" to "service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date",
+            "calendar_dates.txt" to "service_id,date,exception_type",
+            "transfers.txt" to "from_stop_id,to_stop_id,transfer_type,min_transfer_time",
+        )
+        val routes = parser.parse(feed).network.routes
+        assertEquals(2, routes.size)
+        val patterns = routes.map { it.stopIds }.toSet()
+        assertTrue(patterns.contains(listOf(0, 1, 2)))
+        assertTrue(patterns.contains(listOf(0, 1)))
+        assertEquals(1, routes.first { it.stopIds == listOf(0, 1) }.trips.size)
+        assertEquals(1, routes.first { it.stopIds == listOf(0, 1, 2) }.trips.size)
+    }
+
     // ---- Transfers ---------------------------------------------------------
 
     @Test
-    fun `transfers parsed with correct walk time`() {
+    fun `transfers carry the distance between the two stops, not the feed's min_transfer_time`() {
+        // S1 and S2 are 0.001 degrees of latitude apart (~111 m) — the feed's own
+        // min_transfer_time (999, deliberately wrong) must be ignored entirely; the
+        // distance is derived from the stops' own coordinates instead.
         val feed = feedWith(
-            stops = "stop_id,stop_name,stop_lat,stop_lon\nS1,A,0.0,0.0\nS2,B,0.0,0.0",
-            transfers = "from_stop_id,to_stop_id,transfer_type,min_transfer_time\nS1,S2,2,180"
+            stops = "stop_id,stop_name,stop_lat,stop_lon\nS1,A,0.0,0.0\nS2,B,0.001,0.0",
+            transfers = "from_stop_id,to_stop_id,transfer_type,min_transfer_time\nS1,S2,2,999"
         )
         val transfers = parser.parse(feed).network.transfers
         assertEquals(1, transfers.size)
         assertEquals(0, transfers[0].fromStopId)
         assertEquals(1, transfers[0].toStopId)
-        assertEquals(180, transfers[0].walkSeconds)
+        assertEquals(111.2, transfers[0].distanceMeters, 0.5)
     }
 
     // ---- Calendar integration ----------------------------------------------

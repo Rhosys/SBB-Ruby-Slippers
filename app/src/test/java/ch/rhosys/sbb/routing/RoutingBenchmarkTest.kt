@@ -110,7 +110,7 @@ class RoutingBenchmarkTest {
 
         // Transfers at overlap points
         for (i in 25..49) {
-            builder.addTransfer(i, i, 120) // within-stop transfer 2 min
+            builder.addTransfer(i, i, 200.0) // within-stop transfer, 2 min @ default 6km/h pace
         }
 
         return builder.build()

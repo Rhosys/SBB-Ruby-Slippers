@@ -3,6 +3,7 @@ package ch.rhosys.sbb.ui.search
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ch.rhosys.sbb.data.local.location.LocationProvider
+import ch.rhosys.sbb.data.local.preferences.UserPreferencesRepository
 import ch.rhosys.sbb.data.local.routing.LocalRoutingState
 import ch.rhosys.sbb.data.local.routing.LocalTransportRepository
 import ch.rhosys.sbb.data.local.routing.algorithm.RoutingTime
@@ -57,6 +58,10 @@ data class ConnectionSearchUiState(
     // Stable key of the currently active (started) journey, if any of the displayed
     // connections is it — drives the "already started" highlight on its card.
     val activeConnectionKey: String? = null,
+    // Live from Settings — used to tell whether a tight transfer still covers a normal
+    // walk or only a run (see TransferInfo.requiresRunning).
+    val walkingPaceKmh: Float = 6f,
+    val runningPaceKmh: Float = 10f,
 ) {
     val fromIsCurrentLocation: Boolean get() = fromText == SearchEndpoint.CURRENT_LOCATION_LABEL
     val toIsCurrentLocation: Boolean get() = toText == SearchEndpoint.CURRENT_LOCATION_LABEL
@@ -72,6 +77,7 @@ class ConnectionSearchViewModel @Inject constructor(
     private val tripReviewHolder: TripReviewHolder,
     private val searchNavigationBridge: SearchNavigationBridge,
     private val journeyStateHolder: JourneyStateHolder,
+    private val userPreferencesRepository: UserPreferencesRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ConnectionSearchUiState())
@@ -105,6 +111,16 @@ class ConnectionSearchViewModel @Inject constructor(
         viewModelScope.launch {
             journeyStateHolder.activeJourney.collect { journey ->
                 _uiState.value = _uiState.value.copy(activeConnectionKey = journey?.connection?.stableKey)
+            }
+        }
+        viewModelScope.launch {
+            userPreferencesRepository.walkingPaceKmh.collect { kmh ->
+                _uiState.value = _uiState.value.copy(walkingPaceKmh = kmh)
+            }
+        }
+        viewModelScope.launch {
+            userPreferencesRepository.runningPaceKmh.collect { kmh ->
+                _uiState.value = _uiState.value.copy(runningPaceKmh = kmh)
             }
         }
     }
@@ -471,8 +487,10 @@ class ConnectionSearchViewModel @Inject constructor(
         if (localRouter.hasData()) {
             val routingTime = if (isArriveBy) RoutingTime.ArriveBy(time) else RoutingTime.DepartAfter(time)
             var result: List<Connection> = emptyList()
-            localRouter.routeConnections(from = from, to = to, date = date, routingTime = routingTime)
-                .collect { state -> if (state is LocalRoutingState.Results) result = state.connections }
+            localRouter.routeConnections(
+                from = from, to = to, date = date, routingTime = routingTime,
+                walkingPaceKmh = userPreferencesRepository.walkingPaceKmh.first(),
+            ).collect { state -> if (state is LocalRoutingState.Results) result = state.connections }
             return result
         }
         return runCatching {
@@ -486,6 +504,7 @@ class ConnectionSearchViewModel @Inject constructor(
             to = to,
             date = _uiState.value.searchDate,
             routingTime = routingTime,
+            walkingPaceKmh = userPreferencesRepository.walkingPaceKmh.first(),
         ).collect { state ->
             when (state) {
                 is LocalRoutingState.Results -> _uiState.value = _uiState.value.copy(

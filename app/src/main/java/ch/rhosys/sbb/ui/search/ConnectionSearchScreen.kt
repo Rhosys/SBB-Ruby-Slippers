@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -58,6 +59,7 @@ import ch.rhosys.sbb.R
 import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.TripHistoryItem
 import ch.rhosys.sbb.ui.common.AppAlertDialog
+import ch.rhosys.sbb.ui.common.RunningManBadge
 import ch.rhosys.sbb.ui.common.StationAutocompleteField
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -233,6 +235,8 @@ fun ConnectionSearchScreen(
                                     isHero = row.order == 1,
                                     isRecommended = shortestDuration != null && row.connection.transitDuration == shortestDuration,
                                     isActiveJourney = row.connection.stableKey == state.activeConnectionKey,
+                                    walkingPaceKmh = state.walkingPaceKmh,
+                                    runningPaceKmh = state.runningPaceKmh,
                                     onClick = {
                                         viewModel.openTripReview(row.connection)
                                         onNavigateToReview()
@@ -464,6 +468,8 @@ private fun ConnectionCard(
     isHero: Boolean,
     isRecommended: Boolean,
     isActiveJourney: Boolean,
+    walkingPaceKmh: Float,
+    runningPaceKmh: Float,
     onClick: () -> Unit,
     onFaresTap: () -> Unit,
 ) {
@@ -494,12 +500,22 @@ private fun ConnectionCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
+                val anyTransferRequiresRunning = connection.transferInfos.any {
+                    it.requiresRunning(walkingPaceKmh, runningPaceKmh)
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(connection.departure.displayTime(),
-                        style = MaterialTheme.typography.titleMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(connection.departure.displayTime(),
+                            style = MaterialTheme.typography.titleMedium)
+                        if (anyTransferRequiresRunning) {
+                            Spacer(Modifier.width(4.dp))
+                            RunningManBadge()
+                        }
+                    }
                     Text(connection.arrival.displayTime(),
                         style = MaterialTheme.typography.titleMedium)
                 }
@@ -519,6 +535,25 @@ private fun ConnectionCard(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error,
                     )
+                }
+                connection.transferInfos.forEach { transfer ->
+                    val requiresRunning = transfer.requiresRunning(walkingPaceKmh, runningPaceKmh)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Change at ${transfer.stationName}: ${transfer.effectiveBufferMinutes} min",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (transfer.isAtRisk || requiresRunning) FontWeight.Bold else FontWeight.Normal,
+                            color = if (transfer.isAtRisk) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                        if (requiresRunning) {
+                            Spacer(Modifier.width(4.dp))
+                            RunningManBadge(iconSize = 14.dp)
+                        }
+                    }
                 }
                 if (isActiveJourney) {
                     Text(

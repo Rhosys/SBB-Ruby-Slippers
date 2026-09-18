@@ -78,7 +78,7 @@ class RoutingEngineTest {
                     8 * 3600 + 1800, // D arr 08:30
                 ),
             )
-            .addTransfer(fromStop = 0, toStop = 1, walkSeconds = 180) // A→B 3 min
+            .addTransfer(fromStop = 0, toStop = 1, distanceMeters = 300.0) // A→B 3 min @ default 6km/h pace
             .build()
 
         engine = RoutingEngine(network)
@@ -203,6 +203,40 @@ class RoutingEngineTest {
 
         val results = engine.route(query).toList()
         assertTrue("Expected no results when arrive-by deadline is before first trip", results.isEmpty())
+    }
+
+    @Test
+    fun `walking transfer straight out of the origin is considered`() = runTest {
+        // StopE has no transit route through it at all — the only way anywhere is a
+        // transfers-txt walk to StopA, then boarding Route1 there.
+        val networkWithIsolatedOrigin = GtfsNetworkBuilder()
+            .addStop(id = 0, name = "StopE", lat = 47.2900, lng = 8.4900)
+            .addStop(id = 1, name = "StopA", lat = 47.3000, lng = 8.5000)
+            .addStop(id = 2, name = "StopB", lat = 47.3100, lng = 8.5100)
+            .addStop(id = 3, name = "StopC", lat = 47.3200, lng = 8.5200)
+            .addRoute(id = 0, name = "R1", stops = listOf(1, 2, 3))
+            .addTrip(
+                routeId = 0, tripId = 0,
+                times = listOf(8 * 3600, 8 * 3600 + 600, 8 * 3600 + 720, 8 * 3600 + 1500),
+            )
+            .addTransfer(fromStop = 0, toStop = 1, distanceMeters = 200.0) // E → A, 2 min walk @ default 6km/h pace
+            .build()
+        val isolatedEngine = RoutingEngine(networkWithIsolatedOrigin)
+
+        val query = RoutingQuery(
+            originStopIds = listOf(0),
+            destinationStopIds = listOf(3),
+            routingTime = RoutingTime.DepartAfter(LocalTime.of(7, 0)),
+            date = LocalDate.now(),
+            walkToFirstStop = Duration.ZERO,
+            walkFromLastStop = Duration.ZERO,
+        )
+
+        val results = isolatedEngine.route(query).toList()
+
+        assertTrue("Expected a connection via the walk out of the origin", results.isNotEmpty())
+        val connection = results.last().connections.first()
+        assertEquals(8 * 3600 + 1500, connection.arrivalSeconds) // 08:25, same trip as direct A→C
     }
 
     @Test
