@@ -2,6 +2,7 @@ package ch.rhosys.sbb.ui.search
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -187,16 +188,34 @@ fun ConnectionSearchScreen(
                 val nowLazyIndex = remember(rows) { 1 + rows.indexOfFirst { it is ConnectionListRow.NowDivider } }
                 val scope = rememberCoroutineScope()
 
+                // Only a real finger-driven scroll should trigger a fetch — reaching an edge
+                // because of layout settling, the "now" button's animateScrollToItem, or a
+                // fresh result set landing at the top must NOT page in more results on their
+                // own. We arm on DragInteraction.Start and disarm the instant we consume it.
+                var userDragInitiatedScroll by remember { mutableStateOf(false) }
+                LaunchedEffect(listState) {
+                    listState.interactionSource.interactions.collect { interaction ->
+                        if (interaction is DragInteraction.Start) userDragInitiatedScroll = true
+                    }
+                }
+
                 LaunchedEffect(listState, state.connections) {
                     snapshotFlow { listState.layoutInfo }
                         .collect { layoutInfo ->
+                            if (!userDragInitiatedScroll) return@collect
                             val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return@collect
                             val totalItems = layoutInfo.totalItemsCount
                             val firstVisible = layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: return@collect
                             // Index 0 is the "load earlier" sentinel, the last index is
                             // the "load later" sentinel — reaching either loads more.
-                            if (firstVisible == 0) viewModel.loadEarlier()
-                            if (lastVisible == totalItems - 1) viewModel.loadLater()
+                            if (firstVisible == 0) {
+                                userDragInitiatedScroll = false
+                                viewModel.loadEarlier()
+                            }
+                            if (lastVisible == totalItems - 1) {
+                                userDragInitiatedScroll = false
+                                viewModel.loadLater()
+                            }
                         }
                 }
 
