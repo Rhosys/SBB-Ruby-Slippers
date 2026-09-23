@@ -2,8 +2,11 @@ package ch.rhosys.sbb.domain
 
 import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.Leg
+import ch.rhosys.sbb.domain.model.RequiredRun
 import ch.rhosys.sbb.domain.model.Stop
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Duration
@@ -94,5 +97,34 @@ class ConnectionTest {
         )
         val info = connection.transferInfos.first()
         assertFalse(info.requiresRunning(walkingPaceKmh = 6f, runningPaceKmh = 10f))
+    }
+
+    @Test
+    fun `longest required run picks the transfer run when leaving now is walkable`() {
+        val connection = buildConnection(delayMinutes = 6)
+        val now = connection.departure.effectiveTime!!.minusSeconds(3600)
+        val run = connection.longestRequiredRun(now, walkingPaceKmh = 6f, runningPaceKmh = 10f)
+        assertEquals(RequiredRun("Talweissenstrasse", 3), run)
+    }
+
+    @Test
+    fun `no required run when everything can be walked`() {
+        val connection = buildConnection(delayMinutes = 0)
+        val now = connection.departure.effectiveTime!!.minusSeconds(3600)
+        assertNull(connection.longestRequiredRun(now, walkingPaceKmh = 6f, runningPaceKmh = 10f))
+    }
+
+    @Test
+    fun `walk to first stop requires running once it no longer fits at walking pace`() {
+        // 10-minute walk to the first stop, run takes 6 min at 6 vs 10 km/h.
+        val connection = buildConnection(delayMinutes = 0).copy(walkToFirstStop = Duration.ofMinutes(10))
+        val dep = connection.departure.effectiveTime!!
+        assertFalse(connection.requiresRunningToFirstStop(dep.minusSeconds(11 * 60), 6f, 10f))
+        assertTrue(connection.requiresRunningToFirstStop(dep.minusSeconds(8 * 60), 6f, 10f))
+        assertFalse(connection.requiresRunningToFirstStop(dep.minusSeconds(5 * 60), 6f, 10f))
+        assertEquals(
+            RequiredRun("X", 6),
+            connection.longestRequiredRun(dep.minusSeconds(8 * 60), 6f, 10f),
+        )
     }
 }

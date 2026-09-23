@@ -256,6 +256,7 @@ fun ConnectionSearchScreen(
                                     isActiveJourney = row.connection.stableKey == state.activeConnectionKey,
                                     walkingPaceKmh = state.walkingPaceKmh,
                                     runningPaceKmh = state.runningPaceKmh,
+                                    now = now,
                                     onClick = {
                                         viewModel.openTripReview(row.connection)
                                         onNavigateToReview()
@@ -489,6 +490,7 @@ private fun ConnectionCard(
     isActiveJourney: Boolean,
     walkingPaceKmh: Float,
     runningPaceKmh: Float,
+    now: Instant,
     onClick: () -> Unit,
     onFaresTap: () -> Unit,
 ) {
@@ -519,9 +521,8 @@ private fun ConnectionCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                val anyTransferRequiresRunning = connection.transferInfos.any {
-                    it.requiresRunning(walkingPaceKmh, runningPaceKmh)
-                }
+                val runToFirstStop = connection.requiresRunningToFirstStop(now, walkingPaceKmh, runningPaceKmh)
+                val longestRun = connection.longestRequiredRun(now, walkingPaceKmh, runningPaceKmh)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -530,13 +531,45 @@ private fun ConnectionCard(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(connection.departure.displayTime(),
                             style = MaterialTheme.typography.titleMedium)
-                        if (anyTransferRequiresRunning) {
+                        if (longestRun != null) {
                             Spacer(Modifier.width(4.dp))
                             RunningManBadge()
                         }
                     }
                     Text(connection.arrival.displayTime(),
                         style = MaterialTheme.typography.titleMedium)
+                }
+                // Times above are the trip itself (first boarding → last alighting); the
+                // walk to/from it is shown separately underneath each end.
+                val walkTo = connection.walkToFirstStop.toMinutes()
+                val walkFrom = connection.walkFromLastStop.toMinutes()
+                if (walkTo > 0 || walkFrom > 0) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = when {
+                                walkTo <= 0 -> ""
+                                runToFirstStop -> "Walk $walkTo min before · run now"
+                                else -> "Walk $walkTo min before"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (runToFirstStop) FontWeight.Bold else FontWeight.Normal,
+                            color = if (runToFirstStop) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                        if (walkFrom > 0) {
+                            Text(
+                                "Walk $walkFrom min after",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
                 val lines = connection.lineNames.joinToString(" → ")
                 val transfers = connection.transfers
@@ -572,6 +605,18 @@ private fun ConnectionCard(
                             Spacer(Modifier.width(4.dp))
                             RunningManBadge(iconSize = 14.dp)
                         }
+                    }
+                }
+                if (longestRun != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Longest run: ${longestRun.runMinutes} min to ${longestRun.stationName}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        RunningManBadge(iconSize = 14.dp)
                     }
                 }
                 if (isActiveJourney) {

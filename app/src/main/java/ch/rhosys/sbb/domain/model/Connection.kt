@@ -1,6 +1,8 @@
 package ch.rhosys.sbb.domain.model
 
 import java.time.Duration
+import java.time.Instant
+import kotlin.math.ceil
 
 data class Connection(
     val departure: Stop,
@@ -48,6 +50,31 @@ data class Connection(
             }
             return result
         }
+
+    // Whether, leaving right now, the walk to the first stop no longer fits at a normal
+    // pace but still does at a run. Same rule as TransferInfo.requiresRunning, with "now"
+    // standing in for the incoming leg's arrival.
+    fun requiresRunningToFirstStop(now: Instant, walkingPaceKmh: Float, runningPaceKmh: Float): Boolean {
+        val dep = departure.effectiveTime ?: return false
+        val walkSeconds = walkToFirstStop.seconds
+        if (walkSeconds <= 0 || walkingPaceKmh <= 0f || runningPaceKmh <= walkingPaceKmh) return false
+        val slackSeconds = Duration.between(now, dep).seconds
+        val runSeconds = walkSeconds * (walkingPaceKmh / runningPaceKmh)
+        return slackSeconds < walkSeconds && slackSeconds >= runSeconds
+    }
+
+    // The longest run the rider must make to keep this connection — across the walk to
+    // the first stop and every transfer — or null when every leg can still be walked.
+    fun longestRequiredRun(now: Instant, walkingPaceKmh: Float, runningPaceKmh: Float): RequiredRun? {
+        val runs = mutableListOf<RequiredRun>()
+        if (requiresRunningToFirstStop(now, walkingPaceKmh, runningPaceKmh)) {
+            runs += RequiredRun(departure.stationName, runMinutes(walkToFirstStop.toMinutes().toInt(), walkingPaceKmh, runningPaceKmh))
+        }
+        transferInfos.filter { it.requiresRunning(walkingPaceKmh, runningPaceKmh) }.forEach {
+            runs += RequiredRun(it.stationName, runMinutes(it.walkLegMinutes ?: 0, walkingPaceKmh, runningPaceKmh))
+        }
+        return runs.maxByOrNull { it.runMinutes }
+    }
 
     // Displayed as the middle value on the connection card (node 0 → node N).
     val transitDuration: Duration?
@@ -97,3 +124,13 @@ data class TransferInfo(
         return effectiveBufferMinutes < walkMinutes && effectiveBufferMinutes >= runMinutes
     }
 }
+
+data class RequiredRun(
+    // Where the run ends — the stop to board at.
+    val stationName: String,
+    val runMinutes: Int,
+)
+
+// Walk time scaled to running pace, rounded up so a displayed run is never optimistic.
+private fun runMinutes(walkMinutes: Int, walkingPaceKmh: Float, runningPaceKmh: Float): Int =
+    maxOf(1, ceil(walkMinutes * walkingPaceKmh.toDouble() / runningPaceKmh).toInt())
