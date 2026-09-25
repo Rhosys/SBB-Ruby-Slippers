@@ -12,14 +12,13 @@ import ch.rhosys.sbb.ui.journey.JourneysScreen
 import ch.rhosys.sbb.ui.journey.TripReviewScreen
 import ch.rhosys.sbb.ui.onboarding.OnboardingScreen
 import ch.rhosys.sbb.ui.search.ConnectionSearchScreen
-import ch.rhosys.sbb.ui.search.SearchNavigationBridge
 import ch.rhosys.sbb.ui.settings.SettingsScreen
 
 @Composable
 fun AppNavHost(
     navController: NavHostController,
     startDestination: String,
-    searchNavigationBridge: SearchNavigationBridge,
+    navigator: AppNavigator,
     modifier: Modifier = Modifier,
 ) {
     NavHost(
@@ -39,14 +38,7 @@ fun AppNavHost(
 
         composable(Screen.Home.route) {
             HomeScreen(
-                onNavigateToSearch = { from, to ->
-                    searchNavigationBridge.request(from, to)
-                    navController.navigate(Screen.Search.route) {
-                        popUpTo(Screen.Home.route) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
+                onNavigateToSearch = navigator::startTripSearch,
                 onNavigateToJourneys = {
                     navController.navigate(Screen.Journeys.route)
                 },

@@ -411,7 +411,7 @@ fun ConnectionSearchScreen(
 
 // One row per connection, plus a single "Now" divider row inserted at the boundary
 // between past and future departures — connections are always shown sorted ascending.
-private sealed class ConnectionListRow {
+internal sealed class ConnectionListRow {
     abstract val key: String
 
     data class ConnectionRow(val connection: Connection, val order: Int) : ConnectionListRow() {
@@ -423,7 +423,7 @@ private sealed class ConnectionListRow {
     }
 }
 
-private fun buildRowsWithNowDivider(connections: List<Connection>, now: Instant): List<ConnectionListRow> {
+internal fun buildRowsWithNowDivider(connections: List<Connection>, now: Instant): List<ConnectionListRow> {
     val rows = mutableListOf<ConnectionListRow>()
     var dividerInserted = false
     connections.forEachIndexed { index, connection ->
