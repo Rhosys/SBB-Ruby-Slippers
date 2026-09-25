@@ -67,14 +67,11 @@ import ch.rhosys.sbb.ui.common.StationAutocompleteField
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.Instant
-import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
 
-private val DATE_LABEL_FMT = DateTimeFormatter.ofPattern("EEE, d MMM")
-private val TIME_LABEL_FMT = DateTimeFormatter.ofPattern("HH:mm")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -160,7 +157,7 @@ fun ConnectionSearchScreen(
                 )
             }
             TextButton(onClick = { showDateTimePicker = true }) {
-                Text("${state.searchDate.format(DATE_LABEL_FMT)}, ${state.searchTime.format(TIME_LABEL_FMT)}")
+                Text(state.timeMode.label())
             }
         }
 
@@ -347,24 +344,29 @@ fun ConnectionSearchScreen(
     }
 
     if (showDateTimePicker) {
-        val zone = ZoneId.of("Europe/Zurich")
+        // Opens on the picked time, or the current time when the search is on "Now".
+        val initial = remember {
+            (state.timeMode as? SearchTimeMode.Fixed)?.dateTime ?: LocalDateTime.now(ZoneId.of("Europe/Zurich"))
+        }
+        // DatePicker works in UTC-midnight millis.
         val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = state.searchDate.atStartOfDay(zone).toInstant().toEpochMilli(),
+            initialSelectedDateMillis = initial.toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
         )
         val timePickerState = rememberTimePickerState(
-            initialHour = state.searchTime.hour,
-            initialMinute = state.searchTime.minute,
+            initialHour = initial.hour,
+            initialMinute = initial.minute,
             is24Hour = true,
         )
         AppAlertDialog(
             onDismissRequest = { showDateTimePicker = false },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.onTimeSelected(LocalTime.of(timePickerState.hour, timePickerState.minute))
-                    datePickerState.selectedDateMillis?.let { millis ->
-                        val date = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
-                        viewModel.onDateSelected(date)
-                    }
+                    val date = datePickerState.selectedDateMillis
+                        ?.let { Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate() }
+                        ?: initial.toLocalDate()
+                    viewModel.onDateTimeSelected(
+                        LocalDateTime.of(date, LocalTime.of(timePickerState.hour, timePickerState.minute)),
+                    )
                     showDateTimePicker = false
                 }) { Text("OK") }
             },

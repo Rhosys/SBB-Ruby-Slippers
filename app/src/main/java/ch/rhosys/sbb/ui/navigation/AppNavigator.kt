@@ -24,12 +24,12 @@ class AppNavigator(
 
     fun startTripSearch(from: String, to: String) {
         searchNavigationBridge.request(from, to)
-        // Current behaviour, moved here unchanged — restores the Search tab's saved stack,
-        // so a trip's details opened earlier come back on top of the new search.
+        // Throw away the Search tab's saved stack (e.g. a trip's details opened earlier) so
+        // the new search is what shows — then open Search without restoring anything.
+        navController.clearBackStack(Screen.Search.route)
         navController.navigate(Screen.Search.route) {
             popUpTo(Screen.Home.route) { saveState = true }
             launchSingleTop = true
-            restoreState = true
         }
     }
 }

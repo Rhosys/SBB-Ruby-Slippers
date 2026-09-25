@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 import javax.inject.Inject
@@ -49,9 +50,11 @@ data class ConnectionSearchUiState(
     val isLoadingEarlier: Boolean = false,
     val isLoadingLater: Boolean = false,
     val error: String? = null,
+    // "Now" (re-resolved on every query) or a time the user picked.
+    val timeMode: SearchTimeMode = SearchTimeMode.Now,
+    // Date the displayed results were queried for — earlier/later paging stays on it.
     val searchDate: LocalDate = LocalDate.now(SWISS_ZONE),
-    val searchTime: LocalTime = LocalTime.now(SWISS_ZONE),
-    // false = "depart after" searchTime, true = "arrive by" searchTime.
+    // false = "depart after" the chosen time, true = "arrive by" it.
     val isArriveBy: Boolean = false,
     val showRecentSearches: Boolean = false,
     val recentSearches: List<TripHistoryItem> = emptyList(),
@@ -135,6 +138,7 @@ class ConnectionSearchViewModel @Inject constructor(
             toSuggestions = emptyList(),
             fromBadgeStationName = null,
             toBadgeStationName = null,
+            timeMode = _uiState.value.timeMode.afterHomeTripRequest(),
         )
         scheduleAutoSearch(immediate = true)
     }
@@ -371,13 +375,8 @@ class ConnectionSearchViewModel @Inject constructor(
         return SearchEndpoint.NamedPlace(text)
     }
 
-    fun onDateSelected(date: LocalDate) {
-        _uiState.value = _uiState.value.copy(searchDate = date)
-        search()
-    }
-
-    fun onTimeSelected(time: LocalTime) {
-        _uiState.value = _uiState.value.copy(searchTime = time)
+    fun onDateTimeSelected(dateTime: LocalDateTime) {
+        _uiState.value = _uiState.value.copy(timeMode = _uiState.value.timeMode.afterTimePicked(dateTime))
         search()
     }
 
@@ -406,7 +405,12 @@ class ConnectionSearchViewModel @Inject constructor(
         if (to.isBlank()) return
 
         viewModelScope.launch {
+            val queryAt = _uiState.value.timeMode.queryDateTime(
+                LocalDateTime.now(SWISS_ZONE),
+                _uiState.value.isArriveBy,
+            )
             _uiState.value = _uiState.value.copy(
+                searchDate = queryAt.toLocalDate(),
                 isLoading = true,
                 error = null,
                 connections = emptyList(),
@@ -419,11 +423,11 @@ class ConnectionSearchViewModel @Inject constructor(
             lastResolvedFrom = fromEndpoint
             lastResolvedTo = toEndpoint
 
-            val routingTime = routingTimeFor(_uiState.value.searchTime)
+            val routingTime = routingTimeFor(queryAt.toLocalTime())
             if (localRouter.hasData()) {
                 searchLocally(fromEndpoint, toEndpoint, routingTime)
             } else {
-                searchViaApi(fromEndpoint, toEndpoint)
+                searchViaApi(fromEndpoint, toEndpoint, queryAt.toLocalTime())
             }
         }
     }
@@ -515,19 +519,25 @@ class ConnectionSearchViewModel @Inject constructor(
                     isLoading = false,
                     error = state.reason.ifBlank { null },
                 )
-                is LocalRoutingState.NoData -> searchViaApi(from, to)
+                is LocalRoutingState.NoData -> searchViaApi(
+                    from, to,
+                    when (routingTime) {
+                        is RoutingTime.DepartAfter -> routingTime.time
+                        is RoutingTime.ArriveBy -> routingTime.time
+                    },
+                )
                 LocalRoutingState.Loading -> Unit
             }
         }
     }
 
-    private suspend fun searchViaApi(from: SearchEndpoint, to: SearchEndpoint) {
+    private suspend fun searchViaApi(from: SearchEndpoint, to: SearchEndpoint, time: LocalTime) {
         val state = _uiState.value
         runCatching {
             repository.getConnections(
                 from, to,
                 date = state.searchDate,
-                time = state.searchTime,
+                time = time,
                 isArrivalTime = state.isArriveBy,
             )
         }
