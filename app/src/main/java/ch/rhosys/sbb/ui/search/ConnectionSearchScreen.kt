@@ -39,6 +39,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -46,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -62,16 +64,14 @@ import ch.rhosys.sbb.domain.model.TripHistoryItem
 import ch.rhosys.sbb.ui.common.AppAlertDialog
 import ch.rhosys.sbb.ui.common.RunningManBadge
 import ch.rhosys.sbb.ui.common.StationAutocompleteField
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.Instant
-import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
 
-private val DATE_LABEL_FMT = DateTimeFormatter.ofPattern("EEE, d MMM")
-private val TIME_LABEL_FMT = DateTimeFormatter.ofPattern("HH:mm")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -157,7 +157,7 @@ fun ConnectionSearchScreen(
                 )
             }
             TextButton(onClick = { showDateTimePicker = true }) {
-                Text("${state.searchDate.format(DATE_LABEL_FMT)}, ${state.searchTime.format(TIME_LABEL_FMT)}")
+                Text(state.timeMode.label())
             }
         }
 
@@ -178,20 +178,72 @@ fun ConnectionSearchScreen(
             )
 
             else -> {
-                val listState = rememberLazyListState()
+                // Lazy item layout: [0] "Earlier connections" separator, [1..n] rows,
+                // [n+1] load-later indicator, [n+2] bottom filler. The list opens scrolled to
+                // index 1, so the separator sits just off-screen above the first trip — pulling
+                // the list down reveals it, and that reveal is what fetches earlier trips.
+                val listState = rememberLazyListState(initialFirstVisibleItemIndex = 1)
                 val shortestDuration = state.connections.mapNotNull { it.transitDuration }.minOrNull()
                 val now = remember(state.connections) { Instant.now() }
                 val rows = remember(state.connections, now) { buildRowsWithNowDivider(state.connections, now) }
                 // Index of the "Now" row within the LazyColumn's own item indices — offset
-                // by 1 for the leading "load earlier" sentinel — used to tell whether the
-                // divider is currently on-screen or has scrolled past the visible range.
+                // by 1 for the leading "earlier connections" separator — used to tell whether
+                // the divider is currently on-screen or has scrolled past the visible range.
                 val nowLazyIndex = remember(rows) { 1 + rows.indexOfFirst { it is ConnectionListRow.NowDivider } }
                 val scope = rememberCoroutineScope()
+                val density = LocalDensity.current
+                val laterSlackPx = remember(density) { with(density) { LATER_SLACK.roundToPx() } }
 
-                // Only a real finger-driven scroll should trigger a fetch — reaching an edge
-                // because of layout settling, the "now" button's animateScrollToItem, or a
-                // fresh result set landing at the top must NOT page in more results on their
-                // own. We arm on DragInteraction.Start and disarm the instant we consume it.
+                // A list shorter than the screen can't scroll, so there'd be no way to hide
+                // the separator above it (or to pull at all). The filler at the bottom tops the
+                // content up to one screen plus a little slack, so the list is always
+                // scrollable in both directions.
+                var fillerPx by remember { mutableIntStateOf(0) }
+                var fillerSettled by remember { mutableStateOf(false) }
+                LaunchedEffect(listState) {
+                    snapshotFlow { listState.layoutInfo }.collect { info ->
+                        val fillerIndex = info.totalItemsCount - 1
+                        val realRange = 1 until fillerIndex
+                        val visibleReal = info.visibleItemsInfo.filter { it.index in realRange }
+                        val viewport = info.viewportEndOffset - info.viewportStartOffset
+                        if (viewport <= 0 || info.visibleItemsInfo.isEmpty()) {
+                            fillerSettled = false
+                            return@collect
+                        }
+                        val needed = when {
+                            visibleReal.sumOf { it.size } >= viewport -> 0
+                            visibleReal.isNotEmpty() && visibleReal.size == realRange.count() -> {
+                                val content = visibleReal.last().let { it.offset + it.size } - visibleReal.first().offset
+                                (viewport - content + laterSlackPx).coerceAtLeast(0)
+                            }
+                            // Some real rows are off-screen while the separator/filler take
+                            // up the rest — can't measure the content, keep what we have.
+                            else -> fillerPx
+                        }
+                        fillerSettled = needed == fillerPx
+                        if (!fillerSettled) fillerPx = needed
+                    }
+                }
+
+                // Index to jump to once the filler has settled: 1 on first show (hide the
+                // separator), and again after earlier trips land (re-hide the separator and
+                // show the newly loaded earliest trip at the top).
+                var pendingScrollIndex by remember { mutableStateOf<Int?>(1) }
+                LaunchedEffect(pendingScrollIndex) {
+                    val target = pendingScrollIndex ?: return@LaunchedEffect
+                    snapshotFlow { fillerSettled && listState.layoutInfo.totalItemsCount > target }.first { it }
+                    listState.scrollToItem(target)
+                    pendingScrollIndex = null
+                }
+                var wasLoadingEarlier by remember { mutableStateOf(false) }
+                LaunchedEffect(state.isLoadingEarlier) {
+                    if (wasLoadingEarlier && !state.isLoadingEarlier) pendingScrollIndex = 1
+                    wasLoadingEarlier = state.isLoadingEarlier
+                }
+
+                // Only a real finger-driven scroll should trigger a fetch — the "now" button's
+                // animateScrollToItem or our own repositioning must NOT page in more results.
+                // We arm on DragInteraction.Start and disarm the instant we consume it.
                 var userDragInitiatedScroll by remember { mutableStateOf(false) }
                 LaunchedEffect(listState) {
                     listState.interactionSource.interactions.collect { interaction ->
@@ -199,20 +251,18 @@ fun ConnectionSearchScreen(
                     }
                 }
 
-                LaunchedEffect(listState, state.connections) {
-                    snapshotFlow { listState.layoutInfo }
-                        .collect { layoutInfo ->
-                            if (!userDragInitiatedScroll) return@collect
-                            val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return@collect
-                            val totalItems = layoutInfo.totalItemsCount
-                            val firstVisible = layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: return@collect
-                            // Index 0 is the "load earlier" sentinel, the last index is
-                            // the "load later" sentinel — reaching either loads more.
-                            if (firstVisible == 0) {
+                LaunchedEffect(listState) {
+                    snapshotFlow { Triple(listState.layoutInfo, userDragInitiatedScroll, pendingScrollIndex) }
+                        .collect { (info, dragged, pending) ->
+                            if (!dragged || pending != null) return@collect
+                            // How far the separator's bottom edge has come down past the top
+                            // of the list — i.e. how much of it the user has pulled into view.
+                            val separator = info.visibleItemsInfo.firstOrNull { it.index == 0 }
+                            val revealedPx = separator?.let { it.offset + it.size - info.viewportStartOffset } ?: 0
+                            if (revealedPx > EARLIER_REVEAL_THRESHOLD_PX) {
                                 userDragInitiatedScroll = false
                                 viewModel.loadEarlier()
-                            }
-                            if (lastVisible == totalItems - 1) {
+                            } else if (!listState.canScrollForward) {
                                 userDragInitiatedScroll = false
                                 viewModel.loadLater()
                             }
@@ -237,10 +287,12 @@ fun ConnectionSearchScreen(
                     LazyColumn(
                         state = listState,
                         verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp),
+                        // No top padding: the separator's reveal is measured from the list's
+                        // top edge.
+                        contentPadding = PaddingValues(bottom = 4.dp),
                     ) {
-                        item {
-                            LoadMoreRow(isLoading = state.isLoadingEarlier, label = "Loading earlier connections…")
+                        item(key = "earlier-separator") {
+                            EarlierConnectionsRow(isLoading = state.isLoadingEarlier)
                         }
                         itemsIndexed(
                             items = rows,
@@ -256,6 +308,7 @@ fun ConnectionSearchScreen(
                                     isActiveJourney = row.connection.stableKey == state.activeConnectionKey,
                                     walkingPaceKmh = state.walkingPaceKmh,
                                     runningPaceKmh = state.runningPaceKmh,
+                                    now = now,
                                     onClick = {
                                         viewModel.openTripReview(row.connection)
                                         onNavigateToReview()
@@ -264,8 +317,11 @@ fun ConnectionSearchScreen(
                                 )
                             }
                         }
-                        item {
+                        item(key = "load-later") {
                             LoadMoreRow(isLoading = state.isLoadingLater, label = "Loading later connections…")
+                        }
+                        item(key = "bottom-filler") {
+                            Spacer(Modifier.height(with(density) { fillerPx.toDp() }))
                         }
                     }
 
@@ -288,24 +344,29 @@ fun ConnectionSearchScreen(
     }
 
     if (showDateTimePicker) {
-        val zone = ZoneId.of("Europe/Zurich")
+        // Opens on the picked time, or the current time when the search is on "Now".
+        val initial = remember {
+            (state.timeMode as? SearchTimeMode.Fixed)?.dateTime ?: LocalDateTime.now(ZoneId.of("Europe/Zurich"))
+        }
+        // DatePicker works in UTC-midnight millis.
         val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = state.searchDate.atStartOfDay(zone).toInstant().toEpochMilli(),
+            initialSelectedDateMillis = initial.toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
         )
         val timePickerState = rememberTimePickerState(
-            initialHour = state.searchTime.hour,
-            initialMinute = state.searchTime.minute,
+            initialHour = initial.hour,
+            initialMinute = initial.minute,
             is24Hour = true,
         )
         AppAlertDialog(
             onDismissRequest = { showDateTimePicker = false },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.onTimeSelected(LocalTime.of(timePickerState.hour, timePickerState.minute))
-                    datePickerState.selectedDateMillis?.let { millis ->
-                        val date = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
-                        viewModel.onDateSelected(date)
-                    }
+                    val date = datePickerState.selectedDateMillis
+                        ?.let { Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate() }
+                        ?: initial.toLocalDate()
+                    viewModel.onDateTimeSelected(
+                        LocalDateTime.of(date, LocalTime.of(timePickerState.hour, timePickerState.minute)),
+                    )
                     showDateTimePicker = false
                 }) { Text("OK") }
             },
@@ -352,7 +413,7 @@ fun ConnectionSearchScreen(
 
 // One row per connection, plus a single "Now" divider row inserted at the boundary
 // between past and future departures — connections are always shown sorted ascending.
-private sealed class ConnectionListRow {
+internal sealed class ConnectionListRow {
     abstract val key: String
 
     data class ConnectionRow(val connection: Connection, val order: Int) : ConnectionListRow() {
@@ -364,7 +425,7 @@ private sealed class ConnectionListRow {
     }
 }
 
-private fun buildRowsWithNowDivider(connections: List<Connection>, now: Instant): List<ConnectionListRow> {
+internal fun buildRowsWithNowDivider(connections: List<Connection>, now: Instant): List<ConnectionListRow> {
     val rows = mutableListOf<ConnectionListRow>()
     var dividerInserted = false
     connections.forEachIndexed { index, connection ->
@@ -460,6 +521,29 @@ private fun RecentSearchRow(item: TripHistoryItem, onClick: () -> Unit) {
     }
 }
 
+// Sits just above the first trip, off-screen until the user pulls the list down.
+@Composable
+private fun EarlierConnectionsRow(isLoading: Boolean) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+        if (isLoading) {
+            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+        }
+        Text(
+            if (isLoading) "Loading earlier connections…" else "Earlier connections",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+    }
+}
+
 @Composable
 private fun LoadMoreRow(isLoading: Boolean, label: String) {
     if (!isLoading) return
@@ -476,6 +560,13 @@ private fun LoadMoreRow(isLoading: Boolean, label: String) {
     }
 }
 
+// Pulling the "Earlier connections" separator this far into view fetches earlier trips.
+private const val EARLIER_REVEAL_THRESHOLD_PX = 10
+
+// How far past the last trip the list can always be scrolled, so reaching the end to load
+// later trips is a deliberate pull even when all trips fit on screen.
+private val LATER_SLACK = 48.dp
+
 private val RECOMMENDED_GREEN = androidx.compose.ui.graphics.Color(0xFF2E7D32)
 private val ACTIVE_JOURNEY_GREEN = androidx.compose.ui.graphics.Color(0xFF1B5E20)
 private val ACTIVE_JOURNEY_GREEN_CONTAINER = androidx.compose.ui.graphics.Color(0xFFA5D6A7)
@@ -489,6 +580,7 @@ private fun ConnectionCard(
     isActiveJourney: Boolean,
     walkingPaceKmh: Float,
     runningPaceKmh: Float,
+    now: Instant,
     onClick: () -> Unit,
     onFaresTap: () -> Unit,
 ) {
@@ -519,9 +611,8 @@ private fun ConnectionCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                val anyTransferRequiresRunning = connection.transferInfos.any {
-                    it.requiresRunning(walkingPaceKmh, runningPaceKmh)
-                }
+                val runToFirstStop = connection.requiresRunningToFirstStop(now, walkingPaceKmh, runningPaceKmh)
+                val longestRun = connection.longestRequiredRun(now, walkingPaceKmh, runningPaceKmh)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -530,13 +621,45 @@ private fun ConnectionCard(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(connection.departure.displayTime(),
                             style = MaterialTheme.typography.titleMedium)
-                        if (anyTransferRequiresRunning) {
+                        if (longestRun != null) {
                             Spacer(Modifier.width(4.dp))
                             RunningManBadge()
                         }
                     }
                     Text(connection.arrival.displayTime(),
                         style = MaterialTheme.typography.titleMedium)
+                }
+                // Times above are the trip itself (first boarding → last alighting); the
+                // walk to/from it is shown separately underneath each end.
+                val walkTo = connection.walkToFirstStop.toMinutes()
+                val walkFrom = connection.walkFromLastStop.toMinutes()
+                if (walkTo > 0 || walkFrom > 0) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = when {
+                                walkTo <= 0 -> ""
+                                runToFirstStop -> "Walk $walkTo min before · run now"
+                                else -> "Walk $walkTo min before"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (runToFirstStop) FontWeight.Bold else FontWeight.Normal,
+                            color = if (runToFirstStop) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                        if (walkFrom > 0) {
+                            Text(
+                                "Walk $walkFrom min after",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
                 val lines = connection.lineNames.joinToString(" → ")
                 val transfers = connection.transfers
@@ -572,6 +695,18 @@ private fun ConnectionCard(
                             Spacer(Modifier.width(4.dp))
                             RunningManBadge(iconSize = 14.dp)
                         }
+                    }
+                }
+                if (longestRun != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Longest run: ${longestRun.runMinutes} min to ${longestRun.stationName}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        RunningManBadge(iconSize = 14.dp)
                     }
                 }
                 if (isActiveJourney) {

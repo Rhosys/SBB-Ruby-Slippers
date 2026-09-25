@@ -1,9 +1,13 @@
 package ch.rhosys.sbb
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -19,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.first
@@ -29,6 +34,7 @@ import ch.rhosys.sbb.ui.error.StartupErrorScreen
 import ch.rhosys.sbb.ui.journey.JourneyStateHolder
 import ch.rhosys.sbb.ui.journey.MissedBoardingDialog
 import ch.rhosys.sbb.ui.navigation.AppNavHost
+import ch.rhosys.sbb.ui.navigation.AppNavigator
 import ch.rhosys.sbb.ui.navigation.Screen
 import ch.rhosys.sbb.ui.search.SearchNavigationBridge
 import ch.rhosys.sbb.ui.theme.SbbRubySlippersTheme
@@ -56,6 +62,14 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // targetSdk 35+ forces edge-to-edge, so the status bar is drawn over the app's own
+        // background. The app is always light-themed (SbbRubySlippersTheme darkTheme=false),
+        // so always ask for dark bar icons — the default would follow the phone's dark mode
+        // and draw white icons on our light background.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+        )
         super.onCreate(savedInstanceState)
 
         val isFreshStart = savedInstanceState == null
@@ -82,6 +96,7 @@ class MainActivity : ComponentActivity() {
                     Screen.Onboarding.route
 
                 val navController = rememberNavController()
+                val navigator = remember(navController) { AppNavigator(navController, searchNavigationBridge) }
                 val backStack by navController.currentBackStackEntryAsState()
                 val currentRoute = backStack?.destination?.route
 
@@ -137,13 +152,7 @@ class MainActivity : ComponentActivity() {
                                 tabScreens.forEach { (screen, label, icon) ->
                                     NavigationBarItem(
                                         selected = currentRoute == screen.route,
-                                        onClick = {
-                                            navController.navigate(screen.route) {
-                                                popUpTo(Screen.Home.route) { saveState = true }
-                                                launchSingleTop = true
-                                                restoreState = true
-                                            }
-                                        },
+                                        onClick = { navigator.selectTab(screen) },
                                         icon = { Icon(icon, contentDescription = null) },
                                         label = { Text(label) },
                                     )
@@ -155,8 +164,13 @@ class MainActivity : ComponentActivity() {
                     AppNavHost(
                         navController = navController,
                         startDestination = startDestination,
-                        searchNavigationBridge = searchNavigationBridge,
-                        modifier = Modifier.padding(innerPadding),
+                        navigator = navigator,
+                        // Consume what this Scaffold already padded for (status bar, bottom
+                        // nav) so nested Scaffolds/TopAppBars don't pad for the status bar a
+                        // second time.
+                        modifier = Modifier
+                            .padding(innerPadding)
+                            .consumeWindowInsets(innerPadding),
                     )
                 }
             }

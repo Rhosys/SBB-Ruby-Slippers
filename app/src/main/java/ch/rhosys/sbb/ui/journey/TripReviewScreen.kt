@@ -163,12 +163,34 @@ fun TripReviewScreen(
                 Spacer(Modifier.height(12.dp))
             }
 
+            // Departs/Arrives above are the trip itself; the walk from the origin to the
+            // first stop (and from the last stop onward) is its own row either side.
+            val walkTo = connection.walkToFirstStop.toMinutes().toInt()
+            if (walkTo > 0) {
+                item {
+                    WalkLegRow(
+                        Leg.Walk(fromName = "", toName = connection.departure.stationName, durationMinutes = walkTo),
+                        nextTransit = null,
+                    )
+                }
+            }
+
             itemsIndexed(connection.legs) { index, leg ->
                 LegRow(
                     leg,
                     nextLeg = connection.legs.getOrNull(index + 1),
                     requiresRunning = index in runningLegIndices,
                 )
+            }
+
+            val walkFrom = connection.walkFromLastStop.toMinutes().toInt()
+            if (walkFrom > 0) {
+                item {
+                    WalkLegRow(
+                        Leg.Walk(fromName = connection.arrival.stationName, toName = "destination", durationMinutes = walkFrom),
+                        nextTransit = null,
+                    )
+                }
             }
 
             item {

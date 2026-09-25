@@ -111,6 +111,40 @@ fun HomeScreen(
         if (missing.isNotEmpty()) locationPermissionLauncher.launch(missing.toTypedArray())
     }
 
+    HomeContent(
+        state = state,
+        actions = HomeActions(
+            startTripSearch = onNavigateToSearch,
+            openJourneys = onNavigateToJourneys,
+            openHomeEdit = onNavigateToHomeEdit,
+            fillFromWithNearestStop = viewModel::fillFromWithNearestStop,
+            fillToWithNearestStop = viewModel::fillToWithNearestStop,
+            onQuickSearchChanged = viewModel::onQuickSearchTextChanged,
+            selectQuickSearchSuggestion = viewModel::selectQuickSearchSuggestion,
+            hideOverlay = viewModel::hideOverlay,
+            showOverlay = viewModel::showOverlay,
+        ),
+    )
+}
+
+// Everything the Home screen can ask for. startTripSearch is the one that plans a trip —
+// every Home trigger (tile tap/drag, quick search, from/to fields, scorer card) goes
+// through it, and it always means "start a brand-new search" on the Search tab.
+internal data class HomeActions(
+    val startTripSearch: (from: String, to: String) -> Unit,
+    val openJourneys: () -> Unit,
+    val openHomeEdit: () -> Unit,
+    val fillFromWithNearestStop: () -> Unit,
+    val fillToWithNearestStop: () -> Unit,
+    val onQuickSearchChanged: (String) -> Unit,
+    val selectQuickSearchSuggestion: (String) -> Unit,
+    val hideOverlay: () -> Unit,
+    val showOverlay: () -> Unit,
+)
+
+// Stateless Home layout — rendered directly by tests with fake HomeActions.
+@Composable
+internal fun HomeContent(state: HomeUiState, actions: HomeActions) {
     // Active journey top sheet takes precedence over scorer
     val hasOverlayContent = state.activeJourney != null || state.scorerResult != null
     val topSheetVisible = hasOverlayContent && !state.overlayHidden
@@ -133,7 +167,7 @@ fun HomeScreen(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onPrimary,
                 )
-                IconButton(onClick = onNavigateToHomeEdit) {
+                IconButton(onClick = actions.openHomeEdit) {
                     Icon(
                         Icons.Default.Edit,
                         contentDescription = "Manage places",
@@ -153,7 +187,7 @@ fun HomeScreen(
                     if (state.places.isEmpty() && !state.isLoading) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             FloatingActionButton(
-                                onClick = onNavigateToHomeEdit,
+                                onClick = actions.openHomeEdit,
                                 modifier = Modifier.size(120.dp),
                             ) {
                                 Icon(
@@ -167,11 +201,11 @@ fun HomeScreen(
                         PlaceTileGrid(
                             places = state.places,
                             onTileClick = { place ->
-                                onNavigateToSearch(SearchEndpoint.CURRENT_LOCATION_LABEL, place.name)
+                                actions.startTripSearch(SearchEndpoint.CURRENT_LOCATION_LABEL, place.name)
                             },
-                            onDragRoute = { from, to -> onNavigateToSearch(from, to) },
-                            onCurrentLocationFromClick = viewModel::fillFromWithNearestStop,
-                            onCurrentLocationToClick = viewModel::fillToWithNearestStop,
+                            onDragRoute = { from, to -> actions.startTripSearch(from, to) },
+                            onCurrentLocationFromClick = actions.fillFromWithNearestStop,
+                            onCurrentLocationToClick = actions.fillToWithNearestStop,
                         )
                     }
                 }
@@ -183,12 +217,12 @@ fun HomeScreen(
                     quickSearchText = state.quickSearchText,
                     quickSearchSuggestions = state.quickSearchSuggestions,
                     isQuickSearchSuggesting = state.isQuickSearchSuggesting,
-                    onEditFrom = { onNavigateToSearch(state.fromText, state.toText) },
-                    onEditTo = { onNavigateToSearch(state.fromText, state.toText) },
-                    onQuickSearchChanged = viewModel::onQuickSearchTextChanged,
-                    onSelectQuickSearchSuggestion = viewModel::selectQuickSearchSuggestion,
+                    onEditFrom = { actions.startTripSearch(state.fromText, state.toText) },
+                    onEditTo = { actions.startTripSearch(state.fromText, state.toText) },
+                    onQuickSearchChanged = actions.onQuickSearchChanged,
+                    onSelectQuickSearchSuggestion = actions.selectQuickSearchSuggestion,
                     onSearch = {
-                        onNavigateToSearch(SearchEndpoint.CURRENT_LOCATION_LABEL, state.quickSearchText)
+                        actions.startTripSearch(SearchEndpoint.CURRENT_LOCATION_LABEL, state.quickSearchText)
                     },
                 )
                 Spacer(Modifier.height(8.dp))
@@ -213,7 +247,7 @@ fun HomeScreen(
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.4f))
                     .clickable {
-                        viewModel.hideOverlay()
+                        actions.hideOverlay()
                     },
             )
         }
@@ -236,7 +270,7 @@ fun HomeScreen(
                         detectVerticalDragGestures(
                             onDragEnd = {
                                 if (dragOffsetY < swipeUpThreshold) {
-                                    viewModel.hideOverlay()
+                                    actions.hideOverlay()
                                 }
                                 dragOffsetY = 0f
                             },
@@ -266,7 +300,7 @@ fun HomeScreen(
                     if (activeJourney != null) {
                         ActiveJourneySheetContent(
                             banner = activeJourney,
-                            onTap = onNavigateToJourneys,
+                            onTap = actions.openJourneys,
                         )
                     } else {
                         Text(
@@ -280,7 +314,7 @@ fun HomeScreen(
                         ScorerSheetContent(
                             result = scorerResult,
                             onCardTap = {
-                                onNavigateToSearch(
+                                actions.startTripSearch(
                                     scorerResult.from.displayName(),
                                     scorerResult.to.displayName(),
                                 )
@@ -313,14 +347,14 @@ fun HomeScreen(
                         detectVerticalDragGestures(
                             onDragEnd = {
                                 if (pullDownOffsetY > pullDownThreshold) {
-                                    viewModel.showOverlay()
+                                    actions.showOverlay()
                                 }
                                 pullDownOffsetY = 0f
                             },
                             onDragCancel = { pullDownOffsetY = 0f },
                         ) { _, dragAmount -> pullDownOffsetY += dragAmount }
                     }
-                    .clickable { viewModel.showOverlay() },
+                    .clickable { actions.showOverlay() },
                 tonalElevation = 4.dp,
                 shadowElevation = 4.dp,
                 shape = MaterialTheme.shapes.extraLarge,
