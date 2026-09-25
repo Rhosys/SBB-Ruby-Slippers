@@ -1,9 +1,13 @@
 package ch.rhosys.sbb
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -56,6 +60,14 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // targetSdk 35+ forces edge-to-edge, so the status bar is drawn over the app's own
+        // background. The app is always light-themed (SbbRubySlippersTheme darkTheme=false),
+        // so always ask for dark bar icons — the default would follow the phone's dark mode
+        // and draw white icons on our light background.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+        )
         super.onCreate(savedInstanceState)
 
         val isFreshStart = savedInstanceState == null
@@ -156,7 +168,12 @@ class MainActivity : ComponentActivity() {
                         navController = navController,
                         startDestination = startDestination,
                         searchNavigationBridge = searchNavigationBridge,
-                        modifier = Modifier.padding(innerPadding),
+                        // Consume what this Scaffold already padded for (status bar, bottom
+                        // nav) so nested Scaffolds/TopAppBars don't pad for the status bar a
+                        // second time.
+                        modifier = Modifier
+                            .padding(innerPadding)
+                            .consumeWindowInsets(innerPadding),
                     )
                 }
             }
