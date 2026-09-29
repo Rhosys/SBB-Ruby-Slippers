@@ -81,6 +81,7 @@ fun ConnectionSearchScreen(
     viewModel: ConnectionSearchViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    LaunchedEffect(viewModel) { viewModel.applyPendingRequests() }
 
     var showDateTimePicker by remember { mutableStateOf(false) }
 

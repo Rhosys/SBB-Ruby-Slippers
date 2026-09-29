@@ -21,6 +21,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -101,16 +102,6 @@ class ConnectionSearchViewModel @Inject constructor(
     init {
         viewModelScope.launch { loadSmartSuggestions() }
 
-        // The Search tab keeps showing whatever was last searched, but Home (and anywhere
-        // else that plans a trip) still needs a way to push a fresh from/to into it without
-        // resetting the whole screen through navigation args — this bridge is that channel.
-        viewModelScope.launch {
-            searchNavigationBridge.pending.collect { request ->
-                if (request == null) return@collect
-                applyIncomingRequest(request)
-                searchNavigationBridge.consume()
-            }
-        }
         viewModelScope.launch {
             journeyStateHolder.activeJourney.collect { journey ->
                 _uiState.value = _uiState.value.copy(activeConnectionKey = journey?.connection?.stableKey)
@@ -125,6 +116,18 @@ class ConnectionSearchViewModel @Inject constructor(
             userPreferencesRepository.runningPaceKmh.collect { kmh ->
                 _uiState.value = _uiState.value.copy(runningPaceKmh = kmh)
             }
+        }
+    }
+
+    /**
+     * Applies from/to handed to the Search tab (e.g. from Home). Collected only while the
+     * search screen is shown — not while it sits under trip details or in a saved tab — so
+     * the tab can first see the request and come back to this screen.
+     */
+    suspend fun applyPendingRequests() {
+        searchNavigationBridge.pending.filterNotNull().collect { request ->
+            applyIncomingRequest(request)
+            searchNavigationBridge.consume()
         }
     }
 

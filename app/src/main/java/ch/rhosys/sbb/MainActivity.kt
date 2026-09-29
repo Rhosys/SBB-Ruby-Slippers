@@ -98,7 +98,7 @@ class MainActivity : ComponentActivity() {
                     Screen.Onboarding.route
 
                 val navController = rememberNavController()
-                val navigator = remember(navController) { AppNavigator(navController, searchNavigationBridge) }
+                val navigator = remember(navController) { AppNavigator(navController) }
                 val backStack by navController.currentBackStackEntryAsState()
                 val currentDestination = backStack?.destination
 
@@ -165,6 +165,7 @@ class MainActivity : ComponentActivity() {
                         navController = navController,
                         startDestination = startDestination,
                         navigator = navigator,
+                        searchNavigationBridge = searchNavigationBridge,
                         // Consume what this Scaffold already padded for (status bar, bottom
                         // nav) so nested Scaffolds/TopAppBars don't pad for the status bar a
                         // second time.

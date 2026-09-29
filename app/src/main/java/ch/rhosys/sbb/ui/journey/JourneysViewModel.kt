@@ -91,7 +91,14 @@ class JourneysViewModel @Inject constructor(
     private fun observeActiveJourney() {
         viewModelScope.launch {
             journeyStateHolder.activeJourney.collect { journey ->
-                _uiState.value = _uiState.value.copy(activeConnection = journey?.connection)
+                val state = _uiState.value
+                // A newly started journey is what this tab shows next, whatever sub-tab it was left on.
+                val started = journey != null &&
+                    journey.connection.stableKey != state.activeConnection?.stableKey
+                _uiState.value = state.copy(
+                    activeConnection = journey?.connection,
+                    selectedTab = if (started) JourneysTab.ACTIVE else state.selectedTab,
+                )
             }
         }
     }
