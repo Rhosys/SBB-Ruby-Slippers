@@ -22,6 +22,17 @@ class AppNavigator(
         }
     }
 
+    /**
+     * A journey was just started: drop whatever led here (e.g. Search → trip details) and
+     * show a fresh Journeys tab. Must not push Journeys onto Home's stack — Home's saved
+     * state would then be Journeys, and tapping Home would restore it.
+     */
+    fun showStartedJourney() {
+        navController.popBackStack(Screen.Home.route, inclusive = false, saveState = false)
+        navController.clearBackStack(Screen.Journeys.route)
+        selectTab(Screen.Journeys)
+    }
+
     fun startTripSearch(from: String, to: String) {
         searchNavigationBridge.request(from, to)
         // Throw away the Search tab's saved stack (e.g. a trip's details opened earlier) so

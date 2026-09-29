@@ -39,9 +39,7 @@ fun AppNavHost(
         composable(Screen.Home.route) {
             HomeScreen(
                 onNavigateToSearch = navigator::startTripSearch,
-                onNavigateToJourneys = {
-                    navController.navigate(Screen.Journeys.route)
-                },
+                onNavigateToJourneys = { navigator.selectTab(Screen.Journeys) },
                 onNavigateToHomeEdit = {
                     navController.navigate(Screen.HomeEdit.route)
                 },
@@ -68,11 +66,7 @@ fun AppNavHost(
         composable(Screen.TripReview.route) {
             TripReviewScreen(
                 onNavigateBack = { navController.popBackStack() },
-                onJourneyStarted = {
-                    navController.navigate(Screen.Journeys.route) {
-                        popUpTo(Screen.Home.route) { saveState = false }
-                    }
-                },
+                onJourneyStarted = navigator::showStartedJourney,
                 onNavigateToFares = {
                     navController.navigate(Screen.FaresTeaser.route)
                 },

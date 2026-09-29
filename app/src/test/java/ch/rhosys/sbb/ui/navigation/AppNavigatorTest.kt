@@ -160,4 +160,36 @@ class AppNavigatorTest {
 
         assertEquals(Screen.TripReview.route, currentRoute())
     }
+
+    // --- Journeys must never end up as Home's saved state ---
+
+    @Test
+    fun `selectTab Home after selectTab Journeys shows Home`() {
+        act { navigator.selectTab(Screen.Journeys) }
+        act { navigator.selectTab(Screen.Home) }
+        assertEquals(Screen.Home.route, currentRoute())
+    }
+
+    @Test
+    fun `selectTab Home after showStartedJourney shows Home`() {
+        act { navigator.selectTab(Screen.Search) }
+        open(Screen.TripReview)
+
+        act { navigator.showStartedJourney() }
+        assertEquals(Screen.Journeys.route, currentRoute())
+
+        act { navigator.selectTab(Screen.Home) }
+        assertEquals(Screen.Home.route, currentRoute())
+    }
+
+    @Test
+    fun `showStartedJourney drops the trip details from the Search tab`() {
+        act { navigator.selectTab(Screen.Search) }
+        open(Screen.TripReview)
+
+        act { navigator.showStartedJourney() }
+        act { navigator.selectTab(Screen.Search) }
+
+        assertEquals(Screen.Search.route, currentRoute())
+    }
 }

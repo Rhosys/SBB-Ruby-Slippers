@@ -104,14 +104,14 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(Unit) {
                         val journey = prefs.activeJourney.first() ?: return@LaunchedEffect
                         if (journey.arrivalEpoch > Instant.now().epochSecond) {
-                            navController.navigate(Screen.Journeys.route)
+                            navigator.selectTab(Screen.Journeys)
                         }
                     }
                 }
 
                 LaunchedEffect(openJourneyRequested.value) {
                     if (openJourneyRequested.value) {
-                        navController.navigate(Screen.Journeys.route)
+                        navigator.selectTab(Screen.Journeys)
                         openJourneyRequested.value = false
                     }
                 }
