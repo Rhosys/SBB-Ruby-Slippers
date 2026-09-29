@@ -55,7 +55,7 @@ class UserPreferencesRepository @Inject constructor(
     val rtLastErrorEpoch: Flow<Long?> = dataStore.data.map { it[RT_LAST_ERROR_EPOCH] }
     val rtLastErrorMessage: Flow<String?> = dataStore.data.map { it[RT_LAST_ERROR_MESSAGE] }
     val journeyChipShowsTotalRemaining: Flow<Boolean> =
-        dataStore.data.map { it[JOURNEY_CHIP_SHOWS_TOTAL_REMAINING] ?: false }
+        dataStore.data.map { it[JOURNEY_CHIP_SHOWS_TOTAL_REMAINING] ?: true }
     val activeJourney: Flow<PersistedJourney?> = dataStore.data.map { prefs ->
         prefs[ACTIVE_JOURNEY]?.let { runCatching { Json.decodeFromString<PersistedJourney>(it) }.getOrNull() }
     }
