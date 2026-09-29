@@ -14,7 +14,9 @@ class AppNavigator(
 ) {
     fun selectTab(tab: Tab) {
         navController.navigate(tab.route) {
-            popUpTo(Tab.Home.route) { saveState = true }
+            // The Home screen, not the Home tab's graph: popping to the graph would pop the
+            // Home screen too.
+            popUpTo(Screen.Home.route) { saveState = true }
             launchSingleTop = true
             restoreState = true
         }
