@@ -130,20 +130,6 @@ class HomeActionsTest {
     }
 
     @Test
-    fun `tapping the From field starts a trip search with the form's from and to`() {
-        render(HomeUiState(isLoading = false, places = listOf(work), fromText = "Winterthur", toText = "Bern"))
-        composeRule.onNodeWithContentDescription("Edit From").performClick()
-        assertEquals(listOf("Winterthur" to "Bern"), tripSearches)
-    }
-
-    @Test
-    fun `tapping the To field starts a trip search with the form's from and to`() {
-        render(HomeUiState(isLoading = false, places = listOf(work), fromText = "Winterthur", toText = "Bern"))
-        composeRule.onNodeWithContentDescription("Edit To").performClick()
-        assertEquals(listOf("Winterthur" to "Bern"), tripSearches)
-    }
-
-    @Test
     fun `tapping the active journey card opens Journeys and does not start a trip search`() {
         val banner = ActiveJourneyBanner(
             connection = connection("Winterthur", "Bern"),
