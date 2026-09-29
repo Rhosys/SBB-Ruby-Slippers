@@ -46,8 +46,9 @@ data class ConnectionSearchUiState(
     val fromBadgeStationName: String? = null,
     val toBadgeStationName: String? = null,
     val smartSuggestions: List<String> = emptyList(),
-    val slots: ConnectionSlots = ConnectionSlots.EMPTY,
-    // Bumped on every new search, so the list starts again at ConnectionSlots.START.
+    // Sorted by departure; earlier/later pages are merged in.
+    val connections: List<Connection> = emptyList(),
+    // Bumped on every new search, so the list starts again at the top.
     val searchId: Int = 0,
     val isLoading: Boolean = false,
     val isLoadingEarlier: Boolean = false,
@@ -421,7 +422,7 @@ class ConnectionSearchViewModel @Inject constructor(
                 searchDate = queryAt.toLocalDate(),
                 isLoading = true,
                 error = null,
-                slots = ConnectionSlots.EMPTY,
+                connections = emptyList(),
                 searchId = _uiState.value.searchId + 1,
                 isLoadingEarlier = false,
                 isLoadingLater = false,
@@ -445,14 +446,13 @@ class ConnectionSearchViewModel @Inject constructor(
         }
     }
 
-    // The list asks for these whenever an empty slot above the first / below the last
-    // connection scrolls into view. Results go straight into those empty slots.
+    // The list asks for these when it's scrolled near the first / last connection.
     fun loadEarlier() {
         val state = _uiState.value
         if (state.isLoadingEarlier || state.isLoading || state.noMoreEarlier) return
-        val first = state.slots[state.slots.first] ?: return
+        val first = state.connections.firstOrNull() ?: return
         val firstDeparture = first.departure.scheduledTime?.atZone(SWISS_ZONE)?.toLocalTime()
-        if (firstDeparture == null || firstDeparture == LocalTime.MIDNIGHT || state.slots.first == 0) {
+        if (firstDeparture == null || firstDeparture == LocalTime.MIDNIGHT) {
             _uiState.value = state.copy(noMoreEarlier = true)
             return
         }
@@ -464,11 +464,11 @@ class ConnectionSearchViewModel @Inject constructor(
             val earlier = fetchConnections(from, to, state.searchDate, firstDeparture.minusMinutes(1), isArriveBy = true)
             val current = _uiState.value
             if (current.searchId != state.searchId) return@launch
-            val slots = current.slots.withEarlier(earlier)
+            val merged = mergeConnections(current.connections, earlier)
             _uiState.value = current.copy(
-                slots = slots,
+                connections = merged,
                 isLoadingEarlier = false,
-                noMoreEarlier = slots.first == current.slots.first,
+                noMoreEarlier = merged.first().stableKey == current.connections.first().stableKey,
             )
         }
     }
@@ -476,9 +476,9 @@ class ConnectionSearchViewModel @Inject constructor(
     fun loadLater() {
         val state = _uiState.value
         if (state.isLoadingLater || state.isLoading || state.noMoreLater) return
-        val last = state.slots[state.slots.last] ?: return
+        val last = state.connections.lastOrNull() ?: return
         val lastDeparture = last.departure.scheduledTime?.atZone(SWISS_ZONE)?.toLocalTime()
-        if (lastDeparture == null || state.slots.last == ConnectionSlots.CAPACITY - 1) {
+        if (lastDeparture == null) {
             _uiState.value = state.copy(noMoreLater = true)
             return
         }
@@ -490,11 +490,11 @@ class ConnectionSearchViewModel @Inject constructor(
             val later = fetchConnections(from, to, state.searchDate, lastDeparture.plusMinutes(1), isArriveBy = false)
             val current = _uiState.value
             if (current.searchId != state.searchId) return@launch
-            val slots = current.slots.withLater(later)
+            val merged = mergeConnections(current.connections, later)
             _uiState.value = current.copy(
-                slots = slots,
+                connections = merged,
                 isLoadingLater = false,
-                noMoreLater = slots.last == current.slots.last,
+                noMoreLater = merged.last().stableKey == current.connections.last().stableKey,
             )
         }
     }
@@ -533,7 +533,7 @@ class ConnectionSearchViewModel @Inject constructor(
         ).collect { state ->
             when (state) {
                 is LocalRoutingState.Results -> _uiState.value = _uiState.value.copy(
-                    slots = ConnectionSlots.startingWith(state.connections),
+                    connections = mergeConnections(emptyList(), state.connections),
                     isLoading = !state.isComplete,
                 )
                 is LocalRoutingState.NoResults -> _uiState.value = _uiState.value.copy(
@@ -564,7 +564,7 @@ class ConnectionSearchViewModel @Inject constructor(
         }
             .onSuccess { connections ->
                 _uiState.value = _uiState.value.copy(
-                    slots = ConnectionSlots.startingWith(connections),
+                    connections = mergeConnections(emptyList(), connections),
                     isLoading = false,
                 )
             }

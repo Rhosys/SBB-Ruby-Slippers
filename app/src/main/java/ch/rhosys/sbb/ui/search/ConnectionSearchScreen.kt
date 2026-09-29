@@ -170,12 +170,12 @@ fun ConnectionSearchScreen(
                 style = MaterialTheme.typography.bodyMedium,
             )
 
-            state.slots.isEmpty -> Text(
+            state.connections.isEmpty() -> Text(
                 text = stringResource(R.string.search_empty),
                 style = MaterialTheme.typography.bodyMedium,
             )
 
-            else -> ConnectionSlotList(
+            else -> ConnectionList(
                 state = state,
                 onLoadEarlier = viewModel::loadEarlier,
                 onLoadLater = viewModel::loadLater,
@@ -257,34 +257,33 @@ fun ConnectionSearchScreen(
 }
 
 /**
- * One row per [ConnectionSlots] slot. The list opens on the first result; empty slots
- * scrolling into view above the first / below the last connection fetch more, which land
- * in those same slots — so nothing already on screen moves. The empty slot right next to
- * the results on each side shows the earlier/later status.
+ * The results, one row per connection, keyed by [Connection.stableKey] so connections
+ * merged in above don't move what's on screen. Getting within [PREFETCH_ROWS] of either
+ * end fetches more. The earlier/later status and the NOW line are drawn inside connection
+ * rows rather than as rows of their own, so the row the list keeps its place by is always
+ * a connection.
  */
 @Composable
-private fun ConnectionSlotList(
+private fun ConnectionList(
     state: ConnectionSearchUiState,
     onLoadEarlier: () -> Unit,
     onLoadLater: () -> Unit,
     onOpen: (Connection) -> Unit,
     onFaresTap: () -> Unit,
 ) {
-    val slots = state.slots
-    val listState = rememberSaveable(state.searchId, saver = LazyListState.Saver) {
-        LazyListState(firstVisibleItemIndex = ConnectionSlots.START)
-    }
-    val now = remember(slots) { Instant.now() }
-    val nowIndex = remember(slots, now) { slots.nowIndex(now) }
-    val shortestDuration = remember(slots) { slots.connections.mapNotNull { it.transitDuration }.minOrNull() }
+    val connections = state.connections
+    val listState = rememberSaveable(state.searchId, saver = LazyListState.Saver) { LazyListState() }
+    val now = remember(connections) { Instant.now() }
+    val nowIndex = remember(connections, now) { nowIndex(connections, now) }
+    val shortestDuration = remember(connections) { connections.mapNotNull { it.transitDuration }.minOrNull() }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(listState, slots) {
+    LaunchedEffect(listState, connections) {
         snapshotFlow {
             listState.layoutInfo.visibleItemsInfo.let { it.firstOrNull()?.index to it.lastOrNull()?.index }
         }.collect { (firstVisible, lastVisible) ->
-            if (firstVisible != null && firstVisible < slots.first) onLoadEarlier()
-            if (lastVisible != null && lastVisible > slots.last) onLoadLater()
+            if (firstVisible != null && firstVisible <= PREFETCH_ROWS) onLoadEarlier()
+            if (lastVisible != null && lastVisible >= connections.lastIndex - PREFETCH_ROWS) onLoadLater()
         }
     }
 
@@ -308,24 +307,10 @@ private fun ConnectionSlotList(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(bottom = 4.dp),
         ) {
-            items(count = ConnectionSlots.CAPACITY) { index ->
-                val connection = slots[index]
+            itemsIndexed(connections, key = { _, connection -> connection.stableKey }) { index, connection ->
                 Column {
-                    if (index == nowIndex) NowDividerRow()
-                    when {
-                        connection != null -> ConnectionCard(
-                            connection = connection,
-                            order = index - slots.first + 1,
-                            isHero = index == slots.first,
-                            isRecommended = shortestDuration != null && connection.transitDuration == shortestDuration,
-                            isActiveJourney = connection.stableKey == state.activeConnectionKey,
-                            walkingPaceKmh = state.walkingPaceKmh,
-                            runningPaceKmh = state.runningPaceKmh,
-                            now = now,
-                            onClick = { onOpen(connection) },
-                            onFaresTap = onFaresTap,
-                        )
-                        index == slots.first - 1 -> EdgeRow(
+                    if (index == 0) {
+                        EdgeRow(
                             label = when {
                                 state.noMoreEarlier -> "No earlier connections"
                                 state.isLoadingEarlier -> "Loading earlier connections…"
@@ -333,7 +318,23 @@ private fun ConnectionSlotList(
                             },
                             isLoading = state.isLoadingEarlier,
                         )
-                        index == slots.last + 1 -> EdgeRow(
+                    }
+                    if (index == nowIndex) NowDividerRow()
+                    ConnectionCard(
+                        connection = connection,
+                        order = index + 1,
+                        isHero = index == 0,
+                        isRecommended = shortestDuration != null && connection.transitDuration == shortestDuration,
+                        isActiveJourney = connection.stableKey == state.activeConnectionKey,
+                        walkingPaceKmh = state.walkingPaceKmh,
+                        runningPaceKmh = state.runningPaceKmh,
+                        now = now,
+                        onClick = { onOpen(connection) },
+                        onFaresTap = onFaresTap,
+                    )
+                    if (index == connections.lastIndex) {
+                        if (nowIndex == connections.size) NowDividerRow()
+                        EdgeRow(
                             label = when {
                                 state.noMoreLater -> "No later connections"
                                 state.isLoadingLater -> "Loading later connections…"
@@ -341,7 +342,6 @@ private fun ConnectionSlotList(
                             },
                             isLoading = state.isLoadingLater,
                         )
-                        else -> Spacer(Modifier.fillMaxWidth().height(EMPTY_SLOT_HEIGHT))
                     }
                 }
             }
@@ -353,7 +353,9 @@ private fun ConnectionSlotList(
                     .align(edge)
                     .fillMaxWidth(),
                 pointsUp = edge == Alignment.TopCenter,
-                onClick = { scope.launch { listState.animateScrollToItem(nowIndex) } },
+                onClick = {
+                    scope.launch { listState.animateScrollToItem(nowIndex.coerceAtMost(connections.lastIndex)) }
+                },
             )
         }
     }
@@ -438,14 +440,14 @@ private fun RecentSearchRow(item: TripHistoryItem, onClick: () -> Unit) {
     }
 }
 
-// Fills the empty slot right next to the results on each side: what's there, or that
-// it's being fetched.
+// Drawn above the first / below the last connection: whether there's more, or that it's
+// being fetched.
 @Composable
 private fun EdgeRow(label: String, isLoading: Boolean) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(EMPTY_SLOT_HEIGHT),
+            .height(40.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -462,8 +464,8 @@ private fun EdgeRow(label: String, isLoading: Boolean) {
     }
 }
 
-// Height of a slot with no connection in it yet.
-private val EMPTY_SLOT_HEIGHT = 48.dp
+// How close to either end of the list more connections start loading.
+private const val PREFETCH_ROWS = 3
 
 private val RECOMMENDED_GREEN = androidx.compose.ui.graphics.Color(0xFF2E7D32)
 private val ACTIVE_JOURNEY_GREEN = androidx.compose.ui.graphics.Color(0xFF1B5E20)
