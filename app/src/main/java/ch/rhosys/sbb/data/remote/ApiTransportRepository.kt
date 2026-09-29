@@ -68,7 +68,7 @@ class ApiTransportRepository @Inject constructor(
     }
 
     private fun JourneyEntryDto.toDomain(): Departure = Departure(
-        lineName = name ?: number ?: "",
+        lineName = lineDisplayName(category, number, name),
         lineCategory = category ?: "",
         direction = to ?: "",
         scheduledDeparture = stop?.departure?.toInstantOrNull(),
@@ -109,6 +109,16 @@ internal fun ConnectionDto.toDomainConnection(): Connection {
     )
 }
 
+// transport.opendata.ch's `name` is the trip number (e.g. "021644"); `number` is the
+// line ("31", "5", "1"). Show category + line ("B 31", "S 5", "IC 1"), falling back to
+// `name` only when no line is given.
+internal fun lineDisplayName(category: String?, number: String?, name: String?): String {
+    val line = number?.takeIf { it.isNotBlank() }
+        ?: return name?.takeIf { it.isNotBlank() } ?: category.orEmpty()
+    val cat = category?.takeIf { it.isNotBlank() && !line.startsWith(it) }
+    return if (cat != null) "$cat $line" else line
+}
+
 private fun StopDto.toDomainDeparture(): Stop = Stop(
     stationName = station?.name ?: "",
     stationId = station?.id,
@@ -131,10 +141,11 @@ private fun SectionDto.toDomain(): Leg {
         Leg.Transit(
             departure = this.departure?.toDomainDeparture() ?: Stop(stationName = ""),
             arrival = this.arrival?.toDomainArrival() ?: Stop(stationName = ""),
-            lineName = jny.name ?: jny.number ?: "",
+            lineName = lineDisplayName(jny.category, jny.number, jny.name),
             lineCategory = jny.category ?: "",
             direction = jny.to ?: "",
             operator = jny.operator,
+            tripNumber = jny.name?.takeIf { it.isNotBlank() && it != jny.number },
         )
     } else {
         // walk.duration is frequently absent (notably for address → stop walks), so the

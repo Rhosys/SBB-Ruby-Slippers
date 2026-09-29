@@ -100,5 +100,14 @@ class TransportDtoTest {
         assertEquals(Duration.ZERO, connection.walkFromLastStop)
         assertEquals(1, connection.legs.size)
         assertTrue(connection.legs[0] is Leg.Transit)
+        assertEquals("021644", (connection.legs[0] as Leg.Transit).tripNumber)
+    }
+
+    @Test
+    fun `line name uses line number, not trip number`() {
+        assertEquals("B 1", lineDisplayName(category = "B", number = "1", name = "021644"))
+        assertEquals("IC 5", lineDisplayName(category = "IC", number = "5", name = "IC 5 1234"))
+        assertEquals("S12", lineDisplayName(category = "S", number = "S12", name = "018123"))
+        assertEquals("021644", lineDisplayName(category = "B", number = null, name = "021644"))
     }
 }
