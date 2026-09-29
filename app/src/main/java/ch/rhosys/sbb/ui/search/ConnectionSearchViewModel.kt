@@ -21,6 +21,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -45,10 +46,16 @@ data class ConnectionSearchUiState(
     val fromBadgeStationName: String? = null,
     val toBadgeStationName: String? = null,
     val smartSuggestions: List<String> = emptyList(),
+    // Sorted by departure; earlier/later pages are merged in.
     val connections: List<Connection> = emptyList(),
+    // Bumped on every new search, so the list starts again at the top.
+    val searchId: Int = 0,
     val isLoading: Boolean = false,
     val isLoadingEarlier: Boolean = false,
     val isLoadingLater: Boolean = false,
+    // Set once a fetch in that direction finds nothing new, so the list stops asking.
+    val noMoreEarlier: Boolean = false,
+    val noMoreLater: Boolean = false,
     val error: String? = null,
     // "Now" (re-resolved on every query) or a time the user picked.
     val timeMode: SearchTimeMode = SearchTimeMode.Now,
@@ -101,16 +108,6 @@ class ConnectionSearchViewModel @Inject constructor(
     init {
         viewModelScope.launch { loadSmartSuggestions() }
 
-        // The Search tab keeps showing whatever was last searched, but Home (and anywhere
-        // else that plans a trip) still needs a way to push a fresh from/to into it without
-        // resetting the whole screen through navigation args — this bridge is that channel.
-        viewModelScope.launch {
-            searchNavigationBridge.pending.collect { request ->
-                if (request == null) return@collect
-                applyIncomingRequest(request)
-                searchNavigationBridge.consume()
-            }
-        }
         viewModelScope.launch {
             journeyStateHolder.activeJourney.collect { journey ->
                 _uiState.value = _uiState.value.copy(activeConnectionKey = journey?.connection?.stableKey)
@@ -125,6 +122,18 @@ class ConnectionSearchViewModel @Inject constructor(
             userPreferencesRepository.runningPaceKmh.collect { kmh ->
                 _uiState.value = _uiState.value.copy(runningPaceKmh = kmh)
             }
+        }
+    }
+
+    /**
+     * Applies from/to handed to the Search tab (e.g. from Home). Collected only while the
+     * search screen is shown — not while it sits under trip details or in a saved tab — so
+     * the tab can first see the request and come back to this screen.
+     */
+    suspend fun applyPendingRequests() {
+        searchNavigationBridge.pending.filterNotNull().collect { request ->
+            applyIncomingRequest(request)
+            searchNavigationBridge.consume()
         }
     }
 
@@ -414,6 +423,11 @@ class ConnectionSearchViewModel @Inject constructor(
                 isLoading = true,
                 error = null,
                 connections = emptyList(),
+                searchId = _uiState.value.searchId + 1,
+                isLoadingEarlier = false,
+                isLoadingLater = false,
+                noMoreEarlier = false,
+                noMoreLater = false,
                 fromSuggestions = emptyList(),
                 toSuggestions = emptyList(),
             )
@@ -432,54 +446,61 @@ class ConnectionSearchViewModel @Inject constructor(
         }
     }
 
-    // Pulling up (or reaching the top of the list) fetches connections departing/arriving
-    // earlier than what's currently shown; pulling down fetches later ones. Both merge the
-    // freshly-fetched connections into the existing list, deduplicated and re-sorted, rather
-    // than replacing it — that's what makes the list feel like one continuous infinite scroll.
+    // The list asks for these when it's scrolled near the first / last connection.
     fun loadEarlier() {
         val state = _uiState.value
-        if (state.isLoadingEarlier || state.isLoading) return
+        if (state.isLoadingEarlier || state.isLoading || state.noMoreEarlier) return
         val first = state.connections.firstOrNull() ?: return
-        val firstDeparture = first.departure.scheduledTime?.atZone(SWISS_ZONE)?.toLocalTime() ?: return
-        if (firstDeparture == LocalTime.MIDNIGHT) return
+        val firstDeparture = first.departure.scheduledTime?.atZone(SWISS_ZONE)?.toLocalTime()
+        if (firstDeparture == null || firstDeparture == LocalTime.MIDNIGHT) {
+            _uiState.value = state.copy(noMoreEarlier = true)
+            return
+        }
 
+        _uiState.value = state.copy(isLoadingEarlier = true)
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoadingEarlier = true)
             val from = endpointFor(state.fromText.trim().ifBlank { state.toText.trim() })
             val to = endpointFor(state.toText.trim())
             val earlier = fetchConnections(from, to, state.searchDate, firstDeparture.minusMinutes(1), isArriveBy = true)
-            _uiState.value = _uiState.value.copy(
-                connections = mergeConnections(earlier, _uiState.value.connections),
+            val current = _uiState.value
+            if (current.searchId != state.searchId) return@launch
+            val merged = mergeConnections(current.connections, earlier)
+            _uiState.value = current.copy(
+                connections = merged,
                 isLoadingEarlier = false,
+                noMoreEarlier = merged.first().stableKey == current.connections.first().stableKey,
             )
         }
     }
 
     fun loadLater() {
         val state = _uiState.value
-        if (state.isLoadingLater || state.isLoading) return
+        if (state.isLoadingLater || state.isLoading || state.noMoreLater) return
         val last = state.connections.lastOrNull() ?: return
-        val lastDeparture = last.departure.scheduledTime?.atZone(SWISS_ZONE)?.toLocalTime() ?: return
+        val lastDeparture = last.departure.scheduledTime?.atZone(SWISS_ZONE)?.toLocalTime()
+        if (lastDeparture == null) {
+            _uiState.value = state.copy(noMoreLater = true)
+            return
+        }
 
+        _uiState.value = state.copy(isLoadingLater = true)
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoadingLater = true)
             val from = endpointFor(state.fromText.trim().ifBlank { state.toText.trim() })
             val to = endpointFor(state.toText.trim())
             val later = fetchConnections(from, to, state.searchDate, lastDeparture.plusMinutes(1), isArriveBy = false)
-            _uiState.value = _uiState.value.copy(
-                connections = mergeConnections(_uiState.value.connections, later),
+            val current = _uiState.value
+            if (current.searchId != state.searchId) return@launch
+            val merged = mergeConnections(current.connections, later)
+            _uiState.value = current.copy(
+                connections = merged,
                 isLoadingLater = false,
+                noMoreLater = merged.last().stableKey == current.connections.last().stableKey,
             )
         }
     }
 
     private fun routingTimeFor(time: LocalTime): RoutingTime =
         if (_uiState.value.isArriveBy) RoutingTime.ArriveBy(time) else RoutingTime.DepartAfter(time)
-
-    private fun mergeConnections(before: List<Connection>, after: List<Connection>): List<Connection> =
-        (before + after)
-            .distinctBy { it.departure.scheduledTime to it.arrival.scheduledTime to it.lineNames }
-            .sortedBy { it.departure.scheduledTime }
 
     private suspend fun fetchConnections(
         from: SearchEndpoint,
@@ -512,7 +533,7 @@ class ConnectionSearchViewModel @Inject constructor(
         ).collect { state ->
             when (state) {
                 is LocalRoutingState.Results -> _uiState.value = _uiState.value.copy(
-                    connections = state.connections,
+                    connections = mergeConnections(emptyList(), state.connections),
                     isLoading = !state.isComplete,
                 )
                 is LocalRoutingState.NoResults -> _uiState.value = _uiState.value.copy(
@@ -542,7 +563,10 @@ class ConnectionSearchViewModel @Inject constructor(
             )
         }
             .onSuccess { connections ->
-                _uiState.value = _uiState.value.copy(connections = connections, isLoading = false)
+                _uiState.value = _uiState.value.copy(
+                    connections = mergeConnections(emptyList(), connections),
+                    isLoading = false,
+                )
             }
             .onFailure { e ->
                 _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Unknown error")

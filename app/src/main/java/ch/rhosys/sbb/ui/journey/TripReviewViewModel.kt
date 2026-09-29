@@ -31,16 +31,19 @@ class TripReviewViewModel @Inject constructor(
     private val userPreferencesRepository: UserPreferencesRepository,
 ) : ViewModel() {
 
+    // Taken once: the holder is only a hand-off, and this screen keeps showing its own trip
+    // even after another tab's trip details put a different one in the holder.
+    private val candidate = holder.candidate.value
+
     val uiState: StateFlow<TripReviewUiState> = combine(
-        holder.candidate,
         userPreferencesRepository.walkingPaceKmh,
         userPreferencesRepository.runningPaceKmh,
-    ) { candidate, walkingPaceKmh, runningPaceKmh ->
+    ) { walkingPaceKmh, runningPaceKmh ->
         TripReviewUiState(candidate?.connection, candidate?.from, candidate?.to, walkingPaceKmh, runningPaceKmh)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
-        TripReviewUiState(null, null, null),
+        TripReviewUiState(candidate?.connection, candidate?.from, candidate?.to),
     )
 
     init {
@@ -48,7 +51,7 @@ class TripReviewViewModel @Inject constructor(
     }
 
     private fun recordView() {
-        val candidate = holder.candidate.value ?: return
+        val candidate = this.candidate ?: return
         viewModelScope.launch {
             routeRepository.recordSearch(
                 fromName = candidate.from.displayName(),
@@ -63,7 +66,7 @@ class TripReviewViewModel @Inject constructor(
     }
 
     fun lockIn(): Boolean {
-        val candidate = holder.candidate.value ?: return false
+        val candidate = this.candidate ?: return false
         // Delegated to JourneyStateHolder's own scope rather than viewModelScope: this
         // ViewModel is cleared as soon as navigation pops TripReview off the back stack,
         // which would cancel the record+lock-in work before it finished.

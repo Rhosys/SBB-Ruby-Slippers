@@ -4,6 +4,8 @@ import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.Leg
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 // A single leg of the door-to-door trip with absolute start/end times, including the
 // boundary walks (to the first stop, from the last stop) which Connection only stores
@@ -19,6 +21,8 @@ data class JourneySegment(
     // False only for the very last segment — every other segment boundary is a change
     // (a transfer, or stepping off transit to start the final walk).
     val isTransferPoint: Boolean,
+    // The ride itself for transit segments (stops, delays, direction); null for walks.
+    val transit: Leg.Transit? = null,
 )
 
 data class JourneyProgress(
@@ -69,6 +73,7 @@ fun buildJourneyTimeline(connection: Connection): List<JourneySegment> {
                     destinationName = leg.arrival.stationName,
                     platform = leg.departure.platform,
                     isTransferPoint = true,
+                    transit = leg,
                 )
                 cursor = end
             }
@@ -136,4 +141,66 @@ fun journeyProgress(segments: List<JourneySegment>, now: Instant): JourneyProgre
         tripStart = tripStart,
         tripEnd = tripEnd,
     )
+}
+
+private val JOURNEY_CLOCK = DateTimeFormatter.ofPattern("HH:mm")
+
+fun formatJourneyClock(instant: Instant): String = instant.atZone(ZoneId.systemDefault()).format(JOURNEY_CLOCK)
+
+fun formatJourneyMinutes(duration: Duration): String {
+    val minutes = maxOf(0, duration.toMinutes())
+    return if (minutes >= 60) "${minutes / 60}h ${minutes % 60}min" else "$minutes min"
+}
+
+/** Where [segment] ends: the rider's own destination for the last one, else its stop. */
+private fun JourneyProgress.endName(segment: JourneySegment, finalDestination: String?): String =
+    if (!segment.isTransferPoint && finalDestination != null) finalDestination else segment.destinationName
+
+/** What the rider is doing at [now], e.g. "On S12 → Zürich HB" or "Leave in 4 min". */
+fun JourneyProgress.headline(now: Instant, finalDestination: String? = null): String {
+    val ride = current.transit
+    return when {
+        !now.isBefore(tripEnd) -> "You've arrived"
+        now.isBefore(tripStart) -> "Leave in ${formatJourneyMinutes(Duration.between(now, tripStart))}"
+        ride != null -> "On ${ride.lineName} → ${ride.direction}"
+        else -> "Walk to ${endName(current, finalDestination)}"
+    }
+}
+
+/** What happens next and when, e.g. "Get off at Zürich HB in 12 min (08:29)". */
+fun JourneyProgress.nextStep(now: Instant, finalDestination: String? = null): String {
+    val next = next
+    val end = endName(current, finalDestination)
+    val inTime = "in ${formatJourneyMinutes(timeToNextChange)} (${formatJourneyClock(current.end)})"
+    return when {
+        !now.isBefore(tripEnd) -> "Arrived at $end ${formatJourneyClock(tripEnd)}"
+        now.isBefore(tripStart) -> buildString {
+            append(current.transit?.let { "Board ${it.lineName}" } ?: "Walk to $end")
+            current.platform?.let { append(" · Pl. $it") }
+            append(" at ${formatJourneyClock(current.start)}")
+        }
+        next == null -> "Arrive $end $inTime"
+        current.transit != null -> "Get off at $end $inTime"
+        else -> buildString {
+            append(next.transit?.let { "Board ${it.lineName} → ${it.direction}" } ?: "Continue on foot")
+            next.platform?.let { append(" · Pl. $it") }
+            append(" at ${formatJourneyClock(next.start)} · in ${formatJourneyMinutes(timeToNextChange)}")
+        }
+    }
+}
+
+/** One line per segment for compact lists, e.g. "S12 → Zürich HB · Pl. 3 · arr 08:29 (+2)". */
+fun JourneySegment.summary(finalDestination: String? = null): String {
+    val ride = transit
+    if (ride == null) {
+        val to = if (!isTransferPoint && finalDestination != null) finalDestination else destinationName
+        return "Walk ${formatJourneyMinutes(Duration.between(start, end))} to $to"
+    }
+    return buildString {
+        append("${ride.lineName} → ${ride.arrival.stationName}")
+        ride.departure.platform?.let { append(" · Pl. $it") }
+        append(" · arr ${formatJourneyClock(end)}")
+        if (ride.arrival.isDelayed) append(" (+${ride.arrival.delayMinutes})")
+        if (ride.departure.isCancelled) append(" · CANCELLED")
+    }
 }

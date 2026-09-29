@@ -212,13 +212,9 @@ internal fun HomeContent(state: HomeUiState, actions: HomeActions) {
 
                 // Persistent bottom search form
                 SearchForm(
-                    fromText = state.fromText,
-                    toText = state.toText,
                     quickSearchText = state.quickSearchText,
                     quickSearchSuggestions = state.quickSearchSuggestions,
                     isQuickSearchSuggesting = state.isQuickSearchSuggesting,
-                    onEditFrom = { actions.startTripSearch(state.fromText, state.toText) },
-                    onEditTo = { actions.startTripSearch(state.fromText, state.toText) },
                     onQuickSearchChanged = actions.onQuickSearchChanged,
                     onSelectQuickSearchSuggestion = actions.selectQuickSearchSuggestion,
                     onSearch = {
@@ -503,18 +499,13 @@ private fun ConnectionSummaryCard(
     }
 }
 
-// "From" and "To" are read-only here — tapping their pencil hands off to the search
-// screen, where the station is actually typed in. The one field left editable on
-// HomeScreen is the quick search below, always "current location → this place".
+// Quick search, always "current location → this place". Anything else is planned on
+// the Search tab.
 @Composable
 private fun SearchForm(
-    fromText: String,
-    toText: String,
     quickSearchText: String,
     quickSearchSuggestions: List<String>,
     isQuickSearchSuggesting: Boolean,
-    onEditFrom: () -> Unit,
-    onEditTo: () -> Unit,
     onQuickSearchChanged: (String) -> Unit,
     onSelectQuickSearchSuggestion: (String) -> Unit,
     onSearch: () -> Unit,
@@ -529,16 +520,6 @@ private fun SearchForm(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            EndpointRow(
-                label = "From",
-                value = fromText.ifBlank { "Current location" },
-                onEdit = onEditFrom,
-            )
-            EndpointRow(
-                label = "To",
-                value = toText.ifBlank { "Choose a destination" },
-                onEdit = onEditTo,
-            )
             StationAutocompleteField(
                 value = quickSearchText,
                 onValueChange = onQuickSearchChanged,
@@ -555,37 +536,6 @@ private fun SearchForm(
             ) {
                 Text("Search connections")
             }
-        }
-    }
-}
-
-@Composable
-private fun EndpointRow(
-    label: String,
-    value: String,
-    onEdit: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onEdit),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Column {
-            Text(
-                label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(value, style = MaterialTheme.typography.bodyLarge)
-        }
-        IconButton(onClick = onEdit) {
-            Icon(
-                Icons.Default.Edit,
-                contentDescription = "Edit $label",
-                tint = MaterialTheme.colorScheme.primary,
-            )
         }
     }
 }

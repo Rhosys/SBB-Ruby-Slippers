@@ -33,7 +33,7 @@ data class SettingsUiState(
     val rtLastErrorMessage: String? = null,
     val calendarSyncing: Boolean = false,
     val calendarSyncError: String? = null,
-    val journeyChipShowsTotalRemaining: Boolean = false,
+    val journeyChipShowsTotalRemaining: Boolean = true,
 )
 
 private data class RtStatus(

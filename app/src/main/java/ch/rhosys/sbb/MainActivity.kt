@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.first
+import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import ch.rhosys.sbb.data.local.preferences.UserPreferencesRepository
@@ -36,6 +37,7 @@ import ch.rhosys.sbb.ui.journey.MissedBoardingDialog
 import ch.rhosys.sbb.ui.navigation.AppNavHost
 import ch.rhosys.sbb.ui.navigation.AppNavigator
 import ch.rhosys.sbb.ui.navigation.Screen
+import ch.rhosys.sbb.ui.navigation.Tab
 import ch.rhosys.sbb.ui.search.SearchNavigationBridge
 import ch.rhosys.sbb.ui.theme.SbbRubySlippersTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -91,27 +93,27 @@ class MainActivity : ComponentActivity() {
                 if (hasOnboarded == null) return@SbbRubySlippersTheme
 
                 val startDestination = if (hasOnboarded == true)
-                    Screen.Home.route
+                    Tab.Home.route
                 else
                     Screen.Onboarding.route
 
                 val navController = rememberNavController()
-                val navigator = remember(navController) { AppNavigator(navController, searchNavigationBridge) }
+                val navigator = remember(navController) { AppNavigator(navController) }
                 val backStack by navController.currentBackStackEntryAsState()
-                val currentRoute = backStack?.destination?.route
+                val currentDestination = backStack?.destination
 
                 if (isFreshStart && hasOnboarded == true) {
                     LaunchedEffect(Unit) {
                         val journey = prefs.activeJourney.first() ?: return@LaunchedEffect
                         if (journey.arrivalEpoch > Instant.now().epochSecond) {
-                            navController.navigate(Screen.Journeys.route)
+                            navigator.selectTab(Tab.Journeys)
                         }
                     }
                 }
 
                 LaunchedEffect(openJourneyRequested.value) {
                     if (openJourneyRequested.value) {
-                        navController.navigate(Screen.Journeys.route)
+                        navigator.selectTab(Tab.Journeys)
                         openJourneyRequested.value = false
                     }
                 }
@@ -131,15 +133,13 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val tabScreens = listOf(
-                    Triple(Screen.Home,     "Home",     Icons.Default.Home),
-                    Triple(Screen.Search,   "Search",   Icons.Default.Search),
-                    Triple(Screen.Journeys, "Journeys", Icons.Default.DateRange),
-                    Triple(Screen.Settings, "Settings", Icons.Default.Settings),
+                    Triple(Tab.Home,     "Home",     Icons.Default.Home),
+                    Triple(Tab.Search,   "Search",   Icons.Default.Search),
+                    Triple(Tab.Journeys, "Journeys", Icons.Default.DateRange),
+                    Triple(Tab.Settings, "Settings", Icons.Default.Settings),
                 )
 
-                val hideBottomNav = currentRoute in setOf(
-                    Screen.Onboarding.route,
-                )
+                val hideBottomNav = currentDestination?.route == Screen.Onboarding.route
 
                 Scaffold(
                     // targetSdk 35 enforces edge-to-edge, so windowSoftInputMode="adjustResize"
@@ -149,10 +149,10 @@ class MainActivity : ComponentActivity() {
                     bottomBar = {
                         if (!hideBottomNav) {
                             NavigationBar {
-                                tabScreens.forEach { (screen, label, icon) ->
+                                tabScreens.forEach { (tab, label, icon) ->
                                     NavigationBarItem(
-                                        selected = currentRoute == screen.route,
-                                        onClick = { navigator.selectTab(screen) },
+                                        selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true,
+                                        onClick = { navigator.selectTab(tab) },
                                         icon = { Icon(icon, contentDescription = null) },
                                         label = { Text(label) },
                                     )
@@ -165,6 +165,7 @@ class MainActivity : ComponentActivity() {
                         navController = navController,
                         startDestination = startDestination,
                         navigator = navigator,
+                        searchNavigationBridge = searchNavigationBridge,
                         // Consume what this Scaffold already padded for (status bar, bottom
                         // nav) so nested Scaffolds/TopAppBars don't pad for the status bar a
                         // second time.
