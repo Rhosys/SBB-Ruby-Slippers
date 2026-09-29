@@ -4,7 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
@@ -41,10 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 
-// Fixed regardless of how many suggestions come back, so the field below never
-// jumps around as the user types — the popup overlay only appears/disappears,
-// it never resizes the surrounding layout.
-private val SUGGESTIONS_BOX_HEIGHT = 224.dp
+// The popup overlays the layout, so its size never moves the fields around it.
+private val SUGGESTIONS_BOX_MAX_HEIGHT = 224.dp
 
 /**
  * A station/place text field with debounced autocomplete suggestions and an
@@ -80,6 +78,8 @@ fun StationAutocompleteField(
     // Resets whenever isCurrentLocation flips (e.g. a fresh GPS fill), so a new
     // "Current location" value always starts out showing the badge again.
     var isRevealed by remember(isCurrentLocation) { mutableStateOf(false) }
+    // Suggestions belong to the field being edited — never shown for an unfocused one.
+    var isFocused by remember { mutableStateOf(false) }
     val showBadge = isCurrentLocation && !isRevealed
 
     Box(modifier = modifier) {
@@ -95,6 +95,7 @@ fun StationAutocompleteField(
                 .onGloballyPositioned { fieldSize = it.size }
                 .focusRequester(focusRequester)
                 .onFocusChanged { focusState ->
+                    isFocused = focusState.isFocused
                     if (focusState.isFocused) {
                         if (isCurrentLocation) isRevealed = true
                     } else if (isCurrentLocation && isRevealed) {
@@ -148,7 +149,7 @@ fun StationAutocompleteField(
             } else null,
         )
 
-        if (suggestions.isNotEmpty()) {
+        if (isFocused && suggestions.isNotEmpty()) {
             Popup(
                 alignment = Alignment.TopStart,
                 offset = IntOffset(0, fieldSize.height),
@@ -157,7 +158,7 @@ fun StationAutocompleteField(
                 Surface(
                     modifier = Modifier
                         .width(with(density) { fieldSize.width.toDp() })
-                        .height(SUGGESTIONS_BOX_HEIGHT),
+                        .heightIn(max = SUGGESTIONS_BOX_MAX_HEIGHT),
                     shape = MaterialTheme.shapes.medium,
                     tonalElevation = 4.dp,
                     shadowElevation = 4.dp,

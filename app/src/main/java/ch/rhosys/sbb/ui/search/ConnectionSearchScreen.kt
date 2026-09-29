@@ -2,7 +2,6 @@ package ch.rhosys.sbb.ui.search
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,8 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -39,15 +38,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -64,7 +62,6 @@ import ch.rhosys.sbb.domain.model.TripHistoryItem
 import ch.rhosys.sbb.ui.common.AppAlertDialog
 import ch.rhosys.sbb.ui.common.RunningManBadge
 import ch.rhosys.sbb.ui.common.StationAutocompleteField
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDateTime
@@ -173,174 +170,21 @@ fun ConnectionSearchScreen(
                 style = MaterialTheme.typography.bodyMedium,
             )
 
-            state.connections.isEmpty() -> Text(
+            state.slots.isEmpty -> Text(
                 text = stringResource(R.string.search_empty),
                 style = MaterialTheme.typography.bodyMedium,
             )
 
-            else -> {
-                // Lazy item layout: [0] "Earlier connections" separator, [1..n] rows,
-                // [n+1] load-later indicator, [n+2] bottom filler. The list opens scrolled to
-                // index 1, so the separator sits just off-screen above the first trip — pulling
-                // the list down reveals it, and that reveal is what fetches earlier trips.
-                val listState = rememberLazyListState(initialFirstVisibleItemIndex = 1)
-                val shortestDuration = state.connections.mapNotNull { it.transitDuration }.minOrNull()
-                val now = remember(state.connections) { Instant.now() }
-                val rows = remember(state.connections, now) { buildRowsWithNowDivider(state.connections, now) }
-                // Index of the "Now" row within the LazyColumn's own item indices — offset
-                // by 1 for the leading "earlier connections" separator — used to tell whether
-                // the divider is currently on-screen or has scrolled past the visible range.
-                val nowLazyIndex = remember(rows) { 1 + rows.indexOfFirst { it is ConnectionListRow.NowDivider } }
-                val scope = rememberCoroutineScope()
-                val density = LocalDensity.current
-                val laterSlackPx = remember(density) { with(density) { LATER_SLACK.roundToPx() } }
-
-                // A list shorter than the screen can't scroll, so there'd be no way to hide
-                // the separator above it (or to pull at all). The filler at the bottom tops the
-                // content up to one screen plus a little slack, so the list is always
-                // scrollable in both directions.
-                var fillerPx by remember { mutableIntStateOf(0) }
-                var fillerSettled by remember { mutableStateOf(false) }
-                LaunchedEffect(listState) {
-                    snapshotFlow { listState.layoutInfo }.collect { info ->
-                        val fillerIndex = info.totalItemsCount - 1
-                        val realRange = 1 until fillerIndex
-                        val visibleReal = info.visibleItemsInfo.filter { it.index in realRange }
-                        val viewport = info.viewportEndOffset - info.viewportStartOffset
-                        if (viewport <= 0 || info.visibleItemsInfo.isEmpty()) {
-                            fillerSettled = false
-                            return@collect
-                        }
-                        val needed = when {
-                            visibleReal.sumOf { it.size } >= viewport -> 0
-                            visibleReal.isNotEmpty() && visibleReal.size == realRange.count() -> {
-                                val content = visibleReal.last().let { it.offset + it.size } - visibleReal.first().offset
-                                (viewport - content + laterSlackPx).coerceAtLeast(0)
-                            }
-                            // Some real rows are off-screen while the separator/filler take
-                            // up the rest — can't measure the content, keep what we have.
-                            else -> fillerPx
-                        }
-                        fillerSettled = needed == fillerPx
-                        if (!fillerSettled) fillerPx = needed
-                    }
-                }
-
-                // Index to jump to once the filler has settled: 1 on first show (hide the
-                // separator), and again after earlier trips land (re-hide the separator and
-                // show the newly loaded earliest trip at the top).
-                var pendingScrollIndex by remember { mutableStateOf<Int?>(1) }
-                LaunchedEffect(pendingScrollIndex) {
-                    val target = pendingScrollIndex ?: return@LaunchedEffect
-                    snapshotFlow { fillerSettled && listState.layoutInfo.totalItemsCount > target }.first { it }
-                    listState.scrollToItem(target)
-                    pendingScrollIndex = null
-                }
-                var wasLoadingEarlier by remember { mutableStateOf(false) }
-                LaunchedEffect(state.isLoadingEarlier) {
-                    if (wasLoadingEarlier && !state.isLoadingEarlier) pendingScrollIndex = 1
-                    wasLoadingEarlier = state.isLoadingEarlier
-                }
-
-                // Only a real finger-driven scroll should trigger a fetch — the "now" button's
-                // animateScrollToItem or our own repositioning must NOT page in more results.
-                // We arm on DragInteraction.Start and disarm the instant we consume it.
-                var userDragInitiatedScroll by remember { mutableStateOf(false) }
-                LaunchedEffect(listState) {
-                    listState.interactionSource.interactions.collect { interaction ->
-                        if (interaction is DragInteraction.Start) userDragInitiatedScroll = true
-                    }
-                }
-
-                LaunchedEffect(listState) {
-                    snapshotFlow { Triple(listState.layoutInfo, userDragInitiatedScroll, pendingScrollIndex) }
-                        .collect { (info, dragged, pending) ->
-                            if (!dragged || pending != null) return@collect
-                            // How far the separator's bottom edge has come down past the top
-                            // of the list — i.e. how much of it the user has pulled into view.
-                            val separator = info.visibleItemsInfo.firstOrNull { it.index == 0 }
-                            val revealedPx = separator?.let { it.offset + it.size - info.viewportStartOffset } ?: 0
-                            if (revealedPx > EARLIER_REVEAL_THRESHOLD_PX) {
-                                userDragInitiatedScroll = false
-                                viewModel.loadEarlier()
-                            } else if (!listState.canScrollForward) {
-                                userDragInitiatedScroll = false
-                                viewModel.loadLater()
-                            }
-                        }
-                }
-
-                val nowPinnedEdge by remember(nowLazyIndex) {
-                    derivedStateOf {
-                        val visible = listState.layoutInfo.visibleItemsInfo
-                        val firstVisible = visible.firstOrNull()?.index
-                        val lastVisible = visible.lastOrNull()?.index
-                        when {
-                            firstVisible == null || lastVisible == null -> null
-                            nowLazyIndex < firstVisible -> Alignment.TopCenter
-                            nowLazyIndex > lastVisible -> Alignment.BottomCenter
-                            else -> null
-                        }
-                    }
-                }
-
-                Box(Modifier.fillMaxSize()) {
-                    LazyColumn(
-                        state = listState,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        // No top padding: the separator's reveal is measured from the list's
-                        // top edge.
-                        contentPadding = PaddingValues(bottom = 4.dp),
-                    ) {
-                        item(key = "earlier-separator") {
-                            EarlierConnectionsRow(isLoading = state.isLoadingEarlier)
-                        }
-                        itemsIndexed(
-                            items = rows,
-                            key = { _, row -> row.key },
-                        ) { _, row ->
-                            when (row) {
-                                is ConnectionListRow.NowDivider -> NowDividerRow()
-                                is ConnectionListRow.ConnectionRow -> ConnectionCard(
-                                    connection = row.connection,
-                                    order = row.order,
-                                    isHero = row.order == 1,
-                                    isRecommended = shortestDuration != null && row.connection.transitDuration == shortestDuration,
-                                    isActiveJourney = row.connection.stableKey == state.activeConnectionKey,
-                                    walkingPaceKmh = state.walkingPaceKmh,
-                                    runningPaceKmh = state.runningPaceKmh,
-                                    now = now,
-                                    onClick = {
-                                        viewModel.openTripReview(row.connection)
-                                        onNavigateToReview()
-                                    },
-                                    onFaresTap = onNavigateToFares,
-                                )
-                            }
-                        }
-                        item(key = "load-later") {
-                            LoadMoreRow(isLoading = state.isLoadingLater, label = "Loading later connections…")
-                        }
-                        item(key = "bottom-filler") {
-                            Spacer(Modifier.height(with(density) { fillerPx.toDp() }))
-                        }
-                    }
-
-                    nowPinnedEdge?.let { edge ->
-                        StickyNowMarker(
-                            modifier = Modifier
-                                .align(edge)
-                                .fillMaxWidth(),
-                            pointsUp = edge == Alignment.TopCenter,
-                            onClick = {
-                                scope.launch {
-                                    listState.animateScrollToItem(nowLazyIndex)
-                                }
-                            },
-                        )
-                    }
-                }
-            }
+            else -> ConnectionSlotList(
+                state = state,
+                onLoadEarlier = viewModel::loadEarlier,
+                onLoadLater = viewModel::loadLater,
+                onOpen = { connection ->
+                    viewModel.openTripReview(connection)
+                    onNavigateToReview()
+                },
+                onFaresTap = onNavigateToFares,
+            )
         }
     }
 
@@ -412,35 +256,107 @@ fun ConnectionSearchScreen(
     }
 }
 
-// One row per connection, plus a single "Now" divider row inserted at the boundary
-// between past and future departures — connections are always shown sorted ascending.
-internal sealed class ConnectionListRow {
-    abstract val key: String
-
-    data class ConnectionRow(val connection: Connection, val order: Int) : ConnectionListRow() {
-        override val key: String = connection.stableKey
+/**
+ * One row per [ConnectionSlots] slot. The list opens on the first result; empty slots
+ * scrolling into view above the first / below the last connection fetch more, which land
+ * in those same slots — so nothing already on screen moves. The empty slot right next to
+ * the results on each side shows the earlier/later status.
+ */
+@Composable
+private fun ConnectionSlotList(
+    state: ConnectionSearchUiState,
+    onLoadEarlier: () -> Unit,
+    onLoadLater: () -> Unit,
+    onOpen: (Connection) -> Unit,
+    onFaresTap: () -> Unit,
+) {
+    val slots = state.slots
+    val listState = rememberSaveable(state.searchId, saver = LazyListState.Saver) {
+        LazyListState(firstVisibleItemIndex = ConnectionSlots.START)
     }
+    val now = remember(slots) { Instant.now() }
+    val nowIndex = remember(slots, now) { slots.nowIndex(now) }
+    val shortestDuration = remember(slots) { slots.connections.mapNotNull { it.transitDuration }.minOrNull() }
+    val scope = rememberCoroutineScope()
 
-    object NowDivider : ConnectionListRow() {
-        override val key: String = "now-divider"
-    }
-}
-
-internal fun buildRowsWithNowDivider(connections: List<Connection>, now: Instant): List<ConnectionListRow> {
-    val rows = mutableListOf<ConnectionListRow>()
-    var dividerInserted = false
-    connections.forEachIndexed { index, connection ->
-        val departure = connection.departure.effectiveTime ?: connection.departure.scheduledTime
-        if (!dividerInserted && departure != null && !departure.isBefore(now)) {
-            rows += ConnectionListRow.NowDivider
-            dividerInserted = true
+    LaunchedEffect(listState, slots) {
+        snapshotFlow {
+            listState.layoutInfo.visibleItemsInfo.let { it.firstOrNull()?.index to it.lastOrNull()?.index }
+        }.collect { (firstVisible, lastVisible) ->
+            if (firstVisible != null && firstVisible < slots.first) onLoadEarlier()
+            if (lastVisible != null && lastVisible > slots.last) onLoadLater()
         }
-        rows += ConnectionListRow.ConnectionRow(connection, index + 1)
     }
-    // All connections are in the past (or times are unknown) — the divider still needs
-    // to exist so the sticky marker has somewhere to point.
-    if (!dividerInserted) rows += ConnectionListRow.NowDivider
-    return rows
+
+    val nowPinnedEdge by remember(nowIndex) {
+        derivedStateOf {
+            val visible = listState.layoutInfo.visibleItemsInfo
+            val firstVisible = visible.firstOrNull()?.index
+            val lastVisible = visible.lastOrNull()?.index
+            when {
+                firstVisible == null || lastVisible == null -> null
+                nowIndex < firstVisible -> Alignment.TopCenter
+                nowIndex > lastVisible -> Alignment.BottomCenter
+                else -> null
+            }
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 4.dp),
+        ) {
+            items(count = ConnectionSlots.CAPACITY) { index ->
+                val connection = slots[index]
+                Column {
+                    if (index == nowIndex) NowDividerRow()
+                    when {
+                        connection != null -> ConnectionCard(
+                            connection = connection,
+                            order = index - slots.first + 1,
+                            isHero = index == slots.first,
+                            isRecommended = shortestDuration != null && connection.transitDuration == shortestDuration,
+                            isActiveJourney = connection.stableKey == state.activeConnectionKey,
+                            walkingPaceKmh = state.walkingPaceKmh,
+                            runningPaceKmh = state.runningPaceKmh,
+                            now = now,
+                            onClick = { onOpen(connection) },
+                            onFaresTap = onFaresTap,
+                        )
+                        index == slots.first - 1 -> EdgeRow(
+                            label = when {
+                                state.noMoreEarlier -> "No earlier connections"
+                                state.isLoadingEarlier -> "Loading earlier connections…"
+                                else -> "Earlier connections"
+                            },
+                            isLoading = state.isLoadingEarlier,
+                        )
+                        index == slots.last + 1 -> EdgeRow(
+                            label = when {
+                                state.noMoreLater -> "No later connections"
+                                state.isLoadingLater -> "Loading later connections…"
+                                else -> "Later connections"
+                            },
+                            isLoading = state.isLoadingLater,
+                        )
+                        else -> Spacer(Modifier.fillMaxWidth().height(EMPTY_SLOT_HEIGHT))
+                    }
+                }
+            }
+        }
+
+        nowPinnedEdge?.let { edge ->
+            StickyNowMarker(
+                modifier = Modifier
+                    .align(edge)
+                    .fillMaxWidth(),
+                pointsUp = edge == Alignment.TopCenter,
+                onClick = { scope.launch { listState.animateScrollToItem(nowIndex) } },
+            )
+        }
+    }
 }
 
 @Composable
@@ -522,13 +438,14 @@ private fun RecentSearchRow(item: TripHistoryItem, onClick: () -> Unit) {
     }
 }
 
-// Sits just above the first trip, off-screen until the user pulls the list down.
+// Fills the empty slot right next to the results on each side: what's there, or that
+// it's being fetched.
 @Composable
-private fun EarlierConnectionsRow(isLoading: Boolean) {
+private fun EdgeRow(label: String, isLoading: Boolean) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp),
+            .height(EMPTY_SLOT_HEIGHT),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -537,7 +454,7 @@ private fun EarlierConnectionsRow(isLoading: Boolean) {
             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
         }
         Text(
-            if (isLoading) "Loading earlier connections…" else "Earlier connections",
+            label,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -545,28 +462,8 @@ private fun EarlierConnectionsRow(isLoading: Boolean) {
     }
 }
 
-@Composable
-private fun LoadMoreRow(isLoading: Boolean, label: String) {
-    if (!isLoading) return
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-        Spacer(Modifier.size(8.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall)
-    }
-}
-
-// Pulling the "Earlier connections" separator this far into view fetches earlier trips.
-private const val EARLIER_REVEAL_THRESHOLD_PX = 10
-
-// How far past the last trip the list can always be scrolled, so reaching the end to load
-// later trips is a deliberate pull even when all trips fit on screen.
-private val LATER_SLACK = 48.dp
+// Height of a slot with no connection in it yet.
+private val EMPTY_SLOT_HEIGHT = 48.dp
 
 private val RECOMMENDED_GREEN = androidx.compose.ui.graphics.Color(0xFF2E7D32)
 private val ACTIVE_JOURNEY_GREEN = androidx.compose.ui.graphics.Color(0xFF1B5E20)

@@ -46,10 +46,15 @@ data class ConnectionSearchUiState(
     val fromBadgeStationName: String? = null,
     val toBadgeStationName: String? = null,
     val smartSuggestions: List<String> = emptyList(),
-    val connections: List<Connection> = emptyList(),
+    val slots: ConnectionSlots = ConnectionSlots.EMPTY,
+    // Bumped on every new search, so the list starts again at ConnectionSlots.START.
+    val searchId: Int = 0,
     val isLoading: Boolean = false,
     val isLoadingEarlier: Boolean = false,
     val isLoadingLater: Boolean = false,
+    // Set once a fetch in that direction finds nothing new, so the list stops asking.
+    val noMoreEarlier: Boolean = false,
+    val noMoreLater: Boolean = false,
     val error: String? = null,
     // "Now" (re-resolved on every query) or a time the user picked.
     val timeMode: SearchTimeMode = SearchTimeMode.Now,
@@ -416,7 +421,12 @@ class ConnectionSearchViewModel @Inject constructor(
                 searchDate = queryAt.toLocalDate(),
                 isLoading = true,
                 error = null,
-                connections = emptyList(),
+                slots = ConnectionSlots.EMPTY,
+                searchId = _uiState.value.searchId + 1,
+                isLoadingEarlier = false,
+                isLoadingLater = false,
+                noMoreEarlier = false,
+                noMoreLater = false,
                 fromSuggestions = emptyList(),
                 toSuggestions = emptyList(),
             )
@@ -435,54 +445,62 @@ class ConnectionSearchViewModel @Inject constructor(
         }
     }
 
-    // Pulling up (or reaching the top of the list) fetches connections departing/arriving
-    // earlier than what's currently shown; pulling down fetches later ones. Both merge the
-    // freshly-fetched connections into the existing list, deduplicated and re-sorted, rather
-    // than replacing it — that's what makes the list feel like one continuous infinite scroll.
+    // The list asks for these whenever an empty slot above the first / below the last
+    // connection scrolls into view. Results go straight into those empty slots.
     fun loadEarlier() {
         val state = _uiState.value
-        if (state.isLoadingEarlier || state.isLoading) return
-        val first = state.connections.firstOrNull() ?: return
-        val firstDeparture = first.departure.scheduledTime?.atZone(SWISS_ZONE)?.toLocalTime() ?: return
-        if (firstDeparture == LocalTime.MIDNIGHT) return
+        if (state.isLoadingEarlier || state.isLoading || state.noMoreEarlier) return
+        val first = state.slots[state.slots.first] ?: return
+        val firstDeparture = first.departure.scheduledTime?.atZone(SWISS_ZONE)?.toLocalTime()
+        if (firstDeparture == null || firstDeparture == LocalTime.MIDNIGHT || state.slots.first == 0) {
+            _uiState.value = state.copy(noMoreEarlier = true)
+            return
+        }
 
+        _uiState.value = state.copy(isLoadingEarlier = true)
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoadingEarlier = true)
             val from = endpointFor(state.fromText.trim().ifBlank { state.toText.trim() })
             val to = endpointFor(state.toText.trim())
             val earlier = fetchConnections(from, to, state.searchDate, firstDeparture.minusMinutes(1), isArriveBy = true)
-            _uiState.value = _uiState.value.copy(
-                connections = mergeConnections(earlier, _uiState.value.connections),
+            val current = _uiState.value
+            if (current.searchId != state.searchId) return@launch
+            val slots = current.slots.withEarlier(earlier)
+            _uiState.value = current.copy(
+                slots = slots,
                 isLoadingEarlier = false,
+                noMoreEarlier = slots.first == current.slots.first,
             )
         }
     }
 
     fun loadLater() {
         val state = _uiState.value
-        if (state.isLoadingLater || state.isLoading) return
-        val last = state.connections.lastOrNull() ?: return
-        val lastDeparture = last.departure.scheduledTime?.atZone(SWISS_ZONE)?.toLocalTime() ?: return
+        if (state.isLoadingLater || state.isLoading || state.noMoreLater) return
+        val last = state.slots[state.slots.last] ?: return
+        val lastDeparture = last.departure.scheduledTime?.atZone(SWISS_ZONE)?.toLocalTime()
+        if (lastDeparture == null || state.slots.last == ConnectionSlots.CAPACITY - 1) {
+            _uiState.value = state.copy(noMoreLater = true)
+            return
+        }
 
+        _uiState.value = state.copy(isLoadingLater = true)
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoadingLater = true)
             val from = endpointFor(state.fromText.trim().ifBlank { state.toText.trim() })
             val to = endpointFor(state.toText.trim())
             val later = fetchConnections(from, to, state.searchDate, lastDeparture.plusMinutes(1), isArriveBy = false)
-            _uiState.value = _uiState.value.copy(
-                connections = mergeConnections(_uiState.value.connections, later),
+            val current = _uiState.value
+            if (current.searchId != state.searchId) return@launch
+            val slots = current.slots.withLater(later)
+            _uiState.value = current.copy(
+                slots = slots,
                 isLoadingLater = false,
+                noMoreLater = slots.last == current.slots.last,
             )
         }
     }
 
     private fun routingTimeFor(time: LocalTime): RoutingTime =
         if (_uiState.value.isArriveBy) RoutingTime.ArriveBy(time) else RoutingTime.DepartAfter(time)
-
-    private fun mergeConnections(before: List<Connection>, after: List<Connection>): List<Connection> =
-        (before + after)
-            .distinctBy { it.departure.scheduledTime to it.arrival.scheduledTime to it.lineNames }
-            .sortedBy { it.departure.scheduledTime }
 
     private suspend fun fetchConnections(
         from: SearchEndpoint,
@@ -515,7 +533,7 @@ class ConnectionSearchViewModel @Inject constructor(
         ).collect { state ->
             when (state) {
                 is LocalRoutingState.Results -> _uiState.value = _uiState.value.copy(
-                    connections = state.connections,
+                    slots = ConnectionSlots.startingWith(state.connections),
                     isLoading = !state.isComplete,
                 )
                 is LocalRoutingState.NoResults -> _uiState.value = _uiState.value.copy(
@@ -545,7 +563,10 @@ class ConnectionSearchViewModel @Inject constructor(
             )
         }
             .onSuccess { connections ->
-                _uiState.value = _uiState.value.copy(connections = connections, isLoading = false)
+                _uiState.value = _uiState.value.copy(
+                    slots = ConnectionSlots.startingWith(connections),
+                    isLoading = false,
+                )
             }
             .onFailure { e ->
                 _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Unknown error")
