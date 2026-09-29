@@ -2,9 +2,11 @@ package ch.rhosys.sbb.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.navigation
 import ch.rhosys.sbb.ui.fares.FaresTeaserScreen
 import ch.rhosys.sbb.ui.home.HomeScreen
 import ch.rhosys.sbb.ui.places.HomeEditScreen
@@ -27,66 +29,63 @@ fun AppNavHost(
         modifier = modifier,
     ) {
         composable(Screen.Onboarding.route) {
-            OnboardingScreen(
-                onComplete = {
-                    navController.navigate(Screen.Home.route) {
-                        popUpTo(Screen.Onboarding.route) { inclusive = true }
-                    }
-                }
-            )
+            OnboardingScreen(onComplete = navigator::finishOnboarding)
         }
 
-        composable(Screen.Home.route) {
-            HomeScreen(
-                onNavigateToSearch = navigator::startTripSearch,
-                onNavigateToJourneys = { navigator.selectTab(Screen.Journeys) },
-                onNavigateToHomeEdit = {
-                    navController.navigate(Screen.HomeEdit.route)
-                },
-            )
+        tab(Tab.Home) {
+            composable(Screen.Home.route) {
+                HomeScreen(
+                    onNavigateToSearch = navigator::startTripSearch,
+                    onNavigateToJourneys = { navigator.selectTab(Tab.Journeys) },
+                    onNavigateToHomeEdit = { navController.navigate(Screen.HomeEdit.route) },
+                )
+            }
+            composable(Screen.HomeEdit.route) {
+                HomeEditScreen(onNavigateBack = { navController.popBackStack() })
+            }
         }
 
-        composable(Screen.HomeEdit.route) {
-            HomeEditScreen(
-                onNavigateBack = { navController.popBackStack() },
-            )
+        tab(Tab.Search) {
+            composable(Screen.Search.route) {
+                ConnectionSearchScreen(
+                    onNavigateToReview = { navController.navigate(Tab.Search.tripReview) },
+                    onNavigateToFares = { navController.navigate(Tab.Search.fares) },
+                )
+            }
+            tripDetails(Tab.Search, navController, navigator)
         }
 
-        composable(Screen.Search.route) {
-            ConnectionSearchScreen(
-                onNavigateToReview = {
-                    navController.navigate(Screen.TripReview.route)
-                },
-                onNavigateToFares = {
-                    navController.navigate(Screen.FaresTeaser.route)
-                },
-            )
+        tab(Tab.Journeys) {
+            composable(Screen.Journeys.route) {
+                JourneysScreen(
+                    onNavigateToTripReview = { navController.navigate(Tab.Journeys.tripReview) },
+                )
+            }
+            tripDetails(Tab.Journeys, navController, navigator)
         }
 
-        composable(Screen.TripReview.route) {
-            TripReviewScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onJourneyStarted = navigator::showStartedJourney,
-                onNavigateToFares = {
-                    navController.navigate(Screen.FaresTeaser.route)
-                },
-            )
+        tab(Tab.Settings) {
+            composable(Screen.Settings.route) { SettingsScreen() }
         }
+    }
+}
 
-        composable(Screen.FaresTeaser.route) {
-            FaresTeaserScreen(
-                onNavigateBack = { navController.popBackStack() },
-            )
-        }
+private fun NavGraphBuilder.tab(tab: Tab, builder: NavGraphBuilder.() -> Unit) =
+    navigation(startDestination = tab.root.route, route = tab.route, builder = builder)
 
-        composable(Screen.Journeys.route) {
-            JourneysScreen(
-                onNavigateToTripReview = {
-                    navController.navigate(Screen.TripReview.route)
-                },
-            )
-        }
-
-        composable(Screen.Settings.route) { SettingsScreen() }
+private fun NavGraphBuilder.tripDetails(
+    tab: Tab,
+    navController: NavHostController,
+    navigator: AppNavigator,
+) {
+    composable(tab.tripReview) {
+        TripReviewScreen(
+            onNavigateBack = { navController.popBackStack() },
+            onJourneyStarted = navigator::showStartedJourney,
+            onNavigateToFares = { navController.navigate(tab.fares) },
+        )
+    }
+    composable(tab.fares) {
+        FaresTeaserScreen(onNavigateBack = { navController.popBackStack() })
     }
 }

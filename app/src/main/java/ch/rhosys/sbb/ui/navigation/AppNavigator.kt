@@ -4,43 +4,42 @@ import androidx.navigation.NavController
 import ch.rhosys.sbb.ui.search.SearchNavigationBridge
 
 /**
- * The two ways of getting to a tab, kept apart because they mean different things:
- *
- * - [selectTab] is "just clicking around" (bottom nav) — each tab comes back exactly as the
- *   user left it, e.g. still showing a trip's details.
- * - [startTripSearch] is "plan this trip" (every Home trigger) — always a brand-new search.
+ * Tabs are independent nested graphs: leaving a tab always saves its stack, and showing a
+ * tab always restores it. The only other decision is [resetTab] — discard that saved stack
+ * first, so the tab shows its root screen.
  */
 class AppNavigator(
     private val navController: NavController,
     private val searchNavigationBridge: SearchNavigationBridge,
 ) {
-    fun selectTab(screen: Screen) {
-        navController.navigate(screen.route) {
-            popUpTo(Screen.Home.route) { saveState = true }
+    fun selectTab(tab: Tab) {
+        navController.navigate(tab.route) {
+            popUpTo(Tab.Home.route) { saveState = true }
             launchSingleTop = true
             restoreState = true
         }
     }
 
-    /**
-     * A journey was just started: drop whatever led here (e.g. Search → trip details) and
-     * show a fresh Journeys tab. Must not push Journeys onto Home's stack — Home's saved
-     * state would then be Journeys, and tapping Home would restore it.
-     */
-    fun showStartedJourney() {
-        navController.popBackStack(Screen.Home.route, inclusive = false, saveState = false)
-        navController.clearBackStack(Screen.Journeys.route)
-        selectTab(Screen.Journeys)
-    }
-
+    /** "Plan this trip" (every Home trigger) — the Search tab's root, with the new from/to. */
     fun startTripSearch(from: String, to: String) {
         searchNavigationBridge.request(from, to)
-        // Throw away the Search tab's saved stack (e.g. a trip's details opened earlier) so
-        // the new search is what shows — then open Search without restoring anything.
-        navController.clearBackStack(Screen.Search.route)
-        navController.navigate(Screen.Search.route) {
-            popUpTo(Screen.Home.route) { saveState = true }
-            launchSingleTop = true
+        resetTab(Tab.Search)
+    }
+
+    /** A journey was just started — the Journeys tab's root, which shows it. */
+    fun showStartedJourney() = resetTab(Tab.Journeys)
+
+    fun finishOnboarding() {
+        navController.navigate(Tab.Home.route) {
+            popUpTo(Screen.Onboarding.route) { inclusive = true }
         }
+    }
+
+    private fun resetTab(tab: Tab) {
+        // Open tab: pop to its root. Otherwise: drop its saved stack.
+        if (!navController.popBackStack(tab.root.route, inclusive = false)) {
+            navController.clearBackStack(tab.route)
+        }
+        selectTab(tab)
     }
 }
