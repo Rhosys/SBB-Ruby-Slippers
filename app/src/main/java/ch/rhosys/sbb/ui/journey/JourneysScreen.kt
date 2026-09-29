@@ -41,6 +41,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -51,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import ch.rhosys.sbb.domain.model.TripHistoryItem
 import ch.rhosys.sbb.ui.common.AppAlertDialog
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
@@ -142,6 +144,15 @@ private fun ActiveTab(state: JourneysUiState, viewModel: JourneysViewModel) {
         return
     }
 
+    val segments = remember(connection) { buildJourneyTimeline(connection) }
+    // Re-evaluated every 15 s so the status, track and timeline follow the trip.
+    val now by produceState(Instant.now()) {
+        while (true) {
+            delay(15_000)
+            value = Instant.now()
+        }
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -184,31 +195,12 @@ private fun ActiveTab(state: JourneysUiState, viewModel: JourneysViewModel) {
             }
         }
 
-        items(connection.legs) { leg -> LegRow(leg) }
+        item { JourneyStatusCard(connection, segments, now) }
+        item { JourneyStatsRow(connection, segments) }
+        item { Spacer(Modifier.height(12.dp)) }
+        items(segments.size) { index -> JourneyTimelineRow(connection, segments, index, now) }
 
         item {
-            Spacer(Modifier.height(16.dp))
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                ),
-            ) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("Arrive", style = MaterialTheme.typography.labelMedium)
-                    Text(connection.arrival.stationName,
-                        style = MaterialTheme.typography.titleMedium)
-                    Text(connection.arrival.displayTime(),
-                        style = MaterialTheme.typography.headlineSmall)
-                    if (connection.arrival.isDelayed) {
-                        Text(
-                            "+${connection.arrival.delayMinutes} min",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-            }
             Spacer(Modifier.height(16.dp))
             OutlinedButton(
                 onClick = { showCancelDialog = true },

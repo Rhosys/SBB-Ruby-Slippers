@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingTop="2dp"
+    android:paddingBottom="2dp">
+
+    <ImageView
+        android:id="@+id/journeyStepDot"
+        android:layout_width="8dp"
+        android:layout_height="8dp"
+        android:src="@drawable/ic_journey_blip_upcoming"
+        android:importantForAccessibility="no" />
+
+    <TextView
+        android:id="@+id/journeyStepTime"
+        android:layout_width="44dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:textAppearance="@style/TextAppearance.Compat.Notification.Info"
+        tools:text="08:07" />
+
+    <TextView
+        android:id="@+id/journeyStepText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:textAppearance="@style/TextAppearance.Compat.Notification"
+        tools:text="S12 → Zürich HB · Pl. 3 · arr 08:29" />
+</LinearLayout>
