@@ -75,8 +75,27 @@ class StationAutocompleteFieldTest {
             }
         }
 
+        // Suggestions belong to the field being edited, so focus it first.
+        composeRule.onNodeWithText("From").performClick()
         composeRule.onNodeWithText("Zurich HB").performClick()
         composeRule.onNodeWithText("Selected: Zurich HB").assertIsDisplayed()
+    }
+
+    @Test
+    fun unfocusedFieldShowsNoSuggestions() {
+        composeRule.setContent {
+            SbbRubySlippersTheme {
+                StationAutocompleteField(
+                    value = "",
+                    onValueChange = {},
+                    label = "From",
+                    suggestions = listOf("Zurich HB", "Zug"),
+                    onSuggestionSelected = {},
+                )
+            }
+        }
+
+        composeRule.onAllNodesWithText("Zurich HB").assertCountEquals(0)
     }
 
     @Test
