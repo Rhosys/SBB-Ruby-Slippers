@@ -259,6 +259,7 @@ private fun TransitLegRow(leg: Leg.Transit) {
                     buildString {
                         append("${leg.lineName} → ${leg.direction}")
                         if (leg.operator != null) append(" · ${leg.operator}")
+                        if (leg.tripNumber != null) append(" · Trip ${leg.tripNumber}")
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

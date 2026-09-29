@@ -145,6 +145,7 @@ private fun SectionDto.toDomain(): Leg {
             lineCategory = jny.category ?: "",
             direction = jny.to ?: "",
             operator = jny.operator,
+            tripNumber = jny.name?.takeIf { it.isNotBlank() && it != jny.number },
         )
     } else {
         // walk.duration is frequently absent (notably for address → stop walks), so the

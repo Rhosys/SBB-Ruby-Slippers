@@ -8,6 +8,8 @@ sealed class Leg {
         val lineCategory: String,
         val direction: String,
         val operator: String? = null,
+        // Operator's trip/run number (e.g. "021644") — fine detail only; lineName is what riders see.
+        val tripNumber: String? = null,
         val intermediateStops: List<Stop> = emptyList(),
     ) : Leg()
 

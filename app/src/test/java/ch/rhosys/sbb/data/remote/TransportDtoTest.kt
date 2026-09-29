@@ -100,6 +100,7 @@ class TransportDtoTest {
         assertEquals(Duration.ZERO, connection.walkFromLastStop)
         assertEquals(1, connection.legs.size)
         assertTrue(connection.legs[0] is Leg.Transit)
+        assertEquals("021644", (connection.legs[0] as Leg.Transit).tripNumber)
     }
 
     @Test
