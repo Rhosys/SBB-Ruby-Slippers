@@ -41,7 +41,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -146,10 +145,11 @@ private fun ActiveTab(state: JourneysUiState, viewModel: JourneysViewModel) {
 
     val segments = remember(connection) { buildJourneyTimeline(connection) }
     // Re-evaluated every 15 s so the status, track and timeline follow the trip.
-    val now by produceState(Instant.now()) {
+    var now by remember { mutableStateOf(Instant.now()) }
+    LaunchedEffect(Unit) {
         while (true) {
             delay(15_000)
-            value = Instant.now()
+            now = Instant.now()
         }
     }
 
