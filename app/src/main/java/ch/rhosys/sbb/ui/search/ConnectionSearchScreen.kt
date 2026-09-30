@@ -61,7 +61,7 @@ import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.TripHistoryItem
 import ch.rhosys.sbb.ui.common.AppAlertDialog
 import ch.rhosys.sbb.ui.common.RunningManBadge
-import ch.rhosys.sbb.ui.common.StationAutocompleteField
+import ch.rhosys.sbb.ui.common.StationSearchField
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDateTime
@@ -93,13 +93,13 @@ fun ConnectionSearchScreen(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                StationAutocompleteField(
+                StationSearchField(
                     value = state.fromText,
                     onValueChange = viewModel::onFromChanged,
                     label = stringResource(R.string.search_from_hint),
                     suggestions = state.fromSuggestions,
                     onSuggestionSelected = viewModel::selectFromSuggestion,
-                    onGpsClick = viewModel::fillFromWithNearestStop,
+                    onCurrentLocation = viewModel::fillFromWithNearestStop,
                     isLocating = state.isFromLocating,
                     isSearching = state.isFromSuggesting,
                     isCurrentLocation = state.fromIsCurrentLocation,
@@ -107,13 +107,13 @@ fun ConnectionSearchScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                StationAutocompleteField(
+                StationSearchField(
                     value = state.toText,
                     onValueChange = viewModel::onToChanged,
                     label = stringResource(R.string.search_to_hint),
                     suggestions = state.toSuggestions,
                     onSuggestionSelected = viewModel::selectToSuggestion,
-                    onGpsClick = viewModel::fillToWithNearestStop,
+                    onCurrentLocation = viewModel::fillToWithNearestStop,
                     isLocating = state.isToLocating,
                     isSearching = state.isToSuggesting,
                     isCurrentLocation = state.toIsCurrentLocation,

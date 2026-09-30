@@ -1,5 +1,7 @@
 package ch.rhosys.sbb.data.local.routing.gtfs
 
+import ch.rhosys.sbb.domain.model.TransportMode
+
 data class GtfsStop(
     val id: Int,
     val name: String,
@@ -12,6 +14,7 @@ data class GtfsRoute(
     val name: String,
     val stopIds: List<Int>,
     val trips: List<GtfsTrip>,
+    val mode: TransportMode = TransportMode.OTHER,
 )
 
 // times: flat list of (arr, dep) seconds for each stop — 2 ints per stop

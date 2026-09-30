@@ -84,7 +84,7 @@ import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.Place
 import ch.rhosys.sbb.domain.model.SearchEndpoint
 import ch.rhosys.sbb.ui.common.PLACE_GRID_COLUMNS
-import ch.rhosys.sbb.ui.common.StationAutocompleteField
+import ch.rhosys.sbb.ui.common.StationSearchField
 
 @Composable
 fun HomeScreen(
@@ -520,7 +520,9 @@ private fun SearchForm(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            StationAutocompleteField(
+            // "From" is always the current location here, so the popup offers no
+            // "Current location" button — it would just search here → here.
+            StationSearchField(
                 value = quickSearchText,
                 onValueChange = onQuickSearchChanged,
                 label = "Quick search — from here to…",

@@ -1,5 +1,7 @@
 package ch.rhosys.sbb.data.local.routing.gtfs
 
+import ch.rhosys.sbb.domain.model.TransportMode
+
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.InputStream
@@ -15,7 +17,8 @@ object GtfsNetworkSerializer {
     // v2: transfers store distanceMeters (Double) instead of walkSeconds (Int) — a
     // version bump so a stale v1 cache is rejected and re-imported rather than being
     // misread as distances.
-    private const val VERSION = 2
+    // v3: routes carry their TransportMode (one byte, the enum ordinal) for the map picker.
+    private const val VERSION = 3
 
     private val DAY_KEYS = listOf("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 
@@ -49,6 +52,12 @@ object GtfsNetworkSerializer {
         }
     }
 
+    // Cheap header-only check, so a cache written by an older app version can be
+    // recognised as stale without deserialising the whole network.
+    fun isCurrentVersion(input: InputStream): Boolean = runCatching {
+        DataInputStream(input).use { dis -> dis.readInt() == MAGIC && dis.readInt() == VERSION }
+    }.getOrDefault(false)
+
     // ---- Stops ---------------------------------------------------------------
 
     private fun writeStops(dos: DataOutputStream, stops: List<GtfsStop>) {
@@ -79,6 +88,7 @@ object GtfsNetworkSerializer {
             for (id in r.stopIds) dos.writeInt(id)
             dos.writeInt(r.trips.size)
             for (t in r.trips) writeTrip(dos, t)
+            dos.writeByte(r.mode.ordinal)
         }
     }
 
@@ -96,7 +106,8 @@ object GtfsNetworkSerializer {
             val name = dis.readUTF()
             val stopIds = List(dis.readInt()) { dis.readInt() }
             val trips = List(dis.readInt()) { readTrip(dis) }
-            GtfsRoute(id, name, stopIds, trips)
+            val mode = TransportMode.entries.getOrElse(dis.readByte().toInt()) { TransportMode.OTHER }
+            GtfsRoute(id, name, stopIds, trips, mode)
         }
     }
 

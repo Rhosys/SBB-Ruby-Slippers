@@ -4,6 +4,7 @@ import ch.rhosys.sbb.data.local.routing.gtfs.GtfsCalendarResolver
 import ch.rhosys.sbb.data.local.routing.gtfs.GtfsNetwork
 import ch.rhosys.sbb.data.local.routing.gtfs.GtfsNetworkBuilder
 import ch.rhosys.sbb.data.local.routing.gtfs.GtfsNetworkSerializer
+import ch.rhosys.sbb.domain.model.TransportMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -102,13 +103,30 @@ class GtfsNetworkSerializerTest {
         assertTrue(0 in network.stopToRoutes)
     }
 
+    @Test
+    fun `route transport mode round-trips`() {
+        val (network, _, _) = roundTrip(buildNetwork())
+        assertEquals(TransportMode.TRAIN, network.routes[0].mode)
+    }
+
+    @Test
+    fun `isCurrentVersion accepts a fresh write and rejects anything else`() {
+        val buf = ByteArrayOutputStream()
+        GtfsNetworkSerializer.write(buildNetwork(), weekdayPatterns, satAddException, buf)
+        assertTrue(GtfsNetworkSerializer.isCurrentVersion(ByteArrayInputStream(buf.toByteArray())))
+        // Same magic, older version number.
+        val stale = buf.toByteArray().also { it[7] = 2 }
+        assertFalse(GtfsNetworkSerializer.isCurrentVersion(ByteArrayInputStream(stale)))
+        assertFalse(GtfsNetworkSerializer.isCurrentVersion(ByteArrayInputStream(ByteArray(0))))
+    }
+
     // ---- Helpers -------------------------------------------------------------
 
     private fun buildNetwork(): GtfsNetwork = GtfsNetworkBuilder()
         .addStop(0, "Bern", 46.948, 7.447)
         .addStop(1, "Olten", 47.352, 7.907)
         .addStop(2, "Zürich HB", 47.378, 8.540)
-        .addRoute(0, "IC6", listOf(0, 1, 2))
+        .addRoute(0, "IC6", listOf(0, 1, 2), TransportMode.TRAIN)
         .addTrip(0, 10, listOf(8 * 3600, 8 * 3600 + 600, 8 * 3600 + 720, 8 * 3600 + 1500), serviceId = "WD")
         .addTrip(0, 11, listOf(9 * 3600, 9 * 3600 + 600, 9 * 3600 + 720, 9 * 3600 + 1500), serviceId = "WD")
         .addTransfer(0, 1, 300.0)

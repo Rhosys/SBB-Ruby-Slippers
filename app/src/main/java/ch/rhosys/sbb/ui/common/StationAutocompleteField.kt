@@ -183,7 +183,7 @@ fun StationAutocompleteField(
 // user can see location resolution is actually working. Tapping it reveals an editable
 // field to type over it.
 @Composable
-private fun CurrentLocationBadge(stationName: String?, onClick: () -> Unit) {
+internal fun CurrentLocationBadge(stationName: String?, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = MaterialTheme.shapes.small,

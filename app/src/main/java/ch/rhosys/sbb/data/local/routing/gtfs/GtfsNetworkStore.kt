@@ -14,6 +14,12 @@ class GtfsNetworkStore @Inject constructor(dir: File) {
 
     fun hasData(): Boolean = binaryFile.exists()
 
+    // False when the cache is missing or was written in an older binary format — the
+    // import worker then skips its ETag check so an unchanged feed is still re-imported
+    // instead of a 304 leaving an unreadable cache in place forever.
+    fun hasCurrentFormat(): Boolean = binaryFile.exists() &&
+        runCatching { binaryFile.inputStream().use { GtfsNetworkSerializer.isCurrentVersion(it) } }.getOrDefault(false)
+
     fun lastImportMillis(): Long = runCatching { metaFile.readText().trim().toLong() }.getOrDefault(0L)
 
     fun lastEtag(): String? = runCatching { etagFile.readText().trim().takeIf { it.isNotBlank() } }.getOrNull()
