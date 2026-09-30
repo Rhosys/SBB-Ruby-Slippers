@@ -89,8 +89,9 @@ app/src/main/java/ch/rhosys/sbb/
     onboarding/{OnboardingScreen,OnboardingViewModel}.kt
     search/{ConnectionSearchScreen,ConnectionSearchViewModel}.kt ← smart suggestions + transport API autocomplete
     common/StationSearchPopup.kt       ← StationSearchField: tap opens near-full-screen search popup (Home + Search screens)
-    map/StopMapPicker.kt               ← osmdroid (OpenStreetMap) "Choose on map" stop picker, limited to Switzerland
-    map/StopMapOverlays.kt             ← canvas-drawn stop dots (zoom-tiered: trains → trams → buses) + user location
+    map/StopMapPicker.kt               ← MapLibre "Choose on map" stop picker (OpenFreeMap liberty vector tiles), limited to Switzerland
+    map/StopMapStyle.kt                ← stop symbol layers (dot + name as one symbol; zoom-tiered trains → trams → buses) + user location
+    map/MapLayerGroup.kt               ← user-toggleable base-map layer groups (roads, labels, buildings, POIs, …), persisted in DataStore
     map/StopMapViewModel.kt            ← stops from local GTFS (GtfsRoute.mode) or, without a feed, the live API
     settings/{SettingsScreen,SettingsViewModel}.kt
     fares/FaresTeaserScreen.kt         ← placeholder; wired once OJP Fare token available

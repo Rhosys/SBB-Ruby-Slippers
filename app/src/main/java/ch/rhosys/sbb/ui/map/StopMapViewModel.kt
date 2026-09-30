@@ -3,6 +3,7 @@ package ch.rhosys.sbb.ui.map
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import ch.rhosys.sbb.data.local.location.LocationProvider
+import ch.rhosys.sbb.data.local.preferences.UserPreferencesRepository
 import ch.rhosys.sbb.data.local.routing.LocalTransportRepository
 import ch.rhosys.sbb.data.local.routing.haversineMeters
 import ch.rhosys.sbb.data.remote.dto.LocationDto
@@ -13,8 +14,11 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -27,12 +31,21 @@ class StopMapViewModel @Inject constructor(
     private val locationProvider: LocationProvider,
     private val localRouter: LocalTransportRepository,
     private val transportRepository: TransportRepository,
+    private val preferences: UserPreferencesRepository,
 ) : ViewModel() {
 
     val userLocation: StateFlow<Pair<Double, Double>?> = locationProvider.currentLocation
 
     private val _stops = MutableStateFlow<List<MapStop>>(emptyList())
     val stops: StateFlow<List<MapStop>> = _stops.asStateFlow()
+
+    val hiddenLayers: StateFlow<Set<MapLayerGroup>> = preferences.hiddenMapLayers
+        .map { names -> names.mapNotNull { name -> MapLayerGroup.entries.firstOrNull { it.name == name } }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    fun setLayerVisible(group: MapLayerGroup, visible: Boolean) {
+        viewModelScope.launch { preferences.setMapLayerHidden(group.name, hidden = !visible) }
+    }
 
     private var hasLocalStops = false
     private var lastApiQuery: Pair<Double, Double>? = null

@@ -112,8 +112,8 @@ dependencies {
     // Image loading — place tile photos
     implementation(libs.coil.compose)
 
-    // OpenStreetMap — "Choose on map" stop picker (no API key needed)
-    implementation(libs.osmdroid.android)
+    // MapLibre — "Choose on map" stop picker on OpenFreeMap vector tiles (no API key needed)
+    implementation(libs.maplibre.android)
 
     // Archive extraction — GTFS feed may arrive as zip, tar, tar.gz, or tar.xz
     implementation(libs.commons.compress)

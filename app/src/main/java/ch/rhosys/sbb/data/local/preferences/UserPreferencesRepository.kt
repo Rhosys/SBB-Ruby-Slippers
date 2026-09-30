@@ -41,6 +41,8 @@ class UserPreferencesRepository @Inject constructor(
         val RT_LAST_ERROR_EPOCH       = longPreferencesKey("rt_last_error_epoch")
         val RT_LAST_ERROR_MESSAGE     = stringPreferencesKey("rt_last_error_message")
         // Status bar chip (Android 16+ Live Updates) content: next change vs. total trip remaining.
+        // Base-map feature groups the user switched off on the stop map (MapLayerGroup names).
+        val HIDDEN_MAP_LAYERS         = stringSetPreferencesKey("hidden_map_layers")
         val JOURNEY_CHIP_SHOWS_TOTAL_REMAINING = booleanPreferencesKey("journey_chip_shows_total_remaining")
     }
 
@@ -71,6 +73,13 @@ class UserPreferencesRepository @Inject constructor(
     suspend fun recordRtError(epochSecond: Long, message: String) = dataStore.edit {
         it[RT_LAST_ERROR_EPOCH] = epochSecond
         it[RT_LAST_ERROR_MESSAGE] = message
+    }
+
+    val hiddenMapLayers: Flow<Set<String>> = dataStore.data.map { it[HIDDEN_MAP_LAYERS] ?: emptySet() }
+
+    suspend fun setMapLayerHidden(group: String, hidden: Boolean) = dataStore.edit { prefs ->
+        val current = prefs[HIDDEN_MAP_LAYERS] ?: emptySet()
+        prefs[HIDDEN_MAP_LAYERS] = if (hidden) current + group else current - group
     }
 
     suspend fun setJourneyChipShowsTotalRemaining(showTotal: Boolean) =

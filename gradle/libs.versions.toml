@@ -24,7 +24,9 @@ commons-compress    = "1.26.2"
 xz                  = "1.9"
 wear-compose        = "1.4.1"
 wearable            = "18.2.0"
-osmdroid            = "6.1.20"
+# 13.0.2 is the last MapLibre Android release built with Kotlin 2.0.x (13.1+ needs a
+# Kotlin 2.3 compiler to read its classes/stdlib); bump together with the Kotlin version.
+maplibre            = "13.0.2"
 
 [libraries]
 androidx-core-ktx           = { module = "androidx.core:core-ktx",                          version = "1.13.1" }
@@ -75,8 +77,9 @@ kotlinx-serialization-json  = { module = "org.jetbrains.kotlinx:kotlinx-serializ
 
 coil-compose                = { module = "io.coil-kt:coil-compose",                          version.ref = "coil" }
 
-# OpenStreetMap tiles — map picker for choosing a stop
-osmdroid-android            = { module = "org.osmdroid:osmdroid-android",                    version.ref = "osmdroid" }
+# MapLibre Native — vector OpenStreetMap map for choosing a stop. The -opengl build: the
+# default android-sdk artifact renders with Vulkan, which many emulators/older GPUs lack.
+maplibre-android            = { module = "org.maplibre.gl:android-sdk-opengl",               version.ref = "maplibre" }
 
 commons-compress            = { module = "org.apache.commons:commons-compress",               version.ref = "commons-compress" }
 xz-java                     = { module = "org.tukaani:xz",                                    version.ref = "xz" }
