@@ -11,6 +11,8 @@ sealed class RoutingTime {
     data class ArriveBy(val time: LocalTime) : RoutingTime()
 }
 
+val DEFAULT_SEARCH_WINDOW: Duration = Duration.ofMinutes(60)
+
 // Default: 6 km/h, matching UserPreferencesRepository's default walking pace.
 const val DEFAULT_WALKING_PACE_METERS_PER_SECOND: Double = 6.0 * 1000.0 / 3600.0
 
@@ -25,6 +27,14 @@ data class RoutingQuery(
     // transfers are stored as distance so this can reflect the user's own pace rather
     // than a fixed, unpersonalised time baked into the GTFS feed.
     val walkingPaceMetersPerSecond: Double = DEFAULT_WALKING_PACE_METERS_PER_SECOND,
+    // Every non-dominated journey leaving within this window is returned, not just the
+    // single fastest one. DepartAfter: the window opens at the first departure at or after
+    // the requested time (so a quiet evening still returns something). ArriveBy: it closes
+    // at the latest departure that still makes the deadline.
+    val window: Duration = DEFAULT_SEARCH_WINDOW,
+    // DepartAfter only: nothing leaving after this is returned — used to page backwards
+    // up to (but not including) the first connection already on screen.
+    val latestDeparture: LocalTime? = null,
 ) {
     val departureAfterSeconds: Int? get() =
         (routingTime as? RoutingTime.DepartAfter)?.time?.toSecondOfDay()

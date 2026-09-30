@@ -15,7 +15,9 @@ interface TransportApi {
         @Query("date") date: String? = null,
         @Query("time") time: String? = null,
         @Query("isArrivalTime") isArrivalTime: Int? = null,
-        @Query("limit") limit: Int = 4,
+        // More per request means fewer requests per page — route queries are rate-limited
+        // (~3/min per IP), results are not.
+        @Query("limit") limit: Int = 6,
     ): ConnectionsResponseDto
 
     @GET("v1/stationboard")
