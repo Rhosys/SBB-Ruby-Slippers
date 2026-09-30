@@ -1,5 +1,6 @@
 package ch.rhosys.sbb.data.local.routing
 
+import ch.rhosys.sbb.data.local.routing.algorithm.DEFAULT_SEARCH_WINDOW
 import ch.rhosys.sbb.data.local.routing.algorithm.FoundConnection
 import ch.rhosys.sbb.data.local.routing.algorithm.FoundLeg
 import ch.rhosys.sbb.data.local.routing.algorithm.RoutingEngine
@@ -120,6 +121,9 @@ class LocalTransportRepository @Inject constructor(
         // km/h. Defaults to UserPreferencesRepository's own default so callers that
         // don't have a preference on hand yet still get a sensible pace.
         walkingPaceKmh: Float = 6f,
+        // See RoutingQuery.window / latestDeparture.
+        window: Duration = DEFAULT_SEARCH_WINDOW,
+        latestDeparture: LocalTime? = null,
     ): Flow<LocalRoutingState> = flow {
         emit(LocalRoutingState.Loading)
 
@@ -144,6 +148,8 @@ class LocalTransportRepository @Inject constructor(
             walkToFirstStop = walkToFirstStop,
             walkFromLastStop = walkFromLastStop,
             walkingPaceMetersPerSecond = walkingPaceKmh * 1000.0 / 3600.0,
+            window = window,
+            latestDeparture = latestDeparture,
         )
 
         var hadAnyResult = false
@@ -225,6 +231,8 @@ class LocalTransportRepository @Inject constructor(
                         lineCategory = "",
                         direction = alightStop.name,
                         intermediateStops = intermediateStops,
+                        // Rounded up: planning around a delay is only safe if it's never understated.
+                        expectedDelayMinutes = (leg.expectedDelaySeconds + 59) / 60,
                     )
                 }
                 is FoundLeg.Walk -> Leg.Walk(

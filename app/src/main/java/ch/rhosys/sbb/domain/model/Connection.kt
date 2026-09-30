@@ -46,6 +46,7 @@ data class Connection(
                     scheduledBufferMinutes = Duration.between(scheduledArr, scheduledDep).toMinutes().toInt(),
                     effectiveBufferMinutes = Duration.between(effectiveArr, effectiveDep).toMinutes().toInt(),
                     walkLegMinutes = walkLeg?.durationMinutes,
+                    incomingExpectedDelayMinutes = prev.expectedDelayMinutes,
                 )
             }
             return result
@@ -89,6 +90,28 @@ data class Connection(
     val optimisationDuration: Duration?
         get() = transitDuration?.let { walkToFirstStop + it + walkFromLastStop }
 
+    // What paretoOptimal ranks this connection by — see JourneyCriteria for the rule.
+    // Null when the times needed to compare it are missing.
+    val criteria: JourneyCriteria?
+        get() {
+            val dep = departure.scheduledTime ?: return null
+            val arr = arrival.scheduledTime ?: return null
+            val firstTransit = legs.indexOfFirst { it is Leg.Transit }
+            val lastTransit = legs.indexOfLast { it is Leg.Transit }
+            if (firstTransit < 0) return null
+            val leadingWalk = legs.subList(0, firstTransit).walkMinutes()
+            val trailingWalk = legs.subList(lastTransit + 1, legs.size).walkMinutes()
+            val lastDelay = (legs[lastTransit] as Leg.Transit).expectedDelayMinutes
+            return JourneyCriteria(
+                departureEpochSeconds = dep.epochSecond - walkToFirstStop.seconds - leadingWalk * 60,
+                arrivalEpochSeconds = arr.epochSecond + (lastDelay + trailingWalk) * 60 + walkFromLastStop.seconds,
+                transfers = transfers,
+                transferSlackSeconds = JourneyCriteria.cappedSlack(
+                    transferInfos.minOfOrNull { it.slackMinutes }?.let { it * 60L }
+                ),
+            )
+        }
+
     // Identifies "the same physical connection" across separate API responses — stable
     // even as real-time delay fields on Stop change, unlike full structural equality.
     val stableKey: String
@@ -108,7 +131,13 @@ data class TransferInfo(
     // walking pace was in effect when the connection was generated. Null when the
     // transfer is at the same stop (nothing to walk).
     val walkLegMinutes: Int?,
+    // Delay we plan for on the incoming leg (Leg.Transit.expectedDelayMinutes).
+    val incomingExpectedDelayMinutes: Int = 0,
 ) {
+    // Time to spare once the walk (if any) and the incoming leg's expected delay are
+    // taken out of the scheduled buffer — the transfer-safety criterion in JourneyCriteria.
+    val slackMinutes: Int get() = scheduledBufferMinutes - (walkLegMinutes ?: 0) - incomingExpectedDelayMinutes
+
     // Two minutes or less of actual slack — including already missed (negative) — isn't
     // enough to trust the connection, so the UI must never show this in a "safe" color.
     val isAtRisk: Boolean get() = effectiveBufferMinutes <= 2
@@ -130,6 +159,8 @@ data class RequiredRun(
     val stationName: String,
     val runMinutes: Int,
 )
+
+private fun List<Leg>.walkMinutes(): Long = filterIsInstance<Leg.Walk>().sumOf { it.durationMinutes.toLong() }
 
 // Walk time scaled to running pace, rounded up so a displayed run is never optimistic.
 private fun runMinutes(walkMinutes: Int, walkingPaceKmh: Float, runningPaceKmh: Float): Int =
