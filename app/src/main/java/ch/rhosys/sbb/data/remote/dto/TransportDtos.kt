@@ -12,6 +12,8 @@ data class LocationDto(
     val score: Double? = null,
     val coordinate: CoordinateDto? = null,
     val distance: Double? = null,
+    // "train" / "tram" / "bus" / "ship" / "cableway" — only present on station results.
+    val icon: String? = null,
 )
 
 @Serializable

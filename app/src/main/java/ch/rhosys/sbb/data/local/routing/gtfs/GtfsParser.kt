@@ -1,6 +1,7 @@
 package ch.rhosys.sbb.data.local.routing.gtfs
 
 import ch.rhosys.sbb.data.local.routing.haversineMeters
+import ch.rhosys.sbb.domain.model.TransportMode
 
 class GtfsParser {
 
@@ -17,10 +18,12 @@ class GtfsParser {
     fun parse(files: Map<String, String>): ParsedGtfs {
         val stopIdMap = mutableMapOf<String, Int>()
         val stops = buildStops(parseCsv(files["stops.txt"] ?: ""), stopIdMap)
-        val routeNames = buildRouteNames(parseCsv(files["routes.txt"] ?: ""))
+        val routeRows = parseCsv(files["routes.txt"] ?: "")
+        val routeNames = buildRouteNames(routeRows)
+        val routeModes = buildRouteModes(routeRows)
         val tripMeta = buildTripMeta(parseCsv(files["trips.txt"] ?: ""))
         val tripStopTimes = buildTripStopTimes(parseCsv(files["stop_times.txt"] ?: ""))
-        val routes = buildRoutes(tripMeta, tripStopTimes, routeNames, stopIdMap)
+        val routes = buildRoutes(tripMeta, tripStopTimes, routeNames, routeModes, stopIdMap)
         val transfers = buildTransfers(parseCsv(files["transfers.txt"] ?: ""), stopIdMap, stops)
         val calendarPatternRows = parseCsv(files["calendar.txt"] ?: "")
         val calendarExceptionRows = parseCsv(files["calendar_dates.txt"] ?: "")
@@ -63,6 +66,13 @@ class GtfsParser {
             id to name
         }.toMap()
 
+    private fun buildRouteModes(rows: List<Map<String, String>>): Map<String, TransportMode> =
+        rows.mapNotNull { row ->
+            val id = row["route_id"] ?: return@mapNotNull null
+            val type = row["route_type"]?.toIntOrNull() ?: return@mapNotNull null
+            id to TransportMode.fromGtfsRouteType(type)
+        }.toMap()
+
     private data class TripMeta(val routeId: String, val serviceId: String)
 
     private fun buildTripMeta(rows: List<Map<String, String>>): Map<String, TripMeta> =
@@ -101,6 +111,7 @@ class GtfsParser {
         tripMeta: Map<String, TripMeta>,
         tripStopTimes: Map<String, List<StopTimeEntry>>,
         routeNames: Map<String, String>,
+        routeModes: Map<String, TransportMode>,
         stopIdMap: Map<String, Int>,
     ): List<GtfsRoute> {
         val routeToTripIds = mutableMapOf<String, MutableList<String>>()
@@ -138,6 +149,7 @@ class GtfsParser {
                     name = routeNames[gtfsRouteId] ?: gtfsRouteId,
                     stopIds = stopIdList,
                     trips = trips,
+                    mode = routeModes[gtfsRouteId] ?: TransportMode.OTHER,
                 ))
             }
         }

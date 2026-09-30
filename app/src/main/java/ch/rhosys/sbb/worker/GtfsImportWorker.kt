@@ -50,7 +50,7 @@ class GtfsImportWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         val url = inputData.getString(KEY_URL) ?: GTFS_FEED_URL
         val requestBuilder = Request.Builder().url(url)
-        store.lastEtag()?.let { requestBuilder.header("If-None-Match", it) }
+        if (store.hasCurrentFormat()) store.lastEtag()?.let { requestBuilder.header("If-None-Match", it) }
 
         val response = try {
             okHttpClient.newCall(requestBuilder.build()).execute()

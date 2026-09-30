@@ -1,6 +1,7 @@
 package ch.rhosys.sbb.routing
 
 import ch.rhosys.sbb.data.local.routing.gtfs.GtfsParser
+import ch.rhosys.sbb.domain.model.TransportMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -176,6 +177,14 @@ class GtfsParserTest {
         assertTrue(patterns.contains(listOf(0, 1)))
         assertEquals(1, routes.first { it.stopIds == listOf(0, 1) }.trips.size)
         assertEquals(1, routes.first { it.stopIds == listOf(0, 1, 2) }.trips.size)
+    }
+
+    @Test
+    fun `route_type is parsed into the route's transport mode`() {
+        val feed = minimalFeed() + mapOf(
+            "routes.txt" to "route_id,route_short_name,route_long_name,route_type\nR1,R1,Route 1,900",
+        )
+        assertEquals(TransportMode.TRAM, parser.parse(feed).network.routes.single().mode)
     }
 
     // ---- Transfers ---------------------------------------------------------

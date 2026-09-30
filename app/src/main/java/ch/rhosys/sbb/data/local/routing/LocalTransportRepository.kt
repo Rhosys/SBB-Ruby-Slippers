@@ -11,8 +11,10 @@ import ch.rhosys.sbb.data.local.routing.gtfs.GtfsParser
 import ch.rhosys.sbb.data.local.routing.gtfs.GtfsStop
 import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.Leg
+import ch.rhosys.sbb.domain.model.MapStop
 import ch.rhosys.sbb.domain.model.SearchEndpoint
 import ch.rhosys.sbb.domain.model.Stop
+import ch.rhosys.sbb.domain.model.TransportMode
 import ch.rhosys.sbb.util.lowercaseAscii
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -49,7 +51,10 @@ class LocalTransportRepository @Inject constructor(
     private data class CachedData(
         val parsed: GtfsParser.ParsedGtfs,
         val engine: RoutingEngine,
-    )
+    ) {
+        // Built on first map open only — routing never needs it.
+        val mapStops: List<MapStop> by lazy { buildMapStops(parsed.network) }
+    }
 
     private suspend fun getOrLoad(): CachedData? = lock.withLock {
         if (cached == null) {
@@ -71,6 +76,13 @@ class LocalTransportRepository @Inject constructor(
         return withContext(Dispatchers.Default) {
             data.parsed.network.stops.minByOrNull { haversineMeters(it.lat, it.lng, lat, lng) }?.name
         }
+    }
+
+    // Every stop that some route actually serves, for the map picker. Empty when no
+    // GTFS feed has been imported yet (the map then falls back to the live API).
+    suspend fun mapStops(): List<MapStop> {
+        val data = getOrLoad() ?: return emptyList()
+        return withContext(Dispatchers.Default) { data.mapStops }
     }
 
     // Instant, offline name search over the on-device GTFS stop cache — a substring match
@@ -245,4 +257,32 @@ internal fun haversineMeters(lat1: Double, lng1: Double, lat2: Double, lng2: Dou
     val a = sin(dLat / 2).let { it * it } +
             cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLng / 2).let { it * it }
     return r * 2 * atan2(sqrt(a), sqrt(1 - a))
+}
+
+// The feed lists a station's parent stop plus each of its platforms under the same
+// name, so stops are merged by name into one pin (at the first member's position),
+// shown as the most prominent mode any member is served by. Stops no route serves
+// (parent stations, entrances) still lend their position to the group but never
+// create a pin on their own.
+internal fun buildMapStops(network: GtfsNetwork): List<MapStop> {
+    val modeByStop = HashMap<Int, TransportMode>()
+    for (route in network.routes) {
+        for (stopId in route.stopIds) {
+            val current = modeByStop[stopId]
+            if (current == null || route.mode < current) modeByStop[stopId] = route.mode
+        }
+    }
+    val firstByName = LinkedHashMap<String, GtfsStop>()
+    val modeByName = HashMap<String, TransportMode>()
+    for (stop in network.stops) {
+        if (stop.lat == 0.0 && stop.lng == 0.0) continue
+        firstByName.putIfAbsent(stop.name, stop)
+        val mode = modeByStop[stop.id] ?: continue
+        val current = modeByName[stop.name]
+        if (current == null || mode < current) modeByName[stop.name] = mode
+    }
+    return firstByName.values.mapNotNull { stop ->
+        val mode = modeByName[stop.name] ?: return@mapNotNull null
+        MapStop(stop.name, stop.lat, stop.lng, mode)
+    }
 }

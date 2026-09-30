@@ -112,6 +112,9 @@ dependencies {
     // Image loading — place tile photos
     implementation(libs.coil.compose)
 
+    // MapLibre — "Choose on map" stop picker on OpenFreeMap vector tiles (no API key needed)
+    implementation(libs.maplibre.android)
+
     // Archive extraction — GTFS feed may arrive as zip, tar, tar.gz, or tar.xz
     implementation(libs.commons.compress)
     implementation(libs.xz.java)
