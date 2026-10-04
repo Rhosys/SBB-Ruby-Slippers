@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import ch.rhosys.sbb.domain.PlaceRepository
 import ch.rhosys.sbb.ui.journey.JourneyStateHolder
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -19,6 +20,7 @@ import javax.inject.Singleton
 class PhoneWearDataPusher @Inject constructor(
     @ApplicationContext private val context: Context,
     private val journeyStateHolder: JourneyStateHolder,
+    private val placeRepository: PlaceRepository,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -35,16 +37,30 @@ class PhoneWearDataPusher @Inject constructor(
                     )
                 } ?: WearJourneyData()
 
-                runCatching {
-                    val request = PutDataMapRequest.create(WEAR_JOURNEY_PATH).apply {
-                        dataMap.putString(WEAR_JOURNEY_KEY, Json.encodeToString(payload))
-                        dataMap.putLong("ts", System.currentTimeMillis())
-                    }
-                    Wearable.getDataClient(context)
-                        .putDataItem(request.asPutDataRequest().setUrgent())
-                        .await()
-                }
+                put(WEAR_JOURNEY_PATH, WEAR_JOURNEY_KEY, Json.encodeToString(payload))
             }
+        }
+        // The watch's "Go to" tile lists these, in the home screen's reading order.
+        scope.launch {
+            placeRepository.getPlaces().collect { places ->
+                val payload = WearPlaces(
+                    places.sortedWith(compareBy({ it.gridY }, { it.gridX }))
+                        .map { WearPlace(it.id, it.displayName) }
+                )
+                put(WEAR_PLACES_PATH, WEAR_PLACES_KEY, Json.encodeToString(payload))
+            }
+        }
+    }
+
+    private suspend fun put(path: String, key: String, json: String) {
+        runCatching {
+            val request = PutDataMapRequest.create(path).apply {
+                dataMap.putString(key, json)
+                dataMap.putLong("ts", System.currentTimeMillis())
+            }
+            Wearable.getDataClient(context)
+                .putDataItem(request.asPutDataRequest().setUrgent())
+                .await()
         }
     }
 }
