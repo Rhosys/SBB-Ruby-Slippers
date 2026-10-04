@@ -9,7 +9,12 @@ sealed class RoutingTime {
     data class DepartAfter(val time: LocalTime) : RoutingTime()
     // Find latest departure from origin arriving no later than this time (reverse RAPTOR)
     data class ArriveBy(val time: LocalTime) : RoutingTime()
+    // Every non-dominated journey whose door departure is in [from, to] (both inclusive)
+    // — used to page outward from an edge of the list already shown. `window` is ignored.
+    data class DepartBetween(val from: LocalTime, val to: LocalTime) : RoutingTime()
 }
+
+val DEFAULT_SEARCH_WINDOW: Duration = Duration.ofMinutes(60)
 
 // Default: 6 km/h, matching UserPreferencesRepository's default walking pace.
 const val DEFAULT_WALKING_PACE_METERS_PER_SECOND: Double = 6.0 * 1000.0 / 3600.0
@@ -25,6 +30,11 @@ data class RoutingQuery(
     // transfers are stored as distance so this can reflect the user's own pace rather
     // than a fixed, unpersonalised time baked into the GTFS feed.
     val walkingPaceMetersPerSecond: Double = DEFAULT_WALKING_PACE_METERS_PER_SECOND,
+    // Every non-dominated journey leaving within this window is returned, not just the
+    // single fastest one. DepartAfter: the window opens at the first departure at or after
+    // the requested time (so a quiet evening still returns something). ArriveBy: it closes
+    // at the latest departure that still makes the deadline.
+    val window: Duration = DEFAULT_SEARCH_WINDOW,
 ) {
     val departureAfterSeconds: Int? get() =
         (routingTime as? RoutingTime.DepartAfter)?.time?.toSecondOfDay()

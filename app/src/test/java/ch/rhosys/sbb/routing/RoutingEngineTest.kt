@@ -1,5 +1,6 @@
 package ch.rhosys.sbb.routing
 
+import ch.rhosys.sbb.data.local.routing.algorithm.FoundLeg
 import ch.rhosys.sbb.data.local.routing.algorithm.RoutingEngine
 import ch.rhosys.sbb.data.local.routing.algorithm.RoutingQuery
 import ch.rhosys.sbb.data.local.routing.algorithm.RoutingResult
@@ -99,7 +100,10 @@ class RoutingEngineTest {
 
         assertTrue("Expected at least one result", results.isNotEmpty())
         val first = results.first().connections.first()
-        assertEquals(1, first.legs.size)
+        // One ride on R1. Walking A → B (3 min) and boarding that same train at B 08:12
+        // leaves 9 min later than boarding at A 08:00 for the same arrival, so that's the
+        // version kept (JourneyCriteria: later departure, nothing else worse).
+        assertEquals(listOf("R1"), first.legs.filterIsInstance<FoundLeg.Transit>().map { it.routeName })
         assertEquals(8 * 3600 + 1500, first.arrivalSeconds) // 08:25
     }
 
@@ -118,12 +122,12 @@ class RoutingEngineTest {
 
         assertTrue("Expected at least one result", results.isNotEmpty())
         val connection = results.last().connections.first()
-        assertEquals(2, connection.legs.size) // R1 leg + R2 leg
+        assertEquals(2, connection.legs.size) // walk A → B, then R2
         assertEquals(8 * 3600 + 1800, connection.arrivalSeconds) // 08:30
     }
 
     @Test
-    fun `later departure not offered when earlier trip covers same journey`() = runTest {
+    fun `later trips in the window are offered too, earliest first`() = runTest {
         val query = RoutingQuery(
             originStopIds = listOf(0),
             destinationStopIds = listOf(2),
@@ -136,11 +140,9 @@ class RoutingEngineTest {
         val results = engine.route(query).toList()
         val connections = results.last().connections
 
-        // Trip 1 (arr 08:25) strictly dominates Trip 2 (arr 09:25) — same route, same transfers.
-        // RAPTOR tracks the single best arrival per stop, so only Trip 1 appears.
-        assertTrue("Expected at least one connection", connections.isNotEmpty())
-        assertEquals("Trip 1 should be the earliest (and only) result",
-            8 * 3600 + 1500, connections.first().arrivalSeconds)
+        // The window runs 60 min from the first departure (08:00), so Trip 2 (dep 09:00)
+        // is offered as well — leaving later is a reason to keep it, not to drop it.
+        assertEquals(listOf(8 * 3600 + 1500, 9 * 3600 + 1500), connections.map { it.arrivalSeconds })
     }
 
     @Test

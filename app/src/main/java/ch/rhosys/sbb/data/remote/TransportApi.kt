@@ -3,6 +3,7 @@ package ch.rhosys.sbb.data.remote
 import ch.rhosys.sbb.data.remote.dto.ConnectionsResponseDto
 import ch.rhosys.sbb.data.remote.dto.LocationsResponseDto
 import ch.rhosys.sbb.data.remote.dto.StationboardResponseDto
+import ch.rhosys.sbb.domain.DEFAULT_CONNECTION_LIMIT
 import retrofit2.http.GET
 import retrofit2.http.Query
 
@@ -15,7 +16,9 @@ interface TransportApi {
         @Query("date") date: String? = null,
         @Query("time") time: String? = null,
         @Query("isArrivalTime") isArrivalTime: Int? = null,
-        @Query("limit") limit: Int = 4,
+        // More per request means fewer requests per page — route queries are rate-limited
+        // (~3/min per IP), results are not.
+        @Query("limit") limit: Int = DEFAULT_CONNECTION_LIMIT,
     ): ConnectionsResponseDto
 
     @GET("v1/stationboard")

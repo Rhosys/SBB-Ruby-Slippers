@@ -11,6 +11,12 @@ sealed class Leg {
         // Operator's trip/run number (e.g. "021644") — fine detail only; lineName is what riders see.
         val tripNumber: String? = null,
         val intermediateStops: List<Stop> = emptyList(),
+        // How late we plan for this leg to arrive — what transfer slack and the arrival
+        // used to rank connections (JourneyCriteria) are measured against. Defaults to the
+        // real-time arrival delay when one is known (API results); the local router sets it
+        // from its ExpectedDelayProvider, which is where a live GTFS-RT or historical delay
+        // model plugs in.
+        val expectedDelayMinutes: Int = arrival.delayMinutes,
     ) : Leg()
 
     data class Walk(

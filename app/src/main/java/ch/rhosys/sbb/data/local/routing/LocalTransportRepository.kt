@@ -1,5 +1,6 @@
 package ch.rhosys.sbb.data.local.routing
 
+import ch.rhosys.sbb.data.local.routing.algorithm.DEFAULT_SEARCH_WINDOW
 import ch.rhosys.sbb.data.local.routing.algorithm.FoundConnection
 import ch.rhosys.sbb.data.local.routing.algorithm.FoundLeg
 import ch.rhosys.sbb.data.local.routing.algorithm.RoutingEngine
@@ -15,6 +16,7 @@ import ch.rhosys.sbb.domain.model.MapStop
 import ch.rhosys.sbb.domain.model.SearchEndpoint
 import ch.rhosys.sbb.domain.model.Stop
 import ch.rhosys.sbb.domain.model.TransportMode
+import ch.rhosys.sbb.domain.model.paretoOptimal
 import ch.rhosys.sbb.util.lowercaseAscii
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -38,6 +40,12 @@ private val SWISS_ZONE = ZoneId.of("Europe/Zurich")
 private const val WALK_RADIUS_METERS = 500.0
 private const val MAX_ORIGIN_STOPS = 5
 private const val MAX_DEST_STOPS = 5
+// Paging (see pageConnections): at most this many connections per page…
+const val PAGE_MAX_RESULTS = 10
+// …found no further than this from the edge of the list.
+val PAGE_SPAN: Duration = Duration.ofHours(24)
+
+enum class PageDirection { EARLIER, LATER }
 
 data class StopSuggestion(val name: String, val lat: Double, val lng: Double)
 
@@ -120,6 +128,8 @@ class LocalTransportRepository @Inject constructor(
         // km/h. Defaults to UserPreferencesRepository's own default so callers that
         // don't have a preference on hand yet still get a sensible pace.
         walkingPaceKmh: Float = 6f,
+        // See RoutingQuery.window.
+        window: Duration = DEFAULT_SEARCH_WINDOW,
     ): Flow<LocalRoutingState> = flow {
         emit(LocalRoutingState.Loading)
 
@@ -144,6 +154,7 @@ class LocalTransportRepository @Inject constructor(
             walkToFirstStop = walkToFirstStop,
             walkFromLastStop = walkFromLastStop,
             walkingPaceMetersPerSecond = walkingPaceKmh * 1000.0 / 3600.0,
+            window = window,
         )
 
         var hadAnyResult = false
@@ -160,6 +171,74 @@ class LocalTransportRepository @Inject constructor(
         if (!hadAnyResult) {
             emit(LocalRoutingState.NoResults())
         }
+    }
+
+    // One page outward from an edge of the list already shown: the [maxResults]
+    // non-dominated connections leaving nearest to [edge] — strictly after it for LATER,
+    // strictly before it for EARLIER — looking no further than [span] away. Unlike the
+    // first search this is bounded by count, not by a time window, so a busy route
+    // pages a few minutes at a time and a quiet one jumps straight to its next train.
+    //
+    // The search reaches out 1 h, 2 h, 4 h … until it has [maxResults] or covers [span];
+    // each step re-runs the whole range, so the result is the same as searching [span]
+    // in one go, but a busy route stops after the first hour or two. A range crossing
+    // midnight is split into one search per service day.
+    suspend fun pageConnections(
+        from: SearchEndpoint,
+        to: SearchEndpoint,
+        edge: Instant,
+        direction: PageDirection,
+        walkingPaceKmh: Float = 6f,
+        maxResults: Int = PAGE_MAX_RESULTS,
+        span: Duration = PAGE_SPAN,
+    ): List<Connection> {
+        var reach = Duration.ofHours(1)
+        while (true) {
+            if (reach > span) reach = span
+            val (start, end) = when (direction) {
+                PageDirection.LATER -> edge.plusSeconds(1) to edge.plus(reach)
+                PageDirection.EARLIER -> edge.minus(reach) to edge.minusSeconds(1)
+            }
+            val found = departingBetween(from, to, start, end, walkingPaceKmh)
+                .filter { c ->
+                    val dep = c.departure.scheduledTime ?: return@filter false
+                    !dep.isBefore(start) && !dep.isAfter(end)
+                }
+                .distinctBy { it.stableKey }
+                .paretoOptimal { it.criteria }
+            if (found.size >= maxResults || reach >= span) {
+                val nearestFirst = when (direction) {
+                    PageDirection.LATER -> found.sortedBy { it.departure.scheduledTime }
+                    PageDirection.EARLIER -> found.sortedByDescending { it.departure.scheduledTime }
+                }
+                return nearestFirst.take(maxResults).sortedBy { it.departure.scheduledTime }
+            }
+            reach = reach.multipliedBy(2)
+        }
+    }
+
+    private suspend fun departingBetween(
+        from: SearchEndpoint,
+        to: SearchEndpoint,
+        start: Instant,
+        end: Instant,
+        walkingPaceKmh: Float,
+    ): List<Connection> {
+        val first = start.atZone(SWISS_ZONE)
+        val last = end.atZone(SWISS_ZONE)
+        val result = mutableListOf<Connection>()
+        var date = first.toLocalDate()
+        while (!date.isAfter(last.toLocalDate())) {
+            val lo = if (date == first.toLocalDate()) first.toLocalTime() else LocalTime.MIDNIGHT
+            val hi = if (date == last.toLocalDate()) last.toLocalTime() else LocalTime.MAX
+            var dayResults: List<Connection> = emptyList()
+            routeConnections(
+                from, to, date, RoutingTime.DepartBetween(lo, hi), walkingPaceKmh = walkingPaceKmh,
+            ).collect { state -> if (state is LocalRoutingState.Results) dayResults = state.connections }
+            result += dayResults
+            date = date.plusDays(1)
+        }
+        return result
     }
 
     // ---- Stop resolver -------------------------------------------------------
@@ -225,6 +304,8 @@ class LocalTransportRepository @Inject constructor(
                         lineCategory = "",
                         direction = alightStop.name,
                         intermediateStops = intermediateStops,
+                        // Rounded up: planning around a delay is only safe if it's never understated.
+                        expectedDelayMinutes = (leg.expectedDelaySeconds + 59) / 60,
                     )
                 }
                 is FoundLeg.Walk -> Leg.Walk(

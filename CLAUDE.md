@@ -132,7 +132,27 @@ Places (edit) screen.
   while the candidate position/size is invalid and snaps back on release.
 - Dragging a tile's center onto the trash zone (appears at top while dragging) deletes it.
 
+## Connection ranking
+
+One rule decides which connections are shown, for both the local router and the API:
+`domain/model/JourneyCriteria.kt`. A connection is dropped only when another one leaves no
+earlier, arrives no later (after expected delay), has no more changes and no less transfer
+slack (capped at 5 min) — and is strictly better on one of those. The local router
+(`RoutingEngine`) is a range RAPTOR that returns every such connection in a 60 min window,
+in two passes (tight changes, then changes with 5 min spare). `mergeConnections` applies the
+same rule when pages are merged.
+
+Paging (scrolling past either end of the list) is bounded by count, not a time window: from
+the first/last shown departure outward up to 24 h, at most 10 connections, nearest the edge
+first (`LocalTransportRepository.pageConnections`; via the API, `time` + `isArrivalTime` +
+`limit`). Only the first search uses the 60 min window.
+
 ## Known gaps (v2)
+
+- **Expected delay in local routing**: every transfer is planned against the incoming leg's
+  expected arrival (`ExpectedDelayProvider`), but only `ExpectedDelayProvider.NONE` exists —
+  GtfsRtStore is keyed by GTFS trip_id strings the compact network drops. API results use
+  their real-time arrival delay (`Leg.Transit.expectedDelayMinutes` defaults to it).
 
 - **RT per-leg delays**: GtfsRtStore wired into JourneysViewModel for banner alerts;
   per-leg delay overlay (red "+Xmin" on individual stops) requires stationId on Stop
