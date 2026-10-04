@@ -69,12 +69,16 @@ class RoutingEngine(
         when (val rt = query.routingTime) {
             is RoutingTime.DepartAfter -> {
                 val requested = rt.time.toSecondOfDay()
-                val cap = query.latestDeparture?.toSecondOfDay() ?: INF
                 // Anchor the window on the first real departure, so a quiet period right
                 // after the requested time still returns the next connections.
-                val first = departureCandidates(query, active, requested, cap).minOrNull() ?: return@flow
+                val first = departureCandidates(query, active, requested, INF).minOrNull() ?: return@flow
                 windowStart = requested
-                windowEnd = minOf(first + windowSec, cap)
+                windowEnd = first + windowSec
+                arrivalCap = INF
+            }
+            is RoutingTime.DepartBetween -> {
+                windowStart = rt.from.toSecondOfDay()
+                windowEnd = rt.to.toSecondOfDay()
                 arrivalCap = INF
             }
             is RoutingTime.ArriveBy -> {

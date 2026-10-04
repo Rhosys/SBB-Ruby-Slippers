@@ -29,7 +29,6 @@ class RangeRoutingTest {
     private fun query(
         at: RoutingTime,
         window: Duration = Duration.ofMinutes(60),
-        latestDeparture: LocalTime? = null,
         from: Int = 0,
         to: Int = 2,
     ) = RoutingQuery(
@@ -40,7 +39,6 @@ class RangeRoutingTest {
         walkToFirstStop = Duration.ZERO,
         walkFromLastStop = Duration.ZERO,
         window = window,
-        latestDeparture = latestDeparture,
     )
 
     private suspend fun RoutingEngine.connections(q: RoutingQuery): List<FoundConnection> =
@@ -68,9 +66,9 @@ class RangeRoutingTest {
     }
 
     @Test
-    fun `latestDeparture caps a backwards page`() = runTest {
+    fun `DepartBetween returns exactly the departures in its range`() = runTest {
         val found = RoutingEngine(hourlyNetwork()).connections(
-            query(RoutingTime.DepartAfter(LocalTime.of(8, 0)), latestDeparture = LocalTime.of(8, 59, 59)),
+            query(RoutingTime.DepartBetween(LocalTime.of(8, 0), LocalTime.of(8, 59, 59))),
         )
         assertEquals(listOf(h(8, 0), h(8, 30)), found.map { it.departureSeconds })
     }

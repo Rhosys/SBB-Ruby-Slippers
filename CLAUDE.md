@@ -142,6 +142,11 @@ slack (capped at 5 min) — and is strictly better on one of those. The local ro
 in two passes (tight changes, then changes with 5 min spare). `mergeConnections` applies the
 same rule when pages are merged.
 
+Paging (scrolling past either end of the list) is bounded by count, not a time window: from
+the first/last shown departure outward up to 24 h, at most 10 connections, nearest the edge
+first (`LocalTransportRepository.pageConnections`; via the API, `time` + `isArrivalTime` +
+`limit`). Only the first search uses the 60 min window.
+
 ## Known gaps (v2)
 
 - **Expected delay in local routing**: every transfer is planned against the incoming leg's

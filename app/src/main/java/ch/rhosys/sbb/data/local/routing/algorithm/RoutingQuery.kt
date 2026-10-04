@@ -9,6 +9,9 @@ sealed class RoutingTime {
     data class DepartAfter(val time: LocalTime) : RoutingTime()
     // Find latest departure from origin arriving no later than this time (reverse RAPTOR)
     data class ArriveBy(val time: LocalTime) : RoutingTime()
+    // Every non-dominated journey whose door departure is in [from, to] (both inclusive)
+    // — used to page outward from an edge of the list already shown. `window` is ignored.
+    data class DepartBetween(val from: LocalTime, val to: LocalTime) : RoutingTime()
 }
 
 val DEFAULT_SEARCH_WINDOW: Duration = Duration.ofMinutes(60)
@@ -32,9 +35,6 @@ data class RoutingQuery(
     // the requested time (so a quiet evening still returns something). ArriveBy: it closes
     // at the latest departure that still makes the deadline.
     val window: Duration = DEFAULT_SEARCH_WINDOW,
-    // DepartAfter only: nothing leaving after this is returned — used to page backwards
-    // up to (but not including) the first connection already on screen.
-    val latestDeparture: LocalTime? = null,
 ) {
     val departureAfterSeconds: Int? get() =
         (routingTime as? RoutingTime.DepartAfter)?.time?.toSecondOfDay()

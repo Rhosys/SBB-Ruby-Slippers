@@ -35,6 +35,7 @@ class ApiTransportRepository @Inject constructor(
         date: LocalDate,
         time: LocalTime,
         isArrivalTime: Boolean,
+        limit: Int,
     ): List<Connection> {
         val fromStr = resolveEndpoint(from)
         val toStr = resolveEndpoint(to)
@@ -44,6 +45,7 @@ class ApiTransportRepository @Inject constructor(
             date = date.format(API_DATE_FMT),
             time = time.format(API_TIME_FMT),
             isArrivalTime = if (isArrivalTime) 1 else 0,
+            limit = limit,
         ).connections.map { it.toDomainConnection() }
     }
 

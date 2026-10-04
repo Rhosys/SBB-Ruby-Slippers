@@ -6,7 +6,9 @@ import ch.rhosys.sbb.data.local.location.LocationProvider
 import ch.rhosys.sbb.data.local.preferences.UserPreferencesRepository
 import ch.rhosys.sbb.data.local.routing.LocalRoutingState
 import ch.rhosys.sbb.data.local.routing.LocalTransportRepository
-import ch.rhosys.sbb.data.local.routing.algorithm.DEFAULT_SEARCH_WINDOW
+import ch.rhosys.sbb.data.local.routing.PAGE_MAX_RESULTS
+import ch.rhosys.sbb.data.local.routing.PAGE_SPAN
+import ch.rhosys.sbb.data.local.routing.PageDirection
 import ch.rhosys.sbb.data.local.routing.algorithm.RoutingTime
 import ch.rhosys.sbb.domain.PlaceRepository
 import ch.rhosys.sbb.domain.RouteRepository
@@ -25,7 +27,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -33,10 +34,6 @@ import java.time.ZoneId
 import javax.inject.Inject
 
 private val SWISS_ZONE = ZoneId.of("Europe/Zurich")
-// One page of the local router's results: every non-dominated connection leaving within this.
-private val PAGE_WINDOW: Duration = DEFAULT_SEARCH_WINDOW
-// How many consecutive windows a page may step through looking for something new.
-private const val MAX_PAGE_WINDOWS = 6
 
 data class ConnectionSearchUiState(
     val fromText: String = "",
@@ -452,142 +449,95 @@ class ConnectionSearchViewModel @Inject constructor(
         }
     }
 
-    // The list asks for these when it's scrolled near the first / last connection.
-    //
-    // Earlier: the local router searches the window of departures just before the first
-    // shown one (stepping further back past an empty window, e.g. overnight). The API
-    // can't be asked for a departure window, so it's asked for connections arriving
-    // before the first shown one arrives — anything leaving earlier but arriving later
-    // is beaten by the shown one anyway. (Asking for arrivals before the first shown
-    // *departure*, as this used to, skipped a whole trip-length of connections.)
-    fun loadEarlier() {
+    // The list asks for these when it's scrolled near the first / last connection. A page
+    // is bounded on one side by that connection's departure and on the other by
+    // PAGE_SPAN (24 h) further out, and holds at most PAGE_MAX_RESULTS (10) connections —
+    // the ones leaving nearest the edge. The first search doesn't page; it keeps its
+    // departure window (see RoutingQuery.window).
+    fun loadEarlier() = loadPage(PageDirection.EARLIER)
+
+    fun loadLater() = loadPage(PageDirection.LATER)
+
+    private fun loadPage(direction: PageDirection) {
         val state = _uiState.value
-        if (state.isLoadingEarlier || state.isLoading || state.noMoreEarlier) return
-        val first = state.connections.firstOrNull() ?: return
-        val firstDeparture = first.departure.scheduledTime?.atZone(SWISS_ZONE)?.toLocalTime()
-        if (firstDeparture == null || firstDeparture == LocalTime.MIDNIGHT) {
-            _uiState.value = state.copy(noMoreEarlier = true)
+        val busy = when (direction) {
+            PageDirection.EARLIER -> state.isLoadingEarlier || state.noMoreEarlier
+            PageDirection.LATER -> state.isLoadingLater || state.noMoreLater
+        }
+        if (busy || state.isLoading) return
+        val edgeConnection = when (direction) {
+            PageDirection.EARLIER -> state.connections.firstOrNull()
+            PageDirection.LATER -> state.connections.lastOrNull()
+        } ?: return
+        val edge = edgeConnection.departure.scheduledTime
+        if (edge == null) {
+            _uiState.value = state.withPage(direction, loading = false, noMore = true)
             return
         }
 
-        _uiState.value = state.copy(isLoadingEarlier = true)
+        _uiState.value = state.withPage(direction, loading = true, noMore = false)
         viewModelScope.launch {
             val from = endpointFor(state.fromText.trim().ifBlank { state.toText.trim() })
             val to = endpointFor(state.toText.trim())
-            val earlier = if (localRouter.hasData()) {
-                earlierLocally(from, to, state.searchDate, firstDeparture, state.connections)
+            val page = if (localRouter.hasData()) {
+                localRouter.pageConnections(
+                    from, to, edge, direction,
+                    walkingPaceKmh = userPreferencesRepository.walkingPaceKmh.first(),
+                )
             } else {
-                val firstArrival = (first.arrival.scheduledTime ?: first.departure.scheduledTime!!).atZone(SWISS_ZONE)
-                    .minusMinutes(1)
-                fetchViaApi(from, to, firstArrival.toLocalDate(), firstArrival.toLocalTime(), isArriveBy = true)
+                pageViaApi(from, to, edgeConnection, direction)
             }
             val current = _uiState.value
             if (current.searchId != state.searchId) return@launch
-            val merged = mergeConnections(current.connections, earlier)
-            _uiState.value = current.copy(
-                connections = merged,
-                isLoadingEarlier = false,
-                noMoreEarlier = newConnectionCount(current.connections, merged) == 0,
-            )
+            val merged = mergeConnections(current.connections, page)
+            _uiState.value = current.copy(connections = merged)
+                .withPage(direction, loading = false, noMore = newConnectionCount(current.connections, merged) == 0)
         }
     }
 
-    fun loadLater() {
-        val state = _uiState.value
-        if (state.isLoadingLater || state.isLoading || state.noMoreLater) return
-        val last = state.connections.lastOrNull() ?: return
-        val lastDeparture = last.departure.scheduledTime?.atZone(SWISS_ZONE)?.toLocalTime()
-        if (lastDeparture == null) {
-            _uiState.value = state.copy(noMoreLater = true)
-            return
+    // transport.opendata.ch already pages by count in a direction: `time` + `isArrivalTime`
+    // + `limit`. Later: departing after the last shown departure. Earlier: arriving before
+    // the first shown one *arrives* — anything leaving earlier but arriving later is beaten
+    // by it anyway. (Asking for arrivals before the first shown *departure*, as this used
+    // to, skipped a whole trip-length of connections.) PAGE_SPAN bounds the far side.
+    private suspend fun pageViaApi(
+        from: SearchEndpoint,
+        to: SearchEndpoint,
+        edgeConnection: Connection,
+        direction: PageDirection,
+    ): List<Connection> {
+        val edge = edgeConnection.departure.scheduledTime ?: return emptyList()
+        val (at, isArriveBy) = when (direction) {
+            PageDirection.LATER -> edge.plusSeconds(60) to false
+            PageDirection.EARLIER -> (edgeConnection.arrival.scheduledTime ?: edge).minusSeconds(60) to true
         }
-
-        _uiState.value = state.copy(isLoadingLater = true)
-        viewModelScope.launch {
-            val from = endpointFor(state.fromText.trim().ifBlank { state.toText.trim() })
-            val to = endpointFor(state.toText.trim())
-            val later = if (localRouter.hasData()) {
-                laterLocally(from, to, state.searchDate, lastDeparture.plusMinutes(1), state.connections)
-            } else {
-                fetchViaApi(from, to, state.searchDate, lastDeparture.plusMinutes(1), isArriveBy = false)
+        val zoned = at.atZone(SWISS_ZONE)
+        val found = runCatching {
+            repository.getConnections(
+                from, to,
+                date = zoned.toLocalDate(),
+                time = zoned.toLocalTime(),
+                isArrivalTime = isArriveBy,
+                limit = PAGE_MAX_RESULTS,
+            )
+        }.getOrDefault(emptyList())
+        return found.filter { c ->
+            val dep = c.departure.scheduledTime ?: return@filter false
+            when (direction) {
+                PageDirection.LATER -> dep.isAfter(edge) && !dep.isAfter(edge.plus(PAGE_SPAN))
+                PageDirection.EARLIER -> dep.isBefore(edge) && !dep.isBefore(edge.minus(PAGE_SPAN))
             }
-            val current = _uiState.value
-            if (current.searchId != state.searchId) return@launch
-            val merged = mergeConnections(current.connections, later)
-            _uiState.value = current.copy(
-                connections = merged,
-                isLoadingLater = false,
-                noMoreLater = newConnectionCount(current.connections, merged) == 0,
-            )
         }
     }
+
+    private fun ConnectionSearchUiState.withPage(direction: PageDirection, loading: Boolean, noMore: Boolean) =
+        when (direction) {
+            PageDirection.EARLIER -> copy(isLoadingEarlier = loading, noMoreEarlier = noMore)
+            PageDirection.LATER -> copy(isLoadingLater = loading, noMoreLater = noMore)
+        }
 
     private fun routingTimeFor(time: LocalTime): RoutingTime =
         if (_uiState.value.isArriveBy) RoutingTime.ArriveBy(time) else RoutingTime.DepartAfter(time)
-
-    // Windows of PAGE_WINDOW ending just before [before], stepping back until one brings a
-    // connection not already [shown] or the day runs out.
-    private suspend fun earlierLocally(
-        from: SearchEndpoint, to: SearchEndpoint, date: LocalDate, before: LocalTime, shown: List<Connection>,
-    ): List<Connection> {
-        var windowEnd = before
-        repeat(MAX_PAGE_WINDOWS) {
-            if (windowEnd == LocalTime.MIDNIGHT) return emptyList()
-            val start = if (windowEnd.toSecondOfDay() > PAGE_WINDOW.seconds) windowEnd.minus(PAGE_WINDOW) else LocalTime.MIDNIGHT
-            val found = fetchLocally(
-                from, to, date, RoutingTime.DepartAfter(start),
-                latestDeparture = windowEnd.minusSeconds(1),
-            )
-            if (newConnectionCount(shown, mergeConnections(shown, found)) > 0) return found
-            windowEnd = start
-        }
-        return emptyList()
-    }
-
-    // Windows of PAGE_WINDOW from [after] on, stepping forward past windows that bring
-    // nothing new (e.g. everything in them is beaten by a shown connection).
-    private suspend fun laterLocally(
-        from: SearchEndpoint, to: SearchEndpoint, date: LocalDate, after: LocalTime, shown: List<Connection>,
-    ): List<Connection> {
-        var start = after
-        repeat(MAX_PAGE_WINDOWS) {
-            val found = fetchLocally(from, to, date, RoutingTime.DepartAfter(start))
-            // The router's window opens at the first departure after `start`, so nothing
-            // found means nothing leaves later today.
-            if (found.isEmpty() || newConnectionCount(shown, mergeConnections(shown, found)) > 0) return found
-            val next = start.plus(PAGE_WINDOW)
-            if (next <= start) return emptyList()  // wrapped past midnight
-            start = next
-        }
-        return emptyList()
-    }
-
-    private suspend fun fetchLocally(
-        from: SearchEndpoint,
-        to: SearchEndpoint,
-        date: LocalDate,
-        routingTime: RoutingTime,
-        latestDeparture: LocalTime? = null,
-    ): List<Connection> {
-        var result: List<Connection> = emptyList()
-        localRouter.routeConnections(
-            from = from, to = to, date = date, routingTime = routingTime,
-            walkingPaceKmh = userPreferencesRepository.walkingPaceKmh.first(),
-            window = PAGE_WINDOW,
-            latestDeparture = latestDeparture,
-        ).collect { state -> if (state is LocalRoutingState.Results) result = state.connections }
-        return result
-    }
-
-    private suspend fun fetchViaApi(
-        from: SearchEndpoint,
-        to: SearchEndpoint,
-        date: LocalDate,
-        time: LocalTime,
-        isArriveBy: Boolean,
-    ): List<Connection> = runCatching {
-        repository.getConnections(from, to, date = date, time = time, isArrivalTime = isArriveBy)
-    }.getOrDefault(emptyList())
 
     private suspend fun searchLocally(from: SearchEndpoint, to: SearchEndpoint, routingTime: RoutingTime) {
         localRouter.routeConnections(
@@ -611,6 +561,7 @@ class ConnectionSearchViewModel @Inject constructor(
                     when (routingTime) {
                         is RoutingTime.DepartAfter -> routingTime.time
                         is RoutingTime.ArriveBy -> routingTime.time
+                        is RoutingTime.DepartBetween -> routingTime.from
                     },
                 )
                 LocalRoutingState.Loading -> Unit
