@@ -27,6 +27,7 @@ wearable            = "18.2.0"
 wear-tiles          = "1.4.1"
 protolayout         = "1.2.1"
 concurrent-futures  = "1.2.0"
+fragment            = "1.8.2"
 # 13.0.2 is the last MapLibre Android release built with Kotlin 2.0.x (13.1+ needs a
 # Kotlin 2.3 compiler to read its classes/stdlib); bump together with the Kotlin version.
 maplibre            = "13.0.2"
@@ -94,6 +95,8 @@ play-services-wearable      = { module = "com.google.android.gms:play-services-w
 wear-tiles                  = { module = "androidx.wear.tiles:tiles",                        version.ref = "wear-tiles" }
 wear-protolayout            = { module = "androidx.wear.protolayout:protolayout",            version.ref = "protolayout" }
 wear-protolayout-material   = { module = "androidx.wear.protolayout:protolayout-material",   version.ref = "protolayout" }
+# Play services pull in an old Fragment; ActivityResult APIs need 1.3+ (lint InvalidFragmentVersionForActivityResult).
+fragment                    = { module = "androidx.fragment:fragment",                       version.ref = "fragment" }
 concurrent-futures          = { module = "androidx.concurrent:concurrent-futures",           version.ref = "concurrent-futures" }
 
 junit                       = { module = "junit:junit",                                      version.ref = "junit" }
