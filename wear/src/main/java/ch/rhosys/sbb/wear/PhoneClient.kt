@@ -31,6 +31,18 @@ class PhoneClient(context: Context) {
         places.orEmpty()
     }.getOrDefault(emptyList())
 
+    // The active journey, as last synced.
+    suspend fun journey(): WearJourneyData = runCatching {
+        val items = Wearable.getDataClient(appContext).getDataItems(Uri.parse("wear://*$WEAR_JOURNEY_PATH")).await()
+        val journey = items.firstNotNullOfOrNull { item ->
+            DataMapItem.fromDataItem(item).dataMap.getString(WEAR_JOURNEY_KEY)
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { runCatching { json.decodeFromString<WearJourneyData>(it) }.getOrNull() }
+        }
+        items.release()
+        journey ?: WearJourneyData()
+    }.getOrDefault(WearJourneyData())
+
     private suspend fun send(path: String, body: String): String = withTimeout(REQUEST_TIMEOUT_MS) {
         val nodes = Wearable.getNodeClient(appContext).connectedNodes.await()
         val phone = nodes.firstOrNull { it.isNearby } ?: nodes.firstOrNull() ?: throw PhoneUnreachableException()

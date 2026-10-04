@@ -12,6 +12,7 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import ch.rhosys.sbb.domain.PlaceRepository
+import ch.rhosys.sbb.domain.model.Leg
 import ch.rhosys.sbb.ui.journey.JourneyStateHolder
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -28,12 +29,20 @@ class PhoneWearDataPusher @Inject constructor(
         scope.launch {
             journeyStateHolder.activeJourney.collect { journey ->
                 val payload = journey?.let {
+                    val transits = it.connection.legs.filterIsInstance<Leg.Transit>()
                     WearJourneyData(
                         from = it.connection.departure.stationName,
                         to = it.connection.arrival.stationName,
                         departureTime = it.connection.departure.displayTime(),
                         arrivalTime = it.connection.arrival.displayTime(),
                         isActive = true,
+                        departureEpochSeconds = (transits.firstOrNull()?.departure ?: it.connection.departure)
+                            .effectiveTime?.epochSecond,
+                        // Every transit leg but the last ends where the rider changes.
+                        transfers = transits.dropLast(1).map { leg ->
+                            WearTransfer(leg.arrival.stationName, leg.arrival.effectiveTime?.epochSecond)
+                        },
+                        arrivalEpochSeconds = it.connection.arrival.effectiveTime?.epochSecond,
                     )
                 } ?: WearJourneyData()
 

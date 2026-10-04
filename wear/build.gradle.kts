@@ -57,6 +57,7 @@ dependencies {
     implementation(libs.wear.tiles)
     implementation(libs.wear.protolayout)
     implementation(libs.wear.protolayout.material)
+    implementation(libs.wear.complications.data.source)
     implementation(libs.concurrent.futures)
     implementation(libs.play.services.wearable)
     implementation(libs.play.services.location)
@@ -65,4 +66,6 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)
+
+    testImplementation(libs.junit)
 }

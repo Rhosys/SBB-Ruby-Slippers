@@ -109,6 +109,8 @@ app/src/main/java/ch/rhosys/sbb/
 app/src/main/res/xml/departure_widget_info.xml
 wear/src/main/java/ch/rhosys/sbb/wear/   ← Wear OS app (same applicationId + signing key as :app, required by the Data Layer)
   tile/PlacesTileService.kt            ← "Go to" tile: home-screen places; tap → app on that place's connections
+  complication/JourneyComplicationService.kt ← active journey: departure time → countdown to each change → to final stop (timeline)
+  complication/JourneyPhase.kt         ← pure phase logic for the complication (unit-tested)
   WearApp.kt / JourneyScreen.kt        ← home: active journey + places list
   ConnectionsScreen.kt / ConnectionsViewModel.kt ← next 3 connections + "Save journey"
   PhoneClient.kt                       ← Data Layer reads + MessageClient.sendRequest to the phone
