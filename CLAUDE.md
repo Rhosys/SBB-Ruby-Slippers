@@ -97,11 +97,24 @@ app/src/main/java/ch/rhosys/sbb/
     fares/FaresTeaserScreen.kt         ← placeholder; wired once OJP Fare token available
     theme/Theme.kt
     widget/DepartureWidget.kt          ← Glance placeholder (no real data yet)
+  wear/
+    PhoneWearDataPusher.kt             ← pushes active journey + home-screen places to the watch (Data Layer)
+    WearRequestService.kt              ← answers watch requests (/sbb/connections, /sbb/save-journey)
+    WearConnectionsProvider.kt         ← next 3 connections from current location to a place; save = startJourney
+    WearProtocol.kt                    ← phone↔watch JSON types — keep identical to wear/…/WearProtocol.kt
   worker/
     CalendarSyncWorker.kt              ← @HiltWorker: syncs calendar events → saved routes
     GtfsImportWorker.kt                ← @HiltWorker: daily GTFS check (ETag + URL tracking; auto-detects Fahrplanwechsel)
     GtfsRtRefreshWorker.kt             ← @HiltWorker: 15 min RT delays feed (skips if no token)
 app/src/main/res/xml/departure_widget_info.xml
+wear/src/main/java/ch/rhosys/sbb/wear/   ← Wear OS app (same applicationId + signing key as :app, required by the Data Layer)
+  tile/PlacesTileService.kt            ← "Go to" tile: home-screen places; tap → app on that place's connections, over a faint train front (res/drawable/ic_train_front.xml)
+  complication/JourneyComplicationService.kt ← active journey: departure time → countdown to each change → to final stop (timeline)
+  complication/JourneyPhase.kt         ← pure phase logic for the complication (unit-tested)
+  WearApp.kt / JourneyScreen.kt        ← home: active journey + places list
+  ConnectionsScreen.kt / ConnectionsViewModel.kt ← next 3 connections + "Save journey"
+  PhoneClient.kt                       ← Data Layer reads + MessageClient.sendRequest to the phone
+  WatchLocation.kt                     ← watch's own fix (phone location is the fallback)
 deployment/
   android-upload-signing.json  ← PLACEHOLDER — must be replaced before release
   deploy-play-store.ts         ← Play Store upload script
@@ -159,7 +172,10 @@ first (`LocalTransportRepository.pageConnections`; via the API, `time` + `isArri
   objects from local GTFS routing (already set) and from the remote API (TODO).
 - **Widget geofence**: DepartureWidget reads from JourneyStateHolder; geofence-driven
   auto-clear is a v2 enhancement.
-- **Wear OS companion**, **Fares**, **Sector recommendations**, **Journey sharing** — v2.
+- **Wear OS**: the "Go to" tile and active-journey screen exist; saving a journey from the
+  watch while the phone app is backgrounded keeps the journey but can't start the progress
+  notification's foreground service (Android 12+ background-start limit).
+- **Fares**, **Sector recommendations**, **Journey sharing** — v2.
 - **Android Auto Backup**: already wired up (`AndroidManifest.xml` → `backup_rules.xml` /
   `data_extraction_rules.xml`, excluding only the GTFS cache), covering the Room DB
   (places, saved/recurring routes, trip history) and DataStore preferences. Room uses
