@@ -4,11 +4,13 @@ import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.Icon
 import androidx.wear.watchface.complications.data.ComplicationData
 import androidx.wear.watchface.complications.data.ComplicationText
 import androidx.wear.watchface.complications.data.ComplicationType
 import androidx.wear.watchface.complications.data.CountDownTimeReference
 import androidx.wear.watchface.complications.data.LongTextComplicationData
+import androidx.wear.watchface.complications.data.MonochromaticImage
 import androidx.wear.watchface.complications.data.PlainComplicationText
 import androidx.wear.watchface.complications.data.ShortTextComplicationData
 import androidx.wear.watchface.complications.data.TimeDifferenceComplicationText
@@ -20,6 +22,7 @@ import androidx.wear.watchface.complications.datasource.SuspendingTimelineCompli
 import androidx.wear.watchface.complications.datasource.TimeInterval
 import androidx.wear.watchface.complications.datasource.TimelineEntry
 import ch.rhosys.sbb.wear.PhoneClient
+import ch.rhosys.sbb.wear.R
 import ch.rhosys.sbb.wear.WearJourneyData
 import ch.rhosys.sbb.wear.WearMainActivity
 import java.time.Instant
@@ -39,21 +42,22 @@ class JourneyComplicationService : SuspendingTimelineComplicationDataSourceServi
         if (type != ComplicationType.SHORT_TEXT && type != ComplicationType.LONG_TEXT) return null
         val journey = PhoneClient(this).journey()
         val tap = openApp(this)
+        val icon = trainIcon(this)
         val entries = journeyPhases(journey).map { phase ->
             TimelineEntry(
                 TimeInterval(
                     if (phase.start == Long.MIN_VALUE) Instant.EPOCH else Instant.ofEpochSecond(phase.start),
                     Instant.ofEpochSecond(phase.end()),
                 ),
-                phase.toData(type, tap),
+                phase.toData(type, icon, tap),
             )
         }
-        return ComplicationDataTimeline(noJourney(type, tap), entries)
+        return ComplicationDataTimeline(noJourney(type, icon, tap), entries)
     }
 
     override fun getPreviewData(type: ComplicationType): ComplicationData? {
         val now = Instant.now().epochSecond
-        return JourneyPhase.ToTransfer(now, now + 12 * 60, "Bern").toData(type, null)
+        return JourneyPhase.ToTransfer(now, now + 12 * 60, "Bern").toData(type, trainIcon(this), null)
     }
 
     companion object {
@@ -66,7 +70,7 @@ class JourneyComplicationService : SuspendingTimelineComplicationDataSourceServi
     }
 }
 
-private fun JourneyPhase.toData(type: ComplicationType, tap: PendingIntent?): ComplicationData {
+private fun JourneyPhase.toData(type: ComplicationType, icon: MonochromaticImage, tap: PendingIntent?): ComplicationData {
     val (title, shortText, longText) = when (this) {
         is JourneyPhase.BeforeDeparture -> {
             val time = Instant.ofEpochSecond(departureEpochSeconds).atZone(ZoneId.systemDefault()).format(TIME_FMT)
@@ -77,28 +81,36 @@ private fun JourneyPhase.toData(type: ComplicationType, tap: PendingIntent?): Co
         is JourneyPhase.ToArrival ->
             Triple("Arr", countdown(arrivalEpochSeconds), countdown(arrivalEpochSeconds, "$stationName in ^1"))
     }
-    return build(type, title, shortText, longText, tap)
+    return build(type, title, shortText, longText, icon, tap)
 }
 
-private fun noJourney(type: ComplicationType, tap: PendingIntent?): ComplicationData =
-    build(type, "SBB", plain("—"), plain("No active journey"), tap)
+private fun noJourney(type: ComplicationType, icon: MonochromaticImage, tap: PendingIntent?): ComplicationData =
+    build(type, "SBB", plain("—"), plain("No active journey"), icon, tap)
 
 private fun build(
     type: ComplicationType,
     title: String,
     shortText: ComplicationText,
     longText: ComplicationText,
+    icon: MonochromaticImage,
     tap: PendingIntent?,
 ): ComplicationData = when (type) {
     ComplicationType.LONG_TEXT -> LongTextComplicationData.Builder(longText, longText)
         .setTitle(plain(title))
+        .setMonochromaticImage(icon)
         .setTapAction(tap)
         .build()
     else -> ShortTextComplicationData.Builder(shortText, longText)
         .setTitle(plain(title))
+        .setMonochromaticImage(icon)
         .setTapAction(tap)
         .build()
 }
+
+// The watch face places and tints this (usually beside or above the text); the drawable
+// itself is drawn semi-transparent so it stays in the background of the text.
+private fun trainIcon(context: Context): MonochromaticImage =
+    MonochromaticImage.Builder(Icon.createWithResource(context, R.drawable.ic_train_front_faded)).build()
 
 private fun plain(text: String): ComplicationText = PlainComplicationText.Builder(text).build()
 

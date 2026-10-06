@@ -19,6 +19,7 @@ import androidx.wear.tiles.RequestBuilders
 import androidx.wear.tiles.TileBuilders
 import androidx.wear.tiles.TileService
 import ch.rhosys.sbb.wear.PhoneClient
+import ch.rhosys.sbb.wear.R
 import ch.rhosys.sbb.wear.WearMainActivity
 import ch.rhosys.sbb.wear.WearPlace
 import com.google.common.util.concurrent.ListenableFuture
@@ -28,7 +29,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
-private const val RESOURCES_VERSION = "1"
+private const val RESOURCES_VERSION = "2"
+private const val TRAIN_IMAGE_ID = "train_front"
 // What fits in a tile's content area as compact chips; the rest are behind "More".
 private const val MAX_TILE_PLACES = 3
 
@@ -60,7 +62,21 @@ class PlacesTileService : TileService() {
         requestParams: RequestBuilders.ResourcesRequest,
     ): ListenableFuture<ResourceBuilders.Resources> =
         CallbackToFutureAdapter.getFuture { completer ->
-            completer.set(ResourceBuilders.Resources.Builder().setVersion(RESOURCES_VERSION).build())
+            completer.set(
+                ResourceBuilders.Resources.Builder()
+                    .setVersion(RESOURCES_VERSION)
+                    .addIdToImageMapping(
+                        TRAIN_IMAGE_ID,
+                        ResourceBuilders.ImageResource.Builder()
+                            .setAndroidResourceByResId(
+                                ResourceBuilders.AndroidImageResourceByResId.Builder()
+                                    .setResourceId(R.drawable.ic_train_front)
+                                    .build()
+                            )
+                            .build(),
+                    )
+                    .build()
+            )
             "PlacesTileService.onTileResourcesRequest"
         }
 
@@ -70,7 +86,33 @@ class PlacesTileService : TileService() {
     }
 }
 
+// The places over a faint train front in the middle of the tile.
 private fun layout(
+    context: Context,
+    device: DeviceParameters,
+    places: List<WearPlace>,
+): LayoutElementBuilders.LayoutElement =
+    LayoutElementBuilders.Box.Builder()
+        .setWidth(DimensionBuilders.expand())
+        .setHeight(DimensionBuilders.expand())
+        .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
+        .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
+        .addContent(
+            LayoutElementBuilders.Image.Builder()
+                .setResourceId(TRAIN_IMAGE_ID)
+                .setWidth(DimensionBuilders.dp(TRAIN_IMAGE_SIZE_DP))
+                .setHeight(DimensionBuilders.dp(TRAIN_IMAGE_SIZE_DP))
+                .setColorFilter(
+                    LayoutElementBuilders.ColorFilter.Builder()
+                        .setTint(ColorBuilders.argb(TRAIN_IMAGE_TINT))
+                        .build()
+                )
+                .build()
+        )
+        .addContent(placesLayout(context, device, places))
+        .build()
+
+private fun placesLayout(
     context: Context,
     device: DeviceParameters,
     places: List<WearPlace>,
@@ -127,3 +169,6 @@ private fun openApp(context: Context, id: String, placeId: Long?): ModifiersBuil
 }
 
 private const val SBB_RED = 0xFFE3001B.toInt()
+private const val TRAIN_IMAGE_SIZE_DP = 120f
+// White at ~30% opacity: visible behind the chips without competing with their text.
+private const val TRAIN_IMAGE_TINT = 0x4DFFFFFF
