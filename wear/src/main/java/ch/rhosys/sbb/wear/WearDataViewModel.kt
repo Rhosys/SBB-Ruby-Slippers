@@ -20,12 +20,19 @@ class WearDataViewModel(application: Application) : AndroidViewModel(application
     private val _journeyData = MutableStateFlow(WearJourneyData())
     val journeyData: StateFlow<WearJourneyData> = _journeyData
 
+    private val _places = MutableStateFlow<List<WearPlace>>(emptyList())
+    val places: StateFlow<List<WearPlace>> = _places
+
     private val listener = com.google.android.gms.wearable.DataClient.OnDataChangedListener { events ->
         events.forEach { event ->
             if (event.type == DataEvent.TYPE_CHANGED && event.dataItem.uri.path == WEAR_JOURNEY_PATH) {
                 val json = DataMapItem.fromDataItem(event.dataItem).dataMap.getString(WEAR_JOURNEY_KEY) ?: ""
                 _journeyData.value = if (json.isEmpty()) WearJourneyData()
                     else runCatching { Json.decodeFromString<WearJourneyData>(json) }.getOrDefault(WearJourneyData())
+            }
+            if (event.type == DataEvent.TYPE_CHANGED && event.dataItem.uri.path == WEAR_PLACES_PATH) {
+                val json = DataMapItem.fromDataItem(event.dataItem).dataMap.getString(WEAR_PLACES_KEY) ?: ""
+                _places.value = PhoneClient.decodePlaces(json)
             }
         }
     }
@@ -48,6 +55,9 @@ class WearDataViewModel(application: Application) : AndroidViewModel(application
                 }
                 items.release()
             }
+        }
+        viewModelScope.launch {
+            _places.value = PhoneClient(getApplication()).places()
         }
     }
 

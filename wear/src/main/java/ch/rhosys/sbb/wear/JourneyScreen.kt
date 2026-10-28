@@ -12,11 +12,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
+import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
+import androidx.wear.compose.material.Chip
+import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.Text
 
 @Composable
-fun JourneyScreen(data: WearJourneyData) {
+fun JourneyScreen(data: WearJourneyData, places: List<WearPlace>, onPlaceClick: (WearPlace) -> Unit) {
     val listState = rememberScalingLazyListState()
     ScalingLazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -65,6 +68,25 @@ fun JourneyScreen(data: WearJourneyData) {
                     style = MaterialTheme.typography.caption2,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                )
+            }
+        }
+        if (places.isNotEmpty()) {
+            item {
+                Text(
+                    text = "Go to",
+                    style = MaterialTheme.typography.caption1,
+                    color = MaterialTheme.colors.primary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                )
+            }
+            items(places, key = { it.id }) { place ->
+                Chip(
+                    onClick = { onPlaceClick(place) },
+                    label = { Text(place.name, maxLines = 1) },
+                    colors = ChipDefaults.secondaryChipColors(),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }

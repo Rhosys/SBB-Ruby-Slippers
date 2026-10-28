@@ -66,6 +66,19 @@
                 android:resource="@xml/departure_widget_info" />
         </receiver>
 
+        <!-- Watch "Go to" tile: next connections to a place, and saving one as the active journey -->
+        <service
+            android:name=".wear.WearRequestService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.REQUEST_RECEIVED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/sbb/" />
+            </intent-filter>
+        </service>
+
         <!-- Remove default WorkManager initializer so HiltWorkerFactory can be provided -->
         <provider
             android:name="androidx.startup.InitializationProvider"

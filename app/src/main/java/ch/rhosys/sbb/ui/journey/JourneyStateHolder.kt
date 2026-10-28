@@ -72,7 +72,11 @@ class JourneyStateHolder @Inject constructor(
             departureEpoch = departureEpoch,
             arrivalEpoch = arrivalEpoch,
         )
-        ContextCompat.startForegroundService(context, Intent(context, JourneyNotificationService::class.java))
+        // Lock-in can come from the watch while the phone app is in the background, where
+        // Android 12+ refuses to start a foreground service — the journey is still kept.
+        runCatching {
+            ContextCompat.startForegroundService(context, Intent(context, JourneyNotificationService::class.java))
+        }
     }
 
     fun promptMissedBoarding() {
