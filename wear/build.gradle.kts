@@ -5,6 +5,9 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// Added to the phone's version code; keeps the watch bundle's code unique and higher.
+val WEAR_VERSION_CODE_OFFSET = 1_000_000
+
 android {
     namespace = "ch.rhosys.sbb.wear"
     compileSdk = 36
@@ -15,8 +18,10 @@ android {
         applicationId = "ch.rhosys.sbb"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        // Same -PversionCode / -PversionName as :app (see .gitlab-ci.yml). Play needs every
+        // bundle under one package to have its own version code, so the watch's is offset.
+        versionCode = ((findProperty("versionCode") as? String)?.toIntOrNull() ?: 1) + WEAR_VERSION_CODE_OFFSET
+        versionName = (findProperty("versionName") as? String) ?: "1.0.0"
     }
 
     signingConfigs {

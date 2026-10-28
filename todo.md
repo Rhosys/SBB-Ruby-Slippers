@@ -42,6 +42,13 @@ deploy pipeline runs there. Set the project variable:
 (AWS infra reuses existing `GitLabRunnerRole` + `alias/deployment-encryption-key` —
 no AWS changes needed beyond the keystore in Todo 1.)
 
+### 🔲 4b. Play Console — enable the Wear OS form factor
+`deployment/deploy-play-store.ts` uploads the watch bundle (`wear-release.aab`, same
+`ch.rhosys.sbb` package) to the `wear:internal` track. Play only accepts that once the
+Wear OS form factor is added: Play Console → Test and release → Advanced settings →
+Form factors → add Wear OS (and accept the Wear OS review terms). Until then the phone
+release still lands, then the job fails on the watch upload.
+
 ### 🔲 5. Register at opentransportdata.swiss for a GTFS-RT token
 Free registration at `opentransportdata.swiss` → `api-manager.opentransportdata.swiss`.
 The portal hosts many unrelated products (OJP 1.0/2.0, OJP Fare, SIRI-PT/ET/SX, Train

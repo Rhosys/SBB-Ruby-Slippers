@@ -51,7 +51,7 @@ lint:
     - ./gradlew lintDebug
 
 # ── Release (manual) ──────────────────────────────────────────────────────────
-# Single job: build signed AAB → smoke test on emulator → deploy to Play Store → notify.
+# Single job: build signed AABs (phone + Wear OS) → smoke test on emulator → deploy to Play Store → notify.
 
 release:
   extends: .gradle-job
@@ -86,7 +86,9 @@ release:
     - unzip -q /tmp/awscliv2.zip -d /tmp && /tmp/aws/install --install-dir "$HOME/.local/aws-cli" --bin-dir "$HOME/.local/bin"
     - export PATH="$HOME/.local/bin:$PATH"
 
-    # ── Build signed release AAB ──────────────────────────────────────────────
+    # ── Build signed release AABs (phone + Wear OS) ───────────────────────────
+    # The injected signing properties apply to every module, so the watch bundle is signed
+    # with the same upload key — required, since both share the ch.rhosys.sbb package.
     - jq -r '.keystore' deployment/android-upload-signing.json | base64 --decode > app/android-upload-signing.keystore
     - STORE_PASSWORD=$(jq -r '.passwordCiphertext' deployment/android-upload-signing.json | base64 --decode | aws kms decrypt --ciphertext-blob fileb:///dev/stdin --region eu-west-1 --output text --query Plaintext | base64 --decode)
     - |
@@ -130,9 +132,10 @@ release:
     - npm run deploy:notify -- --version-code "$BUILD_NUMBER" --version-name "$VERSION"
   artifacts:
     when: always
-    expose_as: 'Android Release AAB'
+    expose_as: 'Android Release AABs'
     paths:
       - app/build/outputs/bundle/release/app-release.aab
+      - wear/build/outputs/bundle/release/wear-release.aab
     expire_in: 30 days
   cache:
     - key: gradle-$CI_COMMIT_REF_SLUG

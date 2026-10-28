@@ -1,6 +1,7 @@
 #!/usr/bin/env tsx
 /**
- * deploy-play-store — uploads a signed AAB to the Google Play Internal Testing track.
+ * deploy-play-store — uploads the signed phone AAB to the Google Play Internal Testing track,
+ * and the Wear OS AAB (same package name) to the Wear OS form factor's internal track.
  *
  * Release name is derived from the VERSION environment variable or defaults to the versionName
  * in app/build.gradle.kts.
@@ -17,6 +18,10 @@ import { GoogleAuth } from 'google-auth-library';
 
 export const PACKAGE_NAME = 'ch.rhosys.sbb';
 export const DEFAULT_AAB_PATH = 'app/build/outputs/bundle/release/app-release.aab';
+export const WEAR_AAB_PATH = 'wear/build/outputs/bundle/release/wear-release.aab';
+export const TRACK = 'internal';
+// Form factor tracks are the track name prefixed with the form factor.
+export const WEAR_TRACK = `wear:${TRACK}`;
 
 export interface TrackRelease {
   status: string | null;
@@ -319,9 +324,10 @@ export async function diagnoseError(err: unknown, client: PublisherClient): Prom
 }
 
 export async function main(client: PublisherClient): Promise<void> {
-  await deployToPlayStore(DEFAULT_AAB_PATH, 'internal', getVersionName(), client, (msg) =>
-    process.stderr.write(msg + '\n')
-  );
+  const print = (msg: string) => process.stderr.write(msg + '\n');
+  const releaseName = getVersionName();
+  await deployToPlayStore(DEFAULT_AAB_PATH, TRACK, releaseName, client, print);
+  await deployToPlayStore(WEAR_AAB_PATH, WEAR_TRACK, releaseName, client, print);
 }
 
 if (require.main === module) {
