@@ -103,7 +103,7 @@ jobs:
           fi
           ./gradlew assembleDebug \
             -PversionName="$VERSION_NAME" \
-            -PversionCode="$BUILD_NUMBER"
+            -PbuildNumber="$BUILD_NUMBER"
 
       - name: Set timestamp
         id: ts

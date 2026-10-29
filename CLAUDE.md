@@ -108,7 +108,7 @@ app/src/main/java/ch/rhosys/sbb/
     GtfsRtRefreshWorker.kt             ← @HiltWorker: 15 min RT delays feed (skips if no token)
 app/src/main/res/xml/departure_widget_info.xml
 wear/src/main/java/ch/rhosys/sbb/wear/   ← Wear OS app (same applicationId + signing key as :app, required by the Data Layer;
-                                          versionCode = :app's + 1 000 000 — Play needs one code per bundle)
+                                          version codes: root build.gradle.kts — major·minor·build·device, 0 phone / 1 watch)
   tile/PlacesTileService.kt            ← "Go to" tile: home-screen places; tap → app on that place's connections, over a faint train front (res/drawable/ic_train_front.xml)
   complication/JourneyComplicationService.kt ← active journey: departure time → countdown to each change → to final stop (timeline)
   complication/JourneyPhase.kt         ← pure phase logic for the complication (unit-tested)

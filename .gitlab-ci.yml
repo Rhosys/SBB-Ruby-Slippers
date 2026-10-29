@@ -94,7 +94,7 @@ release:
     - |
       ./gradlew bundleRelease \
         -PversionName="$VERSION" \
-        -PversionCode="$BUILD_NUMBER" \
+        -PbuildNumber="$BUILD_NUMBER" \
         -Pandroid.injected.signing.store.file="$CI_PROJECT_DIR/app/android-upload-signing.keystore" \
         -Pandroid.injected.signing.store.password="$STORE_PASSWORD" \
         -Pandroid.injected.signing.key.alias="sbb" \
@@ -129,7 +129,8 @@ release:
     - npm run deploy:play-store
 
     # ── Notify ────────────────────────────────────────────────────────────────
-    - npm run deploy:notify -- --version-code "$BUILD_NUMBER" --version-name "$VERSION"
+    - PHONE_VERSION_CODE=$(./gradlew -q printPhoneVersionCode -PversionName="$VERSION" -PbuildNumber="$BUILD_NUMBER")
+    - npm run deploy:notify -- --version-code "$PHONE_VERSION_CODE" --version-name "$VERSION"
   artifacts:
     when: always
     expose_as: 'Android Release AABs'
