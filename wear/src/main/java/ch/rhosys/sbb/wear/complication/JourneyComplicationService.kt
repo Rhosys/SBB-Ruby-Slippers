@@ -52,7 +52,7 @@ class JourneyComplicationService : SuspendingTimelineComplicationDataSourceServi
                 phase.toData(type, icon, tap),
             )
         }
-        return ComplicationDataTimeline(noJourney(type, icon, tap), entries)
+        return ComplicationDataTimeline(noJourney(type, bufferStopIcon(this), tap), entries)
     }
 
     override fun getPreviewData(type: ComplicationType): ComplicationData? {
@@ -111,6 +111,10 @@ private fun build(
 // itself is drawn semi-transparent so it stays in the background of the text.
 private fun trainIcon(context: Context): MonochromaticImage =
     MonochromaticImage.Builder(Icon.createWithResource(context, R.drawable.ic_train_front_faded)).build()
+
+// No journey: the end of the line.
+private fun bufferStopIcon(context: Context): MonochromaticImage =
+    MonochromaticImage.Builder(Icon.createWithResource(context, R.drawable.ic_buffer_stop)).build()
 
 private fun plain(text: String): ComplicationText = PlainComplicationText.Builder(text).build()
 

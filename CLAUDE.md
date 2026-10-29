@@ -100,24 +100,26 @@ app/src/main/java/ch/rhosys/sbb/
   wear/
     PhoneWearDataPusher.kt             ← pushes active journey + home-screen places to the watch (Data Layer)
     WearRequestService.kt              ← answers watch requests (/sbb/connections, /sbb/save-journey)
-    WearConnectionsProvider.kt         ← next 3 connections from current location to a place; save = startJourney
+    WearConnectionsProvider.kt         ← next 3 connections from current location to a place (local router, API without a timetable); save = startJourney
     WearProtocol.kt                    ← phone↔watch JSON types — keep identical to wear/…/WearProtocol.kt
   worker/
     CalendarSyncWorker.kt              ← @HiltWorker: syncs calendar events → saved routes
     GtfsImportWorker.kt                ← @HiltWorker: daily GTFS check (ETag + URL tracking; auto-detects Fahrplanwechsel)
     GtfsRtRefreshWorker.kt             ← @HiltWorker: 15 min RT delays feed (skips if no token)
 app/src/main/res/xml/departure_widget_info.xml
-wear/src/main/java/ch/rhosys/sbb/wear/   ← Wear OS app (same applicationId + signing key as :app, required by the Data Layer)
+wear/src/main/java/ch/rhosys/sbb/wear/   ← Wear OS app (same applicationId + signing key as :app, required by the Data Layer;
+                                          version codes: root build.gradle.kts — major·minor·build·device, 0 phone / 1 watch)
   tile/PlacesTileService.kt            ← "Go to" tile: home-screen places; tap → app on that place's connections, over a faint train front (res/drawable/ic_train_front.xml)
   complication/JourneyComplicationService.kt ← active journey: departure time → countdown to each change → to final stop (timeline)
   complication/JourneyPhase.kt         ← pure phase logic for the complication (unit-tested)
+  res/drawable/ic_buffer_stop.xml      ← complication icon with no active journey (end of the line)
   WearApp.kt / JourneyScreen.kt        ← home: active journey + places list
   ConnectionsScreen.kt / ConnectionsViewModel.kt ← next 3 connections + "Save journey"
   PhoneClient.kt                       ← Data Layer reads + MessageClient.sendRequest to the phone
   WatchLocation.kt                     ← watch's own fix (phone location is the fallback)
 deployment/
   android-upload-signing.json  ← PLACEHOLDER — must be replaced before release
-  deploy-play-store.ts         ← Play Store upload script
+  deploy-play-store.ts         ← Play Store upload: phone AAB → internal, Wear OS AAB → wear:qa (internal testing)
   notify-deploy.ts             ← SES deploy notification
 .github/workflows/build.yml    ← GitHub CI: compile / lint / test / debug-apk
 .gitlab-ci.yml                 ← GitLab CI: validate + signed-AAB release pipeline

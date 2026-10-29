@@ -15,8 +15,9 @@ android {
         applicationId = "ch.rhosys.sbb"
         minSdk = 29
         targetSdk = 36
-        versionCode = (findProperty("versionCode") as? String)?.toIntOrNull() ?: 1
-        versionName = (findProperty("versionName") as? String) ?: "1.0.0"
+        // Derived in the root build.gradle.kts from -PversionName and -PbuildNumber.
+        versionCode = rootProject.extra["phoneVersionCode"] as Int
+        versionName = rootProject.extra["appVersionName"] as String
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
