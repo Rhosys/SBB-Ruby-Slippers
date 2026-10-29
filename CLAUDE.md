@@ -100,7 +100,7 @@ app/src/main/java/ch/rhosys/sbb/
   wear/
     PhoneWearDataPusher.kt             ← pushes active journey + home-screen places to the watch (Data Layer)
     WearRequestService.kt              ← answers watch requests (/sbb/connections, /sbb/save-journey)
-    WearConnectionsProvider.kt         ← next 3 connections from current location to a place; save = startJourney
+    WearConnectionsProvider.kt         ← next 3 connections from current location to a place (local router, API without a timetable); save = startJourney
     WearProtocol.kt                    ← phone↔watch JSON types — keep identical to wear/…/WearProtocol.kt
   worker/
     CalendarSyncWorker.kt              ← @HiltWorker: syncs calendar events → saved routes
