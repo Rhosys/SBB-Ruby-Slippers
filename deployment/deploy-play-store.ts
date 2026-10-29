@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * deploy-play-store — uploads the signed phone AAB to the Google Play Internal Testing track,
- * and the Wear OS AAB (same package name) to the Wear OS form factor's internal track.
+ * and the Wear OS AAB (same package name) to the Wear OS form factor's internal track (wear:qa).
  *
  * Release name is derived from the VERSION environment variable or defaults to the versionName
  * in app/build.gradle.kts.
@@ -20,8 +20,10 @@ export const PACKAGE_NAME = 'ch.rhosys.sbb';
 export const DEFAULT_AAB_PATH = 'app/build/outputs/bundle/release/app-release.aab';
 export const WEAR_AAB_PATH = 'wear/build/outputs/bundle/release/wear-release.aab';
 export const TRACK = 'internal';
-// Form factor tracks are the track name prefixed with the form factor.
-export const WEAR_TRACK = `wear:${TRACK}`;
+// Form factor tracks are "[prefix]:defaultTrackName", and the default name of internal
+// testing there is "qa" (Play Developer API, "APKs and Tracks"): wear:production,
+// wear:beta, wear:qa.
+export const WEAR_TRACK = 'wear:qa';
 
 export interface TrackRelease {
   status: string | null;

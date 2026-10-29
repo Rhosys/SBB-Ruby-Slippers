@@ -119,7 +119,7 @@ wear/src/main/java/ch/rhosys/sbb/wear/   ← Wear OS app (same applicationId + s
   WatchLocation.kt                     ← watch's own fix (phone location is the fallback)
 deployment/
   android-upload-signing.json  ← PLACEHOLDER — must be replaced before release
-  deploy-play-store.ts         ← Play Store upload: phone AAB → internal, Wear OS AAB → wear:internal
+  deploy-play-store.ts         ← Play Store upload: phone AAB → internal, Wear OS AAB → wear:qa (internal testing)
   notify-deploy.ts             ← SES deploy notification
 .github/workflows/build.yml    ← GitHub CI: compile / lint / test / debug-apk
 .gitlab-ci.yml                 ← GitLab CI: validate + signed-AAB release pipeline

@@ -214,7 +214,7 @@ describe('diagnoseError target-SDK cross-check', () => {
 });
 
 describe('main', () => {
-  it('deploys the phone bundle to internal, then the Wear OS bundle to wear:internal', async () => {
+  it('deploys the phone bundle to internal, then the Wear OS bundle to wear:qa', async () => {
     process.env.VERSION = '1.0.42';
     jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const client = happyClient();
@@ -222,7 +222,7 @@ describe('main', () => {
     await main(client);
 
     expect(client.uploadBundle.mock.calls.map((c) => c[2])).toEqual([DEFAULT_AAB_PATH, WEAR_AAB_PATH]);
-    expect(client.createRelease.mock.calls.map((c) => c[2])).toEqual(['internal', 'wear:internal']);
+    expect(client.createRelease.mock.calls.map((c) => c[2])).toEqual(['internal', 'wear:qa']);
     expect(client.createRelease.mock.calls.map((c) => c[5])).toEqual(['1.0.42', '1.0.42']);
     delete process.env.VERSION;
   });

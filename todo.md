@@ -44,7 +44,7 @@ no AWS changes needed beyond the keystore in Todo 1.)
 
 ### 🔲 4b. Play Console — enable the Wear OS form factor
 `deployment/deploy-play-store.ts` uploads the watch bundle (`wear-release.aab`, same
-`ch.rhosys.sbb` package) to the `wear:internal` track. Play only accepts that once the
+`ch.rhosys.sbb` package) to the `wear:qa` (Wear OS internal testing) track. Play only accepts that once the
 Wear OS form factor is added: Play Console → Test and release → Advanced settings →
 Form factors → add Wear OS (and accept the Wear OS review terms). Until then the phone
 release still lands, then the job fails on the watch upload.
