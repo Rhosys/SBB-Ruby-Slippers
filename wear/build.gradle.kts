@@ -15,8 +15,10 @@ android {
         applicationId = "ch.rhosys.sbb"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        // Same version name as :app; its own version code (device digit 1). See the root
+        // build.gradle.kts.
+        versionCode = rootProject.extra["wearVersionCode"] as Int
+        versionName = rootProject.extra["appVersionName"] as String
     }
 
     signingConfigs {

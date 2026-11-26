@@ -3,7 +3,14 @@
 jest.mock('@googleapis/androidpublisher', () => ({}));
 jest.mock('google-auth-library', () => ({ GoogleAuth: jest.fn() }));
 
-import { deployToPlayStore, diagnoseError, PACKAGE_NAME } from './deploy-play-store';
+import {
+  DEFAULT_AAB_PATH,
+  deployToPlayStore,
+  diagnoseError,
+  main,
+  PACKAGE_NAME,
+  WEAR_AAB_PATH,
+} from './deploy-play-store';
 
 const FAKE_EDIT_ID = 'edit-abc123';
 const FAKE_VERSION_CODE = 42;
@@ -203,5 +210,20 @@ describe('diagnoseError target-SDK cross-check', () => {
 
     const output = stderrSpy.mock.calls.map((c) => c[0]).join('');
     expect(output).toContain('Could not fetch existing track releases to verify independently');
+  });
+});
+
+describe('main', () => {
+  it('deploys the phone bundle to internal, then the Wear OS bundle to wear:qa', async () => {
+    process.env.VERSION = '1.0.42';
+    jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const client = happyClient();
+
+    await main(client);
+
+    expect(client.uploadBundle.mock.calls.map((c) => c[2])).toEqual([DEFAULT_AAB_PATH, WEAR_AAB_PATH]);
+    expect(client.createRelease.mock.calls.map((c) => c[2])).toEqual(['internal', 'wear:qa']);
+    expect(client.createRelease.mock.calls.map((c) => c[5])).toEqual(['1.0.42', '1.0.42']);
+    delete process.env.VERSION;
   });
 });

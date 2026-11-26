@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Buffer stop (the bar at a terminus that ends the track), at 60% opacity: the journey
+     complication's icon when there's no active journey. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:alpha="0.6">
+    <!-- Beam, with a stripe and the two buffer faces cut out -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M2,6.5h20v6h-20z
+            M10.5,6.5h3l-3,6h-3z
+            M4,9.5a2,2 0 1 0 4,0a2,2 0 1 0 -4,0z
+            M16,9.5a2,2 0 1 0 4,0a2,2 0 1 0 -4,0z" />
+    <!-- Legs down to the rail -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M5,12.5h2.5v7h-2.5z M16.5,12.5h2.5v7h-2.5z" />
+    <!-- Rail and sleeper, where the track ends -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M1,19.5h22v1.5h-22z M3,21h18v1.5h-18z" />
+</vector>

@@ -14,6 +14,14 @@ on:
       - "firmware/**"
       - ".github/workflows/firmware.yml"
 
+# Every job reads (and on main, writes) the Gradle User Home cache under one key, the
+# compile job's, instead of one per job. A job whose own entry was evicted would otherwise
+# start cold and re-download every plugin and dependency, which Maven Central rate-limits
+# (HTTP 429 → "Plugin [id: 'com.google.dagger.hilt.android'] was not found"). Honoured by
+# gradle/actions/setup-gradle; it's the variable the action's own workflows use.
+env:
+  GRADLE_BUILD_ACTION_CACHE_KEY_JOB: compile
+
 jobs:
   # ── Validate ────────────────────────────────────────────────────────────────
 
@@ -103,7 +111,7 @@ jobs:
           fi
           ./gradlew assembleDebug \
             -PversionName="$VERSION_NAME" \
-            -PversionCode="$BUILD_NUMBER"
+            -PbuildNumber="$BUILD_NUMBER"
 
       - name: Set timestamp
         id: ts

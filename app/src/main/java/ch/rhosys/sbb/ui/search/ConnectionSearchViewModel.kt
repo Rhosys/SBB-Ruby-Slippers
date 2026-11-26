@@ -27,6 +27,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import android.util.Log
+import ch.rhosys.sbb.data.log.AppLog
+import ch.rhosys.sbb.data.log.AppLogEntry
+import retrofit2.HttpException
+import java.io.IOException
+import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -34,6 +41,27 @@ import java.time.ZoneId
 import javax.inject.Inject
 
 private val SWISS_ZONE = ZoneId.of("Europe/Zurich")
+private const val TAG = "ConnectionSearch"
+
+// What the search screen shows when the API call fails. The full response (body
+// included) is in Settings → Logs and logcat; this only has to say what happened.
+internal fun searchErrorText(e: Throwable): String = when (e) {
+    is HttpException -> {
+        // HTTP/2 responses carry no reason phrase, so name the common ones ourselves.
+        val reason = when (e.code()) {
+            429 -> "Too Many Requests"
+            500 -> "Internal Server Error"
+            502 -> "Bad Gateway"
+            503 -> "Service Unavailable"
+            504 -> "Gateway Timeout"
+            else -> e.response()?.raw()?.message?.ifBlank { null }
+        }
+        val hint = if (e.code() == 429) " — the API's rate limit (3 searches a minute) was hit." else "."
+        "transport.opendata.ch answered ${e.code()}${reason?.let { " $it" } ?: ""}$hint See Settings → Logs for the full response."
+    }
+    is IOException -> "Couldn't reach transport.opendata.ch (${e.javaClass.simpleName}${e.message?.let { ": $it" } ?: ""})."
+    else -> e.message ?: e.javaClass.simpleName
+}
 
 data class ConnectionSearchUiState(
     val fromText: String = "",
@@ -91,6 +119,7 @@ class ConnectionSearchViewModel @Inject constructor(
     private val searchNavigationBridge: SearchNavigationBridge,
     private val journeyStateHolder: JourneyStateHolder,
     private val userPreferencesRepository: UserPreferencesRepository,
+    private val appLog: AppLog,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ConnectionSearchUiState())
@@ -536,10 +565,32 @@ class ConnectionSearchViewModel @Inject constructor(
             PageDirection.LATER -> copy(isLoadingLater = loading, noMoreLater = noMore)
         }
 
+    private fun logSearch(
+        from: SearchEndpoint,
+        to: SearchEndpoint,
+        source: String,
+        startedAt: Instant,
+        resultCount: Int,
+        error: String? = null,
+    ) {
+        appLog.add(
+            AppLogEntry.Search(
+                at = Instant.now(),
+                from = from.displayName(),
+                to = to.displayName(),
+                source = source,
+                resultCount = resultCount,
+                durationMs = Duration.between(startedAt, Instant.now()).toMillis(),
+                error = error,
+            )
+        )
+    }
+
     private fun routingTimeFor(time: LocalTime): RoutingTime =
         if (_uiState.value.isArriveBy) RoutingTime.ArriveBy(time) else RoutingTime.DepartAfter(time)
 
     private suspend fun searchLocally(from: SearchEndpoint, to: SearchEndpoint, routingTime: RoutingTime) {
+        val startedAt = Instant.now()
         localRouter.routeConnections(
             from = from,
             to = to,
@@ -548,14 +599,15 @@ class ConnectionSearchViewModel @Inject constructor(
             walkingPaceKmh = userPreferencesRepository.walkingPaceKmh.first(),
         ).collect { state ->
             when (state) {
-                is LocalRoutingState.Results -> _uiState.value = _uiState.value.copy(
-                    connections = mergeConnections(emptyList(), state.connections),
-                    isLoading = !state.isComplete,
-                )
-                is LocalRoutingState.NoResults -> _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = state.reason.ifBlank { null },
-                )
+                is LocalRoutingState.Results -> {
+                    val connections = mergeConnections(emptyList(), state.connections)
+                    _uiState.value = _uiState.value.copy(connections = connections, isLoading = !state.isComplete)
+                    if (state.isComplete) logSearch(from, to, "timetable", startedAt, connections.size)
+                }
+                is LocalRoutingState.NoResults -> {
+                    _uiState.value = _uiState.value.copy(isLoading = false, error = state.reason.ifBlank { null })
+                    logSearch(from, to, "timetable", startedAt, 0, state.reason.ifBlank { "No connections found" })
+                }
                 is LocalRoutingState.NoData -> searchViaApi(
                     from, to,
                     when (routingTime) {
@@ -571,6 +623,7 @@ class ConnectionSearchViewModel @Inject constructor(
 
     private suspend fun searchViaApi(from: SearchEndpoint, to: SearchEndpoint, time: LocalTime) {
         val state = _uiState.value
+        val startedAt = Instant.now()
         runCatching {
             repository.getConnections(
                 from, to,
@@ -580,13 +633,14 @@ class ConnectionSearchViewModel @Inject constructor(
             )
         }
             .onSuccess { connections ->
-                _uiState.value = _uiState.value.copy(
-                    connections = mergeConnections(emptyList(), connections),
-                    isLoading = false,
-                )
+                val merged = mergeConnections(emptyList(), connections)
+                _uiState.value = _uiState.value.copy(connections = merged, isLoading = false)
+                logSearch(from, to, "API", startedAt, merged.size)
             }
             .onFailure { e ->
-                _uiState.value = _uiState.value.copy(isLoading = false, error = e.message ?: "Unknown error")
+                Log.e(TAG, "Connection search ${from.displayName()} → ${to.displayName()} failed", e)
+                _uiState.value = _uiState.value.copy(isLoading = false, error = searchErrorText(e))
+                logSearch(from, to, "API", startedAt, 0, e.toString())
             }
     }
 

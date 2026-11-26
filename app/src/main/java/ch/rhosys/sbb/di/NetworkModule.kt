@@ -1,6 +1,8 @@
 package ch.rhosys.sbb.di
 
 import ch.rhosys.sbb.BuildConfig
+import ch.rhosys.sbb.data.log.AppLog
+import ch.rhosys.sbb.data.log.AppLogInterceptor
 import ch.rhosys.sbb.data.remote.ApiTransportRepository
 import ch.rhosys.sbb.data.remote.TransportApi
 import ch.rhosys.sbb.domain.TransportRepository
@@ -29,8 +31,10 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(): OkHttpClient =
+    fun provideOkHttpClient(appLog: AppLog): OkHttpClient =
         OkHttpClient.Builder()
+            // Every build, not just debug: Settings → Logs shows these.
+            .addInterceptor(AppLogInterceptor(appLog))
             .apply {
                 if (BuildConfig.DEBUG) {
                     addInterceptor(HttpLoggingInterceptor().apply {

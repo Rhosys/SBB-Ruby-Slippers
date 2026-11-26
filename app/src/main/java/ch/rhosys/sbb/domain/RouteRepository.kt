@@ -1,5 +1,6 @@
 package ch.rhosys.sbb.domain
 
+import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.RecurringRoute
 import ch.rhosys.sbb.domain.model.SavedRoute
 import ch.rhosys.sbb.domain.model.TripHistoryItem
@@ -33,6 +34,8 @@ interface RouteRepository {
         wasLockedIn: Boolean,
         departureEpoch: Long? = null,
         arrivalEpoch: Long? = null,
+        // Saved with the trip so the Past tab can show its full details.
+        connection: Connection? = null,
     ): Long
     suspend fun markTripCancelled(id: Long)
     suspend fun getRecentSearches(limit: Int = 20): List<TripHistoryItem>

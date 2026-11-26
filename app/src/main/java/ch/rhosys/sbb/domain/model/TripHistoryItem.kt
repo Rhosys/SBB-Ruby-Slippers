@@ -9,4 +9,6 @@ data class TripHistoryItem(
     val wasCancelled: Boolean,
     val departureEpoch: Long?,
     val arrivalEpoch: Long?,
+    // Null for trips saved before the whole connection was recorded.
+    val connection: Connection? = null,
 )

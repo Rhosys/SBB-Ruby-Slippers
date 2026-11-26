@@ -14,13 +14,15 @@ class TripReviewHolder @Inject constructor() {
         val connection: Connection,
         val from: SearchEndpoint,
         val to: SearchEndpoint,
+        // Opened from the Past tab: shown read-only, not offered to start again.
+        val isPastTrip: Boolean = false,
     )
 
     private val _candidate = MutableStateFlow<Candidate?>(null)
     val candidate: StateFlow<Candidate?> = _candidate
 
-    fun set(connection: Connection, from: SearchEndpoint, to: SearchEndpoint) {
-        _candidate.value = Candidate(connection, from, to)
+    fun set(connection: Connection, from: SearchEndpoint, to: SearchEndpoint, isPastTrip: Boolean = false) {
+        _candidate.value = Candidate(connection, from, to, isPastTrip)
     }
 
     fun clear() {

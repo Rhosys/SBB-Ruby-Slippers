@@ -15,4 +15,7 @@ data class TripHistoryEntity(
     val wasCancelled: Boolean = false,
     val departureEpoch: Long? = null,
     val arrivalEpoch: Long? = null,
+    // The whole connection (StoredConnection), so a past trip can show its full details.
+    // Null for rows saved before it was recorded.
+    val connectionJson: String? = null,
 )

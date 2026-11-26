@@ -277,6 +277,7 @@ private fun PastTab(history: List<TripHistoryItem>, viewModel: JourneysViewModel
                         item = item,
                         canReactivate = item.arrivalEpoch != null && item.arrivalEpoch > now,
                         onReactivate = { viewModel.reactivateTrip(item) },
+                        onOpen = { viewModel.openPastTrip(item) },
                     )
                 }
             }
@@ -309,11 +310,14 @@ private fun TripHistoryCard(
     item: TripHistoryItem,
     canReactivate: Boolean,
     onReactivate: () -> Unit,
+    onOpen: () -> Unit,
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 4.dp)
+            // Opens the full trip details when they were saved with it.
+            .clickable(enabled = item.connection != null, onClick = onOpen),
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(
@@ -349,6 +353,13 @@ private fun TripHistoryCard(
                         Text(
                             formatEpoch(item.departureEpoch),
                             style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (item.connection == null) {
+                        Text(
+                            "Trip details weren't saved for trips from before this update.",
+                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
