@@ -21,6 +21,8 @@ data class TripReviewUiState(
     // Used to tell whether a tight transfer still covers a normal walk or only a run.
     val walkingPaceKmh: Float = 6f,
     val runningPaceKmh: Float = 10f,
+    // Opened from the Past tab: no "Start journey".
+    val isPastTrip: Boolean = false,
 )
 
 @HiltViewModel
@@ -39,11 +41,14 @@ class TripReviewViewModel @Inject constructor(
         userPreferencesRepository.walkingPaceKmh,
         userPreferencesRepository.runningPaceKmh,
     ) { walkingPaceKmh, runningPaceKmh ->
-        TripReviewUiState(candidate?.connection, candidate?.from, candidate?.to, walkingPaceKmh, runningPaceKmh)
+        TripReviewUiState(
+            candidate?.connection, candidate?.from, candidate?.to, walkingPaceKmh, runningPaceKmh,
+            isPastTrip = candidate?.isPastTrip == true,
+        )
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
-        TripReviewUiState(candidate?.connection, candidate?.from, candidate?.to),
+        TripReviewUiState(candidate?.connection, candidate?.from, candidate?.to, isPastTrip = candidate?.isPastTrip == true),
     )
 
     init {
@@ -51,7 +56,8 @@ class TripReviewViewModel @Inject constructor(
     }
 
     private fun recordView() {
-        val candidate = this.candidate ?: return
+        // A past trip re-opened from history is already recorded.
+        val candidate = this.candidate?.takeIf { !it.isPastTrip } ?: return
         viewModelScope.launch {
             routeRepository.recordSearch(
                 fromName = candidate.from.displayName(),
@@ -61,6 +67,7 @@ class TripReviewViewModel @Inject constructor(
                 wasLockedIn = false,
                 departureEpoch = candidate.connection.departure.effectiveTime?.epochSecond,
                 arrivalEpoch = candidate.connection.arrival.effectiveTime?.epochSecond,
+                connection = candidate.connection,
             )
         }
     }

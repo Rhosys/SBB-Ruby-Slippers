@@ -6,7 +6,10 @@ import ch.rhosys.sbb.data.local.db.dao.TripHistoryDao
 import ch.rhosys.sbb.data.local.db.entity.SavedRouteEntity
 import ch.rhosys.sbb.data.local.db.entity.TripHistoryEntity
 import ch.rhosys.sbb.data.local.db.entity.toEntity
+import ch.rhosys.sbb.data.local.db.entity.toStoredConnectionOrNull
+import ch.rhosys.sbb.data.local.db.entity.toStoredJson
 import ch.rhosys.sbb.domain.RouteRepository
+import ch.rhosys.sbb.domain.model.Connection
 import ch.rhosys.sbb.domain.model.RecurringRoute
 import ch.rhosys.sbb.domain.model.SavedRoute
 import ch.rhosys.sbb.domain.model.TripHistoryItem
@@ -84,6 +87,7 @@ class RoomRouteRepository @Inject constructor(
         wasLockedIn: Boolean,
         departureEpoch: Long?,
         arrivalEpoch: Long?,
+        connection: Connection?,
     ): Long {
         val id = tripHistoryDao.insert(
             TripHistoryEntity(
@@ -94,6 +98,7 @@ class RoomRouteRepository @Inject constructor(
                 wasLockedIn = wasLockedIn,
                 departureEpoch = departureEpoch,
                 arrivalEpoch = arrivalEpoch,
+                connectionJson = connection?.toStoredJson(),
             )
         )
         tripHistoryDao.pruneOldEntries()
@@ -120,4 +125,5 @@ private fun TripHistoryEntity.toDomain() = TripHistoryItem(
     wasCancelled = wasCancelled,
     departureEpoch = departureEpoch,
     arrivalEpoch = arrivalEpoch,
+    connection = connectionJson?.toStoredConnectionOrNull(),
 )

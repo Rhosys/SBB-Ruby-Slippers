@@ -261,12 +261,26 @@ class JourneysViewModel @Inject constructor(
             wasLockedIn = true,
             departureEpoch = connection.departure.effectiveTime?.epochSecond,
             arrivalEpoch = connection.arrival.effectiveTime?.epochSecond,
+            connection = connection,
         )
         journeyStateHolder.lockIn(connection, from, to, tripHistoryId)
         _uiState.value = _uiState.value.copy(
             activeConnection = connection,
             selectedTab = JourneysTab.ACTIVE,
         )
+    }
+
+    // A past trip's full details, exactly as saved with it. Trips from before the whole
+    // connection was recorded have none (the card says so instead of opening).
+    fun openPastTrip(item: TripHistoryItem) = viewModelScope.launch {
+        val connection = item.connection ?: return@launch
+        tripReviewHolder.set(
+            connection,
+            SearchEndpoint.NamedPlace(item.fromName),
+            SearchEndpoint.NamedPlace(item.toName),
+            isPastTrip = true,
+        )
+        _navigateToTripReview.emit(Unit)
     }
 
     fun openSavedRoute(route: SavedRoute) = openDestination(route.id, route.toDestinationEndpoint())

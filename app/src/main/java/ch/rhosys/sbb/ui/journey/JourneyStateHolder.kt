@@ -48,6 +48,7 @@ class JourneyStateHolder @Inject constructor(
                 wasLockedIn = true,
                 departureEpoch = connection.departure.effectiveTime?.epochSecond,
                 arrivalEpoch = connection.arrival.effectiveTime?.epochSecond,
+                connection = connection,
             )
             if (_activeJourney.value?.connection == connection) {
                 _activeJourney.value = _activeJourney.value?.copy(tripHistoryId = tripHistoryId)

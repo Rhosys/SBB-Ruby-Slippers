@@ -75,7 +75,7 @@ fun TripReviewScreen(
             )
         },
         bottomBar = {
-            if (connection != null) {
+            if (connection != null && !state.isPastTrip) {
                 Button(
                     onClick = {
                         if (viewModel.lockIn()) onJourneyStarted()
