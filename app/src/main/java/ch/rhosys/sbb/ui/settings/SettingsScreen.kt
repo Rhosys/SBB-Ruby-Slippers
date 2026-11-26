@@ -60,7 +60,10 @@ private val RUNNING_PACE_RANGE = 0.5f..10f
 private val RUNNING_PACE_STEPS = (((RUNNING_PACE_RANGE.endInclusive - RUNNING_PACE_RANGE.start) / 0.1f).roundToInt()) - 1
 
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(
+    onNavigateToLogs: () -> Unit = {},
+    viewModel: SettingsViewModel = hiltViewModel(),
+) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
@@ -345,6 +348,17 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     onCheckedChange = viewModel::setJourneyChipShowsTotalRemaining,
                 )
             }
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 12.dp))
+        SectionLabel("Troubleshooting")
+        Text(
+            "Recent API calls and searches since the app started, with the full response of any that failed.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedButton(onClick = onNavigateToLogs, modifier = Modifier.fillMaxWidth()) {
+            Text("Logs")
         }
     }
 }

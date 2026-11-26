@@ -18,6 +18,7 @@ import ch.rhosys.sbb.ui.journey.TripReviewScreen
 import ch.rhosys.sbb.ui.onboarding.OnboardingScreen
 import ch.rhosys.sbb.ui.search.ConnectionSearchScreen
 import ch.rhosys.sbb.ui.search.SearchNavigationBridge
+import ch.rhosys.sbb.ui.logs.LogsScreen
 import ch.rhosys.sbb.ui.settings.SettingsScreen
 
 @Composable
@@ -79,7 +80,12 @@ fun AppNavHost(
         }
 
         tab(Tab.Settings) {
-            composable(Screen.Settings.route) { SettingsScreen() }
+            composable(Screen.Settings.route) {
+                SettingsScreen(onNavigateToLogs = { navController.navigate(Screen.Logs.route) })
+            }
+            composable(Screen.Logs.route) {
+                LogsScreen(onNavigateBack = { navController.popBackStack() })
+            }
         }
     }
 }
