@@ -213,6 +213,64 @@ describe('diagnoseError target-SDK cross-check', () => {
   });
 });
 
+describe('diagnoseError missing form factor track', () => {
+  let stderrSpy: jest.SpyInstance;
+  let exitSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    stderrSpy = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    exitSpy = jest.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`process.exit(${code})`);
+    }) as never);
+  });
+
+  afterEach(() => {
+    stderrSpy.mockRestore();
+    exitSpy.mockRestore();
+  });
+
+  function trackNotFound() {
+    const err = new Error('Track not found: wear:qa.');
+    (err as unknown as { status: number }).status = 404;
+    return err;
+  }
+
+  const output = () => stderrSpy.mock.calls.map((c) => c[0]).join('');
+
+  it('verifies against the track list and tells the developer to enable the form factor', async () => {
+    const client = {
+      ...happyClient(),
+      listTracks: jest.fn().mockResolvedValue([
+        { track: 'internal', releases: [] },
+        { track: 'production', releases: [] },
+      ]),
+    };
+
+    await expect(diagnoseError(trackNotFound(), client)).rejects.toThrow('process.exit(1)');
+
+    expect(client.listTracks).toHaveBeenCalled();
+    expect(output()).toContain('Tracks Play reports: internal, production');
+    expect(output()).toContain('ACTION REQUIRED: the Wear OS form factor is not enabled');
+    expect(output()).toContain('Advanced settings → Form factors');
+    expect(output()).not.toContain('does not exist in Google Play Console');
+  });
+
+  it('does not blame the form factor when other tracks of it exist', async () => {
+    const client = {
+      ...happyClient(),
+      listTracks: jest.fn().mockResolvedValue([
+        { track: 'internal', releases: [] },
+        { track: 'wear:production', releases: [] },
+      ]),
+    };
+
+    await expect(diagnoseError(trackNotFound(), client)).rejects.toThrow('process.exit(1)');
+
+    expect(output()).toContain('form factor IS enabled');
+    expect(output()).not.toContain('ACTION REQUIRED');
+  });
+});
+
 describe('main', () => {
   it('deploys the phone bundle to internal, then the Wear OS bundle to wear:qa', async () => {
     process.env.VERSION = '1.0.42';

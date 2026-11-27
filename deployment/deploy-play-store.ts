@@ -197,11 +197,75 @@ export function makePublisherClient(): PublisherClient {
   };
 }
 
+const FORM_FACTOR_NAMES: Record<string, string> = {
+  wear: 'Wear OS',
+  automotive: 'Android Automotive OS',
+  tv: 'Android TV',
+  android_xr: 'Android XR',
+};
+
+/**
+ * A "Track not found: <prefix>:<name>" means the app exists but Play has no track for that form
+ * factor — almost always because the form factor was never added in Play Console. The Play
+ * Developer API cannot add a form factor (edits.tracks.create only makes closed-testing tracks
+ * for one that is already enabled), so this verifies against Play's own track list and tells the
+ * developer exactly what to click.
+ */
+export async function diagnoseMissingFormFactorTrack(
+  msg: string,
+  prefix: string,
+  track: string,
+  client: PublisherClient
+): Promise<never> {
+  const name = FORM_FACTOR_NAMES[prefix] ?? prefix;
+  const err = (line = '') => process.stderr.write(line + '\n');
+  err(`Error: ${msg}`);
+  err();
+  err(`Checking Play's track list for ${PACKAGE_NAME}...`);
+  const tracks = await fetchTrackReleases(client, PACKAGE_NAME);
+  if (tracks === null) {
+    err(`Could not fetch the track list to verify — check Play Console manually.`);
+  } else {
+    const ids = tracks.map((t) => t.track ?? '(unnamed)');
+    err(`Tracks Play reports: ${ids.length > 0 ? ids.join(', ') : '(none)'}`);
+    const formFactorTracks = ids.filter((id) => id.startsWith(`${prefix}:`));
+    if (formFactorTracks.length > 0) {
+      err();
+      err(`The ${name} form factor IS enabled (tracks: ${formFactorTracks.join(', ')}), but '${track}'`);
+      err(`is not one of them. Point the deploy script at an existing ${prefix}: track or create it in`);
+      err(`Play Console → Test and release → Testing.`);
+      process.exit(1);
+    }
+  }
+  const bar = '='.repeat(78);
+  err();
+  err(bar);
+  err(`  ACTION REQUIRED: the ${name} form factor is not enabled for ${PACKAGE_NAME}`);
+  err(bar);
+  err(`  This project builds a ${name} bundle, but Play has no '${prefix}:' tracks yet.`);
+  err(`  The Play Developer API cannot enable a form factor — do this once by hand:`);
+  err();
+  err(`    1. Play Console → select ${PACKAGE_NAME}`);
+  err(`    2. Test and release → Advanced settings → Form factors`);
+  err(`    3. "+ Add form factor" → ${name}`);
+  err(`    4. Accept the ${name} review / distribution terms and save`);
+  err(`    5. Re-run this CI job — '${track}' will then exist and the upload will succeed.`);
+  err();
+  err(`  Releases already committed earlier in this job (e.g. the phone bundle) are kept.`);
+  err(bar);
+  process.exit(1);
+}
+
 export async function diagnoseError(err: unknown, client: PublisherClient): Promise<never> {
   const status =
     (err as { status?: number; code?: number }).status ??
     (err as { status?: number; code?: number }).code;
   const msg = err instanceof Error ? err.message : String(err);
+
+  const missingTrack = msg.match(/Track not found:\s*([\w-]+):([\w-]+)/i);
+  if (missingTrack) {
+    await diagnoseMissingFormFactorTrack(msg, missingTrack[1], `${missingTrack[1]}:${missingTrack[2]}`, client);
+  }
 
   if (msg.toLowerCase().includes('package not found') || status === 404) {
     process.stderr.write(`Error: ${msg}\n\n`);
