@@ -19,6 +19,9 @@ on:
 # start cold and re-download every plugin and dependency, which Maven Central rate-limits
 # (HTTP 429 → "Plugin [id: 'com.google.dagger.hilt.android'] was not found"). Honoured by
 # gradle/actions/setup-gradle; it's the variable the action's own workflows use.
+# Only the first job to finish on main (Compile) writes that entry — later jobs never
+# overwrite it — so Compile must resolve every classpath the other jobs need, test ones
+# included, or those jobs download them from Maven Central on every run.
 env:
   GRADLE_BUILD_ACTION_CACHE_KEY_JOB: compile
 
@@ -40,8 +43,9 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      # Also compiles the unit tests so their dependencies (junit, …) land in the shared cache.
       - name: Compile debug Kotlin
-        run: ./gradlew compileDebugKotlin
+        run: ./gradlew compileDebugKotlin compileDebugUnitTestKotlin
 
   lint:
     name: Lint
