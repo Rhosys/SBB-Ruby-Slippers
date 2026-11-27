@@ -12,6 +12,7 @@
  *   - Locally: gcloud auth application-default login
  */
 
+import { createHash } from 'node:crypto';
 import { createReadStream, readFileSync } from 'node:fs';
 import { androidpublisher } from '@googleapis/androidpublisher';
 import { GoogleAuth } from 'google-auth-library';
@@ -46,7 +47,63 @@ export interface PublisherClient {
     packageName: string,
     editId: string
   ): Promise<Array<{ track: string | null; releases: TrackRelease[] }>>;
+  listBundles(packageName: string, editId: string): Promise<UploadedBundle[]>;
   deleteEdit(packageName: string, editId: string): Promise<void>;
+}
+
+export interface UploadedBundle {
+  versionCode: number;
+  sha256: string | null;
+}
+
+export function sha256File(path: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = createHash('sha256');
+    createReadStream(path)
+      .on('error', reject)
+      .on('data', (chunk) => hash.update(chunk))
+      .on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
+const VERSION_CODE_USED = /Version code (\d+) has already been used/i;
+
+function usedVersionCode(err: unknown): number | null {
+  const msg = err instanceof Error ? err.message : String(err);
+  const match = msg.match(VERSION_CODE_USED);
+  return match ? Number(match[1]) : null;
+}
+
+/**
+ * Play rejected the upload because the version code exists. Re-running a job (e.g. after the
+ * phone release landed but the watch upload failed) is expected to hit this, so it is fine only
+ * when Play's copy is byte-identical to the local AAB; anything else is a real conflict.
+ */
+async function resolveExistingBundle(
+  client: PublisherClient,
+  editId: string,
+  aabPath: string,
+  versionCode: number,
+  hashFile: (path: string) => Promise<string>
+): Promise<void> {
+  const [bundles, localSha256] = await Promise.all([
+    client.listBundles(PACKAGE_NAME, editId),
+    hashFile(aabPath),
+  ]);
+  const existing = bundles.find((b) => b.versionCode === versionCode);
+  if (!existing) {
+    throw new Error(
+      `Version code ${versionCode} has already been used, but Play lists no bundle with it ` +
+        `(it may belong to a deleted or APK upload). Bump the versionCode and rebuild.`
+    );
+  }
+  if (existing.sha256?.toLowerCase() !== localSha256.toLowerCase()) {
+    throw new Error(
+      `Version code ${versionCode} is already on Play with a DIFFERENT bundle ` +
+        `(Play sha256 ${existing.sha256 ?? 'unknown'}, local ${localSha256}). ` +
+        `Bump the versionCode and rebuild — Play never accepts two bundles with one version code.`
+    );
+  }
 }
 
 export function getVersionName(): string {
@@ -80,14 +137,37 @@ export async function deployToPlayStore(
   track: string,
   releaseName: string,
   client: PublisherClient,
-  print: (msg: string) => void
+  print: (msg: string) => void,
+  hashFile: (path: string) => Promise<string> = sha256File
 ): Promise<void> {
   print(`Creating edit for ${PACKAGE_NAME}...`);
   const editId = await client.createEdit(PACKAGE_NAME);
 
   try {
     print(`Uploading AAB: ${aabPath}...`);
-    const versionCode = await client.uploadBundle(PACKAGE_NAME, editId, aabPath);
+    let versionCode: number;
+    try {
+      versionCode = await client.uploadBundle(PACKAGE_NAME, editId, aabPath);
+    } catch (err) {
+      const used = usedVersionCode(err);
+      if (used === null) throw err;
+      versionCode = used;
+      print(`Version code ${used} is already on Play — checking it matches ${aabPath}...`);
+      await resolveExistingBundle(client, editId, aabPath, used, hashFile);
+      print(`Identical bundle already uploaded (sha256 matches) — reusing it.`);
+
+      const tracks = await client.listTracks(PACKAGE_NAME, editId);
+      const onTrack = tracks
+        .find((t) => t.track === track)
+        ?.releases.find((r) => r.versionCodes.includes(String(used)));
+      if (onTrack) {
+        print(
+          `Already released: version ${used} is on the '${track}' track (status: ${onTrack.status ?? 'unknown'}) — nothing to do.`
+        );
+        await client.deleteEdit(PACKAGE_NAME, editId).catch(() => undefined);
+        return;
+      }
+    }
 
     let releaseStatus = 'completed';
     print(`Creating release ${versionCode} (${releaseName}) on track '${track}'...`);
@@ -191,6 +271,13 @@ export function makePublisherClient(): PublisherClient {
         })),
       }));
     },
+    async listBundles(packageName, editId) {
+      const { data } = await publisher.edits.bundles.list({ packageName, editId });
+      return (data.bundles ?? []).map((b) => ({
+        versionCode: b.versionCode ?? -1,
+        sha256: b.sha256 ?? null,
+      }));
+    },
     async deleteEdit(packageName, editId) {
       await publisher.edits.delete({ packageName, editId });
     },
@@ -279,6 +366,13 @@ export async function diagnoseError(err: unknown, client: PublisherClient): Prom
       `  2. Upload the AAB manually via Internal Testing → Create new release\n`
     );
     process.stderr.write(`  3. Re-run this CI job — automated deploys will work from then on.\n`);
+    process.exit(1);
+  }
+
+  if (VERSION_CODE_USED.test(msg) || msg.includes('Bump the versionCode')) {
+    process.stderr.write(`Error: ${msg}\n\n`);
+    process.stderr.write(`Not a permissions problem: the version code collides with an existing upload.\n`);
+    process.stderr.write(`Bump versionCode (root build.gradle.kts) and rebuild.\n`);
     process.exit(1);
   }
 

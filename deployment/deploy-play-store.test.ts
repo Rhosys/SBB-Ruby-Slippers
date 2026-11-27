@@ -24,6 +24,7 @@ function happyClient() {
     uploadBundle: jest.fn().mockResolvedValue(FAKE_VERSION_CODE),
     createRelease: jest.fn().mockResolvedValue(undefined),
     listTracks: jest.fn().mockResolvedValue([]),
+    listBundles: jest.fn().mockResolvedValue([]),
     deleteEdit: jest.fn().mockResolvedValue(undefined),
   };
 }
@@ -147,6 +148,72 @@ describe('deployToPlayStore', () => {
         deployToPlayStore(FAKE_AAB, TRACK, FAKE_VERSION_NAME, client, jest.fn())
       ).rejects.toThrow('upload failed');
     });
+  });
+});
+
+describe('version code already used', () => {
+  const USED = 100001210;
+  const SHA = 'abc123';
+  const hash = jest.fn().mockResolvedValue(SHA);
+
+  function usedClient(bundleSha: string | null, tracks: unknown[] = []) {
+    const err = new Error(`Version code ${USED} has already been used.`);
+    (err as unknown as { status: number }).status = 403;
+    return {
+      ...happyClient(),
+      uploadBundle: jest.fn().mockRejectedValue(err),
+      listBundles: jest.fn().mockResolvedValue(
+        bundleSha === null ? [] : [{ versionCode: USED, sha256: bundleSha }]
+      ),
+      listTracks: jest.fn().mockResolvedValue(tracks),
+    };
+  }
+
+  it('skips when the identical bundle is already on the track', async () => {
+    const client = usedClient(SHA, [
+      { track: TRACK, releases: [{ status: 'completed', name: 'x', versionCodes: [String(USED)] }] },
+    ]);
+    await deployToPlayStore(FAKE_AAB, TRACK, FAKE_VERSION_NAME, client, jest.fn(), hash);
+    expect(client.createRelease).not.toHaveBeenCalled();
+    expect(client.deleteEdit).toHaveBeenCalledWith(PACKAGE_NAME, FAKE_EDIT_ID);
+  });
+
+  it('releases the existing identical bundle when it is not on the track yet', async () => {
+    const client = usedClient(SHA.toUpperCase());
+    await deployToPlayStore(FAKE_AAB, TRACK, FAKE_VERSION_NAME, client, jest.fn(), hash);
+    expect(client.createRelease).toHaveBeenCalledWith(
+      PACKAGE_NAME, FAKE_EDIT_ID, TRACK, USED, 'completed', FAKE_VERSION_NAME
+    );
+  });
+
+  it('fails when Play has a different bundle under that version code', async () => {
+    const client = usedClient('different');
+    await expect(
+      deployToPlayStore(FAKE_AAB, TRACK, FAKE_VERSION_NAME, client, jest.fn(), hash)
+    ).rejects.toThrow('DIFFERENT bundle');
+    expect(client.createRelease).not.toHaveBeenCalled();
+  });
+
+  it('fails when Play lists no bundle with that version code', async () => {
+    const client = usedClient(null);
+    await expect(
+      deployToPlayStore(FAKE_AAB, TRACK, FAKE_VERSION_NAME, client, jest.fn(), hash)
+    ).rejects.toThrow('Bump the versionCode');
+  });
+
+  it('diagnoseError does not blame permissions for a version code collision', async () => {
+    const stderr = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exit = jest.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`process.exit(${code})`);
+    }) as never);
+    const err = new Error(`Version code ${USED} has already been used.`);
+    (err as unknown as { status: number }).status = 403;
+    await expect(diagnoseError(err, happyClient())).rejects.toThrow('process.exit(1)');
+    const out = stderr.mock.calls.map((c) => c[0]).join('');
+    expect(out).toContain('Not a permissions problem');
+    expect(out).not.toContain('Release Manager');
+    stderr.mockRestore();
+    exit.mockRestore();
   });
 });
 
