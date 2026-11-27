@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
  * deploy-play-store — uploads the signed phone AAB to the Google Play Internal Testing track,
- * and the Wear OS AAB (same package name) to the Wear OS form factor's internal track (wear:qa).
+ * and the Wear OS AAB (same package name) to the Wear OS form factor's internal track (wear:internal).
  *
  * Release name is derived from the VERSION environment variable or defaults to the versionName
  * in app/build.gradle.kts.
@@ -21,10 +21,9 @@ export const PACKAGE_NAME = 'ch.rhosys.sbb';
 export const DEFAULT_AAB_PATH = 'app/build/outputs/bundle/release/app-release.aab';
 export const WEAR_AAB_PATH = 'wear/build/outputs/bundle/release/wear-release.aab';
 export const TRACK = 'internal';
-// Form factor tracks are "[prefix]:defaultTrackName", and the default name of internal
-// testing there is "qa" (Play Developer API, "APKs and Tracks"): wear:production,
-// wear:beta, wear:qa.
-export const WEAR_TRACK = 'wear:qa';
+// Form factor tracks are "[prefix]:<track>". Once Wear OS is enabled, Play creates
+// wear:production, wear:beta and wear:internal (verified against tracks.list).
+export const WEAR_TRACK = 'wear:internal';
 
 export interface TrackRelease {
   status: string | null;
@@ -319,8 +318,8 @@ export async function diagnoseMissingFormFactorTrack(
     if (formFactorTracks.length > 0) {
       err();
       err(`The ${name} form factor IS enabled (tracks: ${formFactorTracks.join(', ')}), but '${track}'`);
-      err(`is not one of them. Point the deploy script at an existing ${prefix}: track or create it in`);
-      err(`Play Console → Test and release → Testing.`);
+      err(`is not one of them — the deploy script targets the wrong track name.`);
+      err(`Fix: set the track constant in deployment/deploy-play-store.ts to one of: ${formFactorTracks.join(', ')}`);
       process.exit(1);
     }
   }
